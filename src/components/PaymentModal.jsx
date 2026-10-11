@@ -60,15 +60,15 @@ export default function PaymentModal({
         <div className="modal-header">
           <div>
             <span className="caption-label">Order Payment</span>
-            <h3>Collect Payment #{order.orderNo}</h3>
+            <h3>Collect Payment {order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`}</h3>
           </div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-content" style={{ padding: '20px', display: 'grid', gap: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <div className="modal-content" style={{ padding: '20px', display: 'grid', gap: '16px', flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
             <div style={{ background: '#f8f8fc', padding: '14px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <span style={{ fontSize: '11px', color: '#666', display: 'block' }}>Customer: {customer?.name}</span>

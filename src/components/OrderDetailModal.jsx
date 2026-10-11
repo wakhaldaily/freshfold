@@ -76,6 +76,7 @@ export default function OrderDetailModal({
           width: '740px',
           maxWidth: '96vw',
           maxHeight: '94vh',
+          minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
           background: '#ffffff',
@@ -142,7 +143,7 @@ export default function OrderDetailModal({
                 </span>
               </div>
               <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a', fontWeight: 800 }}>
-                #{order.orderNo} · {customer?.name || 'Customer'}
+                {order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`} · {customer?.name || 'Customer'}
               </h3>
             </div>
           </div>
@@ -164,7 +165,10 @@ export default function OrderDetailModal({
           style={{
             padding: '22px',
             overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
             flex: 1,
+            minHeight: 0,
             display: 'grid',
             gap: '18px',
             background: '#f8fafc',
@@ -553,24 +557,32 @@ export default function OrderDetailModal({
               display: 'grid',
               gap: '6px',
               fontSize: '12px',
+              minWidth: 0,
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-              <span>Gross Amount:</span>
-              <span>{formatMoney(order.grossAmount)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', color: '#64748b', minWidth: 0 }}>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>Gross Amount:</span>
+              <span style={{ flexShrink: 0 }}>{formatMoney(order.grossAmount)}</span>
             </div>
 
             {order.discountAmount > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
-                <span>Discount ({order.discountName || `${order.discountPercent}%`}):</span>
-                <span>-{formatMoney(order.discountAmount)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', color: '#16a34a', minWidth: 0 }}>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>Discount ({order.discountName || `${order.discountPercent}%`}):</span>
+                <span style={{ flexShrink: 0 }}>-{formatMoney(order.discountAmount)}</span>
+              </div>
+            )}
+
+            {order.expressAmount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', color: '#d97706', fontWeight: 600, minWidth: 0 }}>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>⚡ {order.expressLabel || `Early Delivery (+${order.expressPercent}%)`}:</span>
+                <span style={{ flexShrink: 0 }}>+{formatMoney(order.expressAmount)}</span>
               </div>
             )}
 
             {order.taxAmount > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                <span>Tax / GST:</span>
-                <span>{formatMoney(order.taxAmount)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', color: '#64748b', minWidth: 0 }}>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>Tax / GST:</span>
+                <span style={{ flexShrink: 0 }}>{formatMoney(order.taxAmount)}</span>
               </div>
             )}
 
@@ -578,35 +590,41 @@ export default function OrderDetailModal({
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '8px',
                 paddingTop: '8px',
                 marginTop: '2px',
                 borderTop: '1px solid #e2e8f0',
                 fontWeight: 800,
                 fontSize: '13.5px',
                 color: '#0f172a',
+                minWidth: 0,
               }}
             >
-              <span>Total Bill:</span>
-              <span>{formatMoney(order.totalAmount)}</span>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>Total Bill:</span>
+              <span style={{ flexShrink: 0 }}>{formatMoney(order.totalAmount)}</span>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
-              <span>Paid Amount:</span>
-              <span>{formatMoney(order.paidAmount)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', color: '#16a34a', minWidth: 0 }}>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>Paid Amount:</span>
+              <span style={{ flexShrink: 0 }}>{formatMoney(order.paidAmount)}</span>
             </div>
 
             <div
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '8px',
                 fontWeight: 800,
                 fontSize: '14px',
                 color: balance > 0 ? '#dc2626' : '#16a34a',
                 paddingTop: '4px',
+                minWidth: 0,
               }}
             >
-              <span>Balance Due:</span>
-              <span>{balance > 0 ? formatMoney(balance) : '₹0.00 (Settled)'}</span>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>Balance Due:</span>
+              <span style={{ flexShrink: 0 }}>{balance > 0 ? formatMoney(balance) : '₹0.00 (Settled)'}</span>
             </div>
           </div>
 

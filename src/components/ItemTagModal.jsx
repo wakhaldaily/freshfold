@@ -154,6 +154,9 @@ export default function ItemTagModal({
         alignItems: 'center',
         justifyContent: 'center',
         padding: '16px',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehavior: 'contain',
         animation: 'fade-in 0.15s ease',
       }}
       onClick={onClose}
@@ -164,6 +167,7 @@ export default function ItemTagModal({
           width: '600px',
           maxWidth: '96vw',
           maxHeight: '92vh',
+          minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
           background: '#ffffff',
@@ -176,7 +180,7 @@ export default function ItemTagModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', flexShrink: 0 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Tag size={18} color="#2563eb" />
@@ -204,7 +208,7 @@ export default function ItemTagModal({
         </div>
 
         {/* Body Content */}
-        <div style={{ padding: '20px', overflowY: 'auto', display: 'grid', gap: '18px', flex: 1, background: '#fff' }}>
+        <div style={{ padding: '20px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', display: 'grid', gap: '18px', flex: 1, minHeight: 0, background: '#fff' }}>
           {/* ========================================================= */}
           {/* SECTION 1: TOP-UP ADD-ON SERVICES (AT TOP AS REQUESTED)    */}
           {/* ========================================================= */}

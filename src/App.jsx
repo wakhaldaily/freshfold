@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  BadgePercent, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, CreditCard,
-  Edit, FileText, Filter, House, KeyRound, LayoutDashboard, Lock, LogOut, Mail,
+  BadgePercent, Calendar, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, CreditCard,
+  Download, Edit, FileSpreadsheet, Files, FileText, Filter, House, KeyRound, LayoutDashboard, Lock, LogOut, Mail,
   Menu, Minus, Package, PackagePlus, PanelLeft, PanelLeftClose, Pencil, Phone, Plus, Printer, ReceiptText,
-  Scale, Search, Settings, ShieldCheck, Shirt, ShoppingBag, Smartphone, Sparkles,
+  Scale, Search, Settings, ShieldCheck, Shirt, ShoppingBag, Smartphone, Sparkles, Store,
   Trash2, UserPlus, UserRound, Users, Wallet, Waves, Wind, X,
 } from 'lucide-react';
 
@@ -14,7 +14,14 @@ import {
   updateCustomer, updateOrderStatus, updatePackage,
   saveCustomAddon, saveCustomBrand, saveCustomColor, saveCustomDefect,
 } from './lib/persistence.js';
-import { formatDate, formatDateTime } from './lib/pdfGenerator.js';
+import { downloadBatchInvoicesPdf, formatDate, formatDateTime } from './lib/pdfGenerator.js';
+import {
+  exportOrdersToExcel,
+  filterOrdersByDate,
+  getAvailableYears,
+  getFilterPeriodLabel,
+  MONTH_NAMES,
+} from './lib/exportUtils.js';
 
 // Modals & Subcomponents
 import AdminAuthModal from './components/AdminAuthModal.jsx';
@@ -26,19 +33,36 @@ import PaymentModal from './components/PaymentModal.jsx';
 import ThermalReceiptModal from './components/ThermalReceiptModal.jsx';
 import CustomerModal from './components/CustomerModal.jsx';
 import PosRegister from './components/PosRegister.jsx';
+import PublicBillView from './components/PublicBillView.jsx';
+import AppLoginScreen from './components/AppLoginScreen.jsx';
+import { AppSkeleton, TableSkeleton } from './components/SkeletonLoader.jsx';
+import {
+  isDemoAllowed,
+  getActiveSession,
+  setActiveSession,
+  clearActiveSession,
+} from './lib/authConfig.js';
 
 export default function App() {
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const billParam = urlParams?.get('bill');
+  const tokenParam = urlParams?.get('token');
+
   const [data, setData] = useState(null);
   const [view, setView] = useState('dashboard'); // 'dashboard' | 'new-order' | 'customers' | 'customer-detail' | 'orders' | 'packages'
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [customerDetailTab, setCustomerDetailTab] = useState('overview'); // 'overview' | 'packages' | 'ledger'
   const [orderStatusFilter, setOrderStatusFilter] = useState('All');
+  const [orderTimeFilter, setOrderTimeFilter] = useState('all'); // 'all' | 'this-week' | 'this-month' | 'this-year' | 'custom'
+  const [orderFilterYear, setOrderFilterYear] = useState('all');
+  const [orderFilterMonth, setOrderFilterMonth] = useState('all');
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [globalSearch, setGlobalSearch] = useState('');
   const [toast, setToast] = useState('');
   const [busy, setBusy] = useState(false);
   const [adminUser, setAdminUserState] = useState(null);
+  const [authSession, setAuthSession] = useState(() => getActiveSession());
 
   const [modal, setModal] = useState(null);
 
@@ -50,6 +74,7 @@ export default function App() {
       return false;
     }
   });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -61,15 +86,34 @@ export default function App() {
     });
   };
 
+  const handleNavigate = (newView) => {
+    setView(newView);
+    setMobileMenuOpen(false);
+  };
+
   useEffect(() => {
-    loadStore().then((loaded) => {
-      setData(loaded);
-      const savedAdmin = getAdminSession();
-      if (savedAdmin) setAdminUserState(savedAdmin);
-      if (loaded.customers.length > 0) {
-        setSelectedCustomerId(loaded.customers[0].id);
-      }
-    });
+    loadStore()
+      .then((loaded) => {
+        setData(loaded);
+        const savedAdmin = getAdminSession();
+        if (savedAdmin) {
+          setAdminUserState(savedAdmin);
+        }
+        const savedSession = getActiveSession();
+        if (savedSession && (savedSession.role === 'admin' || savedSession.type === 'admin')) {
+          setAdminUserState(savedSession);
+        }
+        if (loaded?.customers?.length > 0) {
+          setSelectedCustomerId(loaded.customers[0].id);
+        }
+      })
+      .catch((err) => {
+        console.error('Store load error, falling back to local storage:', err);
+        try {
+          const local = loadLocal();
+          setData(local);
+        } catch {}
+      });
   }, []);
 
   useEffect(() => {
@@ -97,7 +141,20 @@ export default function App() {
     }
   };
 
-  // Admin Auth Helpers
+  // Active Terminal Staff Member
+  const currentStaff = useMemo(() => {
+    return authSession || data?.staff?.[0] || null;
+  }, [authSession, data]);
+
+  // Terminal Lock / Auth Helpers
+  const handleLockTerminal = () => {
+    clearActiveSession();
+    clearAdminSession();
+    setAuthSession(null);
+    setAdminUserState(null);
+    showToast('Terminal locked. Sign in to continue.');
+  };
+
   const handleAdminLogin = (admin) => {
     setAdminUserState(admin);
     setAdminSession(admin);
@@ -106,7 +163,13 @@ export default function App() {
   const handleAdminLogout = () => {
     setAdminUserState(null);
     clearAdminSession();
-    showToast('Logged out of Admin mode.');
+    if (authSession?.role === 'admin' || authSession?.type === 'admin') {
+      clearActiveSession();
+      setAuthSession(null);
+      showToast('Admin session ended. Terminal locked.');
+    } else {
+      showToast('Logged out of Admin mode. Staff session remains active.');
+    }
   };
 
   const requireAdmin = (callback) => {
@@ -178,34 +241,170 @@ export default function App() {
     return data?.payments.filter((p) => p.orderId === activeOrder.id) || [];
   }, [data, activeOrder]);
 
+  // Dynamic available years from order history
+  const availableYears = useMemo(() => {
+    return getAvailableYears(data?.orders || []);
+  }, [data?.orders]);
+
+  // Combined filtered orders (Status + Period + Search query)
+  const filteredOrders = useMemo(() => {
+    if (!data?.orders) return [];
+
+    let list = data.orders;
+
+    // 1. Status filter
+    if (orderStatusFilter !== 'All') {
+      list = list.filter((o) => o.status === orderStatusFilter);
+    }
+
+    // 2. Date / Period filter
+    list = filterOrdersByDate({
+      orders: list,
+      timePreset: orderTimeFilter,
+      selectedYear: orderFilterYear,
+      selectedMonth: orderFilterMonth,
+    });
+
+    // 3. Search query filter
+    if (orderSearchQuery.trim()) {
+      const q = orderSearchQuery.trim().toLowerCase();
+      list = list.filter((o) => {
+        const cust = data.customers.find((c) => c.id === o.customerId);
+        return (
+          o.orderNo?.toLowerCase().includes(q) ||
+          cust?.name?.toLowerCase().includes(q) ||
+          cust?.mobile?.includes(q)
+        );
+      });
+    }
+
+    return list;
+  }, [data?.orders, data?.customers, orderStatusFilter, orderTimeFilter, orderFilterYear, orderFilterMonth, orderSearchQuery]);
+
+  const periodLabel = useMemo(() => {
+    return getFilterPeriodLabel({
+      timePreset: orderTimeFilter,
+      selectedYear: orderFilterYear,
+      selectedMonth: orderFilterMonth,
+    });
+  }, [orderTimeFilter, orderFilterYear, orderFilterMonth]);
+
+  const filteredMetrics = useMemo(() => {
+    const totalAmount = filteredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+    const totalPaid = filteredOrders.reduce((sum, o) => sum + (Number(o.paidAmount) || 0), 0);
+    const totalBalance = filteredOrders.reduce((sum, o) => sum + (Number(o.balanceAmount) || 0), 0);
+    return {
+      count: filteredOrders.length,
+      totalAmount,
+      totalPaid,
+      totalBalance,
+    };
+  }, [filteredOrders]);
+
+  const handleExportExcel = () => {
+    if (filteredOrders.length === 0) {
+      showToast('No orders found to export.');
+      return;
+    }
+    const res = exportOrdersToExcel({
+      orders: filteredOrders,
+      customers: data.customers,
+      settings: data.settings,
+      timeLabel: periodLabel,
+    });
+    if (res.success) {
+      showToast(`Exported ${res.count} orders to Excel successfully.`);
+    } else {
+      showToast(res.error || 'Failed to export orders.');
+    }
+  };
+
+  const handleDownloadAllInvoices = () => {
+    if (filteredOrders.length === 0) {
+      showToast('No orders found to generate invoices.');
+      return;
+    }
+    showToast(`Generating PDF for ${filteredOrders.length} invoices...`);
+    setTimeout(() => {
+      try {
+        const res = downloadBatchInvoicesPdf({
+          orders: filteredOrders,
+          customers: data.customers,
+          settings: data.settings,
+          payments: data.payments,
+          format: data.settings?.invoiceFormat || 'thermal',
+          cashierName: currentStaff?.name || 'Store Cashier',
+          filename: `CleanClear_All_Invoices_${periodLabel.replace(/[^a-zA-Z0-9_\-]/g, '_')}.pdf`,
+        });
+        if (res?.success) {
+          showToast(`Downloaded all ${res.count} invoices in a single PDF.`);
+        }
+      } catch (err) {
+        console.error('Batch invoices download error:', err);
+        showToast('Could not generate batch invoices PDF.');
+      }
+    }, 50);
+  };
+
+  if (billParam) {
+    if (!data) return <AppSkeleton />;
+    return <PublicBillView billParam={billParam} tokenParam={tokenParam} localData={data} />;
+  }
+
   if (!data) {
+    return <AppSkeleton />;
+  }
+
+  if (!authSession) {
     return (
-      <div className="app-loading">
-        <div className="brand-mark">
-          <Sparkles size={20} />
-        </div>
-        <strong>Loading Fresh Fold...</strong>
-      </div>
+      <AppLoginScreen
+        storeName={data.settings?.storeName || 'Clean Clear Dry Cleaning'}
+        tagline={data.settings?.tagline || 'Counter & Store Management System'}
+        staff={data.staff || []}
+        admins={data.admins || []}
+        onLoginSuccess={(user) => {
+          setAuthSession(user);
+          setActiveSession(user);
+          if (user.role === 'admin' || user.type === 'admin') {
+            setAdminUserState(user);
+            setAdminSession(user);
+          }
+        }}
+        onCreateAdmin={async (newAdmin, customStoreName) => {
+          await runMutation(async (cur) => {
+            let next = await createAdmin(newAdmin, cur);
+            if (customStoreName && customStoreName.trim()) {
+              next = await saveSettings({
+                ...next.settings,
+                storeName: customStoreName.trim(),
+                storeNameCreated: true,
+              }, next);
+            }
+            return next;
+          }, `Store "${customStoreName || 'Clean Clear Dry Cleaning'}" and administrator registered.`);
+        }}
+        onToast={showToast}
+      />
     );
   }
 
   return (
     <div className="app-shell">
       {/* 1. DARK SIDEBAR NAVIGATION (COLLAPSIBLE) */}
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
         {/* Brand Lockup */}
         <div className="brand-lockup">
           <div
             className="brand-mark"
             onClick={sidebarCollapsed ? toggleSidebar : undefined}
             style={{ cursor: sidebarCollapsed ? 'pointer' : 'default' }}
-            title={sidebarCollapsed ? 'Expand Sidebar' : 'Fresh Fold'}
+            title={sidebarCollapsed ? 'Expand Sidebar' : 'Clean Clear Dry Cleaning'}
           >
             <Sparkles size={18} />
           </div>
           <div>
-            <strong>Fresh Fold</strong>
-            <span>COUNTER SYSTEM</span>
+            <strong>Clean Clear</strong>
+            <span>DRY CLEANING</span>
           </div>
           <button
             type="button"
@@ -216,14 +415,23 @@ export default function App() {
           >
             {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
           </button>
+          <button
+            type="button"
+            className="icon-button nav-close"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-label="Close Navigation"
+            style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#cbd5e1' }}
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* Store Switcher */}
-        <div className="store-switcher" title={data.settings?.storeName || 'Fresh Fold Store'}>
+        <div className="store-switcher" title={data.settings?.storeName || 'Clean Clear Dry Cleaning'}>
           <span className="store-dot" />
           <div>
             <span>STORE LOCATION</span>
-            <strong>{data.settings?.storeName || 'Fresh Fold Store'}</strong>
+            <strong>{data.settings?.storeName || 'Clean Clear Dry Cleaning'}</strong>
           </div>
         </div>
 
@@ -233,7 +441,7 @@ export default function App() {
           <button
             type="button"
             className={`nav-item ${view === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setView('dashboard')}
+            onClick={() => handleNavigate('dashboard')}
             data-tooltip="Dashboard"
           >
             <LayoutDashboard size={18} />
@@ -243,7 +451,7 @@ export default function App() {
           <button
             type="button"
             className={`nav-item ${view === 'new-order' ? 'active' : ''}`}
-            onClick={() => setView('new-order')}
+            onClick={() => handleNavigate('new-order')}
             data-tooltip="New Order"
           >
             <Shirt size={18} />
@@ -253,7 +461,7 @@ export default function App() {
           <button
             type="button"
             className={`nav-item ${view === 'orders' ? 'active' : ''}`}
-            onClick={() => setView('orders')}
+            onClick={() => handleNavigate('orders')}
             data-tooltip={`Order History (${data.orders.length})`}
           >
             <ShoppingBag size={18} />
@@ -264,7 +472,7 @@ export default function App() {
           <button
             type="button"
             className={`nav-item ${view === 'customers' || view === 'customer-detail' ? 'active' : ''}`}
-            onClick={() => setView('customers')}
+            onClick={() => handleNavigate('customers')}
             data-tooltip={`Customer Book (${data.customers.length})`}
           >
             <Users size={18} />
@@ -275,7 +483,7 @@ export default function App() {
           <button
             type="button"
             className={`nav-item ${view === 'packages' ? 'active' : ''}`}
-            onClick={() => setView('packages')}
+            onClick={() => handleNavigate('packages')}
             data-tooltip={`Package Plans (${data.packages.length})`}
           >
             <Package size={18} />
@@ -286,7 +494,10 @@ export default function App() {
           <button
             type="button"
             className="nav-item"
-            onClick={() => requireAdmin(() => setModal({ type: 'settings' }))}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              requireAdmin(() => setModal({ type: 'settings' }));
+            }}
             data-tooltip="Store & Tax Settings"
           >
             <Settings size={18} />
@@ -296,13 +507,13 @@ export default function App() {
 
         {/* Sidebar Bottom Status */}
         <div className="sidebar-bottom">
-          <div className="shift-card" title="Counter Shift Active · Frictionless Counter">
+          <div className="shift-card" title={`Logged in: ${authSession?.name || 'Staff'} (${authSession?.role || 'cashier'})`}>
             <div className="shift-icon">
               <Clock3 size={16} />
             </div>
             <div>
               <span>COUNTER SHIFT</span>
-              <strong>Active · Frictionless Counter</strong>
+              <strong>{authSession ? `${authSession.name} (${authSession.role})` : 'Active · Counter'}</strong>
             </div>
             <span className="live-dot" />
           </div>
@@ -316,10 +527,10 @@ export default function App() {
               title="Click to Log Out of Admin Mode"
             >
               <div className="staff-avatar" style={{ background: '#2563eb', color: '#fff' }}>
-                {adminUser.name[0]?.toUpperCase()}
+                {(adminUser?.name || 'Admin')[0]?.toUpperCase()}
               </div>
               <div>
-                <strong>{adminUser.name}</strong>
+                <strong>{adminUser?.name || 'Administrator'}</strong>
                 <span style={{ color: '#53cc9b' }}>Admin Active (Log Out)</span>
               </div>
               <ShieldCheck size={16} color="#53cc9b" />
@@ -341,14 +552,61 @@ export default function App() {
               <KeyRound size={15} color="#9696ad" />
             </div>
           )}
+
+          {/* Lock Terminal Quick Button */}
+          <button
+            type="button"
+            className="button button-quiet"
+            onClick={handleLockTerminal}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              fontSize: '11px',
+              marginTop: '6px',
+              padding: '6px 10px',
+              color: '#94a3b8',
+              borderColor: 'rgba(255,255,255,0.1)',
+            }}
+            title="Lock POS Terminal Screen"
+          >
+            <Lock size={13} /> Lock Terminal
+          </button>
         </div>
       </aside>
 
+      {/* Backdrop for mobile drawer */}
+      {mobileMenuOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setMobileMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* 2. MAIN FULL-SCREEN SHELL */}
       <div className="main-shell">
+        {/* Top Shimmer API In-flight Indicator */}
+        {busy && <div className="top-shimmer-progress" />}
+
         {/* Topbar */}
         <header className="topbar">
           <div className="topbar-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Mobile Hamburger Menu Button */}
+            <button
+              type="button"
+              className="icon-button menu-toggle"
+              onClick={() => setMobileMenuOpen(true)}
+              style={{ width: '34px', height: '34px', borderRadius: '8px' }}
+              title="Open Navigation Menu"
+              aria-label="Open Navigation Menu"
+            >
+              <Menu size={18} />
+            </button>
+
+            {/* Desktop Sidebar Collapse Button */}
             <button
               type="button"
               className="icon-button"
@@ -360,7 +618,7 @@ export default function App() {
               {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
             </button>
             <div className="breadcrumb">
-              <span>Fresh Fold</span>
+              <span>Clean Clear Dry Cleaning</span>
               <ChevronRight size={14} />
               <strong>
                 {view === 'dashboard' && 'Counter Dashboard'}
@@ -432,7 +690,7 @@ export default function App() {
                 style={{ minHeight: '36px', fontSize: '11px' }}
                 onClick={handleAdminLogout}
               >
-                Admin: {adminUser.name} (Log Out)
+                Admin: {adminUser?.name || 'Administrator'} (Log Out)
               </button>
             ) : (
               <button
@@ -444,6 +702,16 @@ export default function App() {
                 <Lock size={13} /> Admin Login
               </button>
             )}
+
+            <button
+              type="button"
+              className="button button-quiet"
+              style={{ minHeight: '36px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px' }}
+              onClick={handleLockTerminal}
+              title={`Active: ${authSession?.name || 'Staff'}. Click to lock POS terminal.`}
+            >
+              <LogOut size={13} /> Lock Terminal
+            </button>
           </div>
         </header>
 
@@ -459,7 +727,7 @@ export default function App() {
                 <div>
                   <span className="caption-label">Counter Home</span>
                   <h1 style={{ margin: '4px 0 6px', fontSize: '24px', color: '#1e293b' }}>
-                    Welcome to {data.settings?.storeName || 'Fresh Fold'}
+                    Welcome to {data.settings?.storeName || 'Clean Clear Dry Cleaning'}
                   </h1>
                   <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
                     Frictionless laundry intake, piece and weight orders, and instant thermal receipts.
@@ -578,7 +846,7 @@ export default function App() {
                                 className="order-number"
                                 onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
                               >
-                                #{o.orderNo}
+                                {o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`}
                               </button>
                             </td>
                             <td>
@@ -636,6 +904,7 @@ export default function App() {
               customers={data.customers}
               customerPackages={data.customerPackages}
               packages={data.packages}
+              orders={data.orders}
               initialCustomer={currentDetailCustomer}
               settings={data.settings}
               addons={data.addons}
@@ -672,13 +941,182 @@ export default function App() {
           {/* ========================================================= */}
           {view === 'orders' && (
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+              
+              {/* Header Title & Batch Export / Invoices Actions */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: '22px', color: '#1e293b' }}>Order History ({data.orders.length})</h2>
-                  <p className="muted-copy" style={{ margin: '4px 0 0' }}>Search and manage orders across the entire customer book</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <h2 style={{ margin: 0, fontSize: '22px', color: '#1e293b' }}>
+                      Order History ({data.orders.length})
+                    </h2>
+                    <span style={{ fontSize: '12px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '3px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                      {periodLabel}
+                    </span>
+                  </div>
+                  <p className="muted-copy" style={{ margin: '4px 0 0' }}>
+                    Filter by week, month, or year. Export Excel reports or download all customer invoices at once.
+                  </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* Batch Actions: Export to Excel & Get All Invoices */}
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {/* Export to Excel */}
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={handleExportExcel}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      background: '#107c41',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      fontWeight: 700,
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(16, 124, 65, 0.25)',
+                    }}
+                    title="Export filtered orders into an Excel-compatible report"
+                  >
+                    <FileSpreadsheet size={15} /> Export to Excel ({filteredOrders.length})
+                  </button>
+
+                  {/* Get All Invoices at Once (PDF) */}
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    onClick={handleDownloadAllInvoices}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      fontWeight: 700,
+                      fontSize: '12px',
+                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.2)',
+                    }}
+                    title="Download all filtered invoices together in a single multi-page PDF"
+                  >
+                    <Files size={15} /> Get All Invoices ({filteredOrders.length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Comprehensive Filter Controls Card */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+                {/* Row 1: Period Presets & Specific Month/Year Selectors */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+                  
+                  {/* Quick Time Presets */}
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.5px', marginRight: '4px' }}>
+                      Time Filter:
+                    </span>
+                    {[
+                      { id: 'all', label: 'All Time' },
+                      { id: 'this-week', label: 'This Week' },
+                      { id: 'this-month', label: 'This Month' },
+                      { id: 'this-year', label: 'This Year' },
+                      { id: 'custom', label: 'Specific Month/Year' },
+                    ].map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setOrderTimeFilter(p.id);
+                          if (p.id === 'this-month') {
+                            setOrderFilterYear(new Date().getFullYear());
+                            setOrderFilterMonth(new Date().getMonth());
+                          } else if (p.id === 'this-year') {
+                            setOrderFilterYear(new Date().getFullYear());
+                            setOrderFilterMonth('all');
+                          } else if (p.id === 'all') {
+                            setOrderFilterYear('all');
+                            setOrderFilterMonth('all');
+                          }
+                        }}
+                        style={{
+                          fontSize: '11px',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: orderTimeFilter === p.id ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                          background: orderTimeFilter === p.id ? '#2563eb' : '#fff',
+                          color: orderTimeFilter === p.id ? '#fff' : '#334155',
+                          fontWeight: orderTimeFilter === p.id ? 700 : 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Specific Month & Year Selectors */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <Calendar size={14} color="#64748b" />
+                    
+                    {/* Month Picker */}
+                    <select
+                      value={orderFilterMonth}
+                      onChange={(e) => {
+                        const val = e.target.value === 'all' ? 'all' : Number(e.target.value);
+                        setOrderFilterMonth(val);
+                        setOrderTimeFilter('custom');
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '12px',
+                        background: '#fff',
+                        color: '#0f172a',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                      title="Filter by specific Month"
+                    >
+                      <option value="all">All Months</option>
+                      {MONTH_NAMES.map((name, idx) => (
+                        <option key={idx} value={idx}>{name}</option>
+                      ))}
+                    </select>
+
+                    {/* Year Picker */}
+                    <select
+                      value={orderFilterYear}
+                      onChange={(e) => {
+                        const val = e.target.value === 'all' ? 'all' : Number(e.target.value);
+                        setOrderFilterYear(val);
+                        setOrderTimeFilter('custom');
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '12px',
+                        background: '#fff',
+                        color: '#0f172a',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                      title="Filter by specific Year"
+                    >
+                      <option value="all">All Years</option>
+                      {availableYears.map((y) => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 2: Search Query & Status Tabs */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  {/* Search box */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '8px 14px', borderRadius: '8px', border: '1.5px solid #cbd5e1', width: '380px', minWidth: '260px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
                     <Search size={15} color="#94a3b8" />
                     <input
@@ -699,6 +1137,7 @@ export default function App() {
                     )}
                   </div>
 
+                  {/* Status buttons */}
                   <div style={{ display: 'flex', gap: '5px' }}>
                     {['All', 'Received', 'Processing', 'Ready', 'Delivered', 'Cancelled'].map((st) => (
                       <button
@@ -715,38 +1154,66 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Filtered Financial Metrics Summary Strip */}
+              <div style={{ display: 'flex', gap: '16px', background: '#f1f5f9', padding: '10px 16px', borderRadius: '8px', marginBottom: '16px', fontSize: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ color: '#475569' }}>
+                  Filtered Orders: <strong style={{ color: '#0f172a' }}>{filteredMetrics.count}</strong>
+                </span>
+                <span style={{ color: '#94a3b8' }}>•</span>
+                <span style={{ color: '#475569' }}>
+                  Total Billed: <strong style={{ color: '#0f172a' }}>{formatMoney(filteredMetrics.totalAmount)}</strong>
+                </span>
+                <span style={{ color: '#94a3b8' }}>•</span>
+                <span style={{ color: '#475569' }}>
+                  Paid Collected: <strong style={{ color: '#16a34a' }}>{formatMoney(filteredMetrics.totalPaid)}</strong>
+                </span>
+                <span style={{ color: '#94a3b8' }}>•</span>
+                <span style={{ color: '#475569' }}>
+                  Balance Due: <strong style={{ color: filteredMetrics.totalBalance > 0 ? '#d97706' : '#16a34a' }}>{formatMoney(filteredMetrics.totalBalance)}</strong>
+                </span>
+              </div>
+
               {/* Natural scrolling table */}
-              <div className="orders-table-wrap" style={{ maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
-                <table className="orders-table">
-                  <thead>
-                    <tr>
-                      <th>Order No</th>
-                      <th>Customer Name</th>
-                      <th>Service & Type</th>
-                      <th>Intake Date</th>
-                      <th>Promised Due</th>
-                      <th>Total Bill</th>
-                      <th>Balance Due</th>
-                      <th>Current Status</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.orders
-                      .filter((o) => {
-                        if (orderStatusFilter !== 'All' && o.status !== orderStatusFilter) return false;
-                        if (orderSearchQuery.trim()) {
-                          const q = orderSearchQuery.trim().toLowerCase();
-                          const cust = data.customers.find((c) => c.id === o.customerId);
-                          return (
-                            o.orderNo.toLowerCase().includes(q) ||
-                            cust?.name.toLowerCase().includes(q) ||
-                            cust?.mobile.includes(q)
-                          );
-                        }
-                        return true;
-                      })
-                      .map((o) => {
+              <div className="orders-table-wrap" style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
+                {filteredOrders.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '48px 20px', background: '#fafafa', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '32px', marginBottom: '10px' }}>🔍</div>
+                    <h3 style={{ margin: '0 0 6px', color: '#1e293b', fontSize: '16px' }}>No orders found for this period</h3>
+                    <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 16px' }}>
+                      No orders match your filter criteria ({periodLabel}, Status: {orderStatusFilter}). Try choosing "All Time" or picking a different month/year.
+                    </p>
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      onClick={() => {
+                        setOrderTimeFilter('all');
+                        setOrderFilterYear('all');
+                        setOrderFilterMonth('all');
+                        setOrderStatusFilter('All');
+                        setOrderSearchQuery('');
+                      }}
+                      style={{ fontSize: '12px' }}
+                    >
+                      Reset All Filters
+                    </button>
+                  </div>
+                ) : (
+                  <table className="orders-table">
+                    <thead>
+                      <tr>
+                        <th>Order No</th>
+                        <th>Customer Name</th>
+                        <th>Service & Type</th>
+                        <th>Intake Date</th>
+                        <th>Promised Due</th>
+                        <th>Total Bill</th>
+                        <th>Balance Due</th>
+                        <th>Current Status</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredOrders.map((o) => {
                         const cust = data.customers.find((c) => c.id === o.customerId);
                         return (
                           <tr key={o.id}>
@@ -756,7 +1223,7 @@ export default function App() {
                                 className="order-number"
                                 onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
                               >
-                                #{o.orderNo}
+                                {o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`}
                               </button>
                             </td>
                             <td>
@@ -800,8 +1267,9 @@ export default function App() {
                           </tr>
                         );
                       })}
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           )}
@@ -1095,7 +1563,7 @@ export default function App() {
                                 className="order-number"
                                 onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
                               >
-                                #{o.orderNo}
+                                {o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`}
                               </button>
                             </td>
                             <td>{o.service} ({o.type === 'weight' ? 'Weight' : 'Pieces'})</td>
@@ -1385,6 +1853,121 @@ export default function App() {
         }}
         onToast={showToast}
       />
+
+      {/* 9. FIRST-TIME STORE NAME ONBOARDING (PRODUCTION MANDATORY) */}
+      {!isDemoAllowed() && !data.settings?.storeNameCreated && (
+        <div
+          className="modal-backdrop"
+          style={{
+            zIndex: 99998,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          <div
+            className="modal-panel"
+            style={{
+              maxWidth: '460px',
+              width: '90%',
+              padding: '28px 26px',
+              borderRadius: '20px',
+              background: '#ffffff',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <div
+                style={{
+                  width: '52px',
+                  height: '52px',
+                  borderRadius: '16px',
+                  background: 'linear-gradient(135deg, #2563eb, #0284c7)',
+                  color: '#fff',
+                  display: 'grid',
+                  placeItems: 'center',
+                  margin: '0 auto 12px',
+                  boxShadow: '0 8px 20px rgba(37, 99, 235, 0.3)',
+                }}
+              >
+                <Store size={26} />
+              </div>
+              <h2 style={{ margin: '0 0 6px', fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
+                Create Your Store Name
+              </h2>
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b', lineHeight: 1.5 }}>
+                Please set your store or branch business name. This will appear on all printed invoices, customer WhatsApp receipts, and tax reports.
+              </p>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.target;
+                const name = form.storeNameInput.value.trim();
+                if (!name) return;
+                await runMutation(
+                  (cur) =>
+                    saveSettings(
+                      {
+                        ...cur.settings,
+                        storeName: name,
+                        storeNameCreated: true,
+                      },
+                      cur
+                    ),
+                  `Store Name set to "${name}" successfully!`
+                );
+              }}
+            >
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  Store / Branch Name <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <input
+                  name="storeNameInput"
+                  type="text"
+                  defaultValue={data.settings?.storeName || 'Clean Clear Dry Cleaning'}
+                  placeholder="e.g. Clean Clear Dry Cleaning - Indiranagar"
+                  required
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '11px 14px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #2563eb',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    outline: 'none',
+                    color: '#0f172a',
+                    boxShadow: '0 0 0 3px rgba(37, 99, 235, 0.15)',
+                  }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                style={{
+                  width: '100%',
+                  padding: '13px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: '#0f172a',
+                  color: '#fff',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(15, 23, 42, 0.25)',
+                }}
+              >
+                Save Store Name & Enter Register
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {toast && (

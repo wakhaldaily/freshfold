@@ -23,33 +23,9 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import CustomSelect from './CustomSelect.jsx';
+import { INDIAN_STATES } from '../data.js';
 
-const INDIAN_STATES = [
-  'Haryana',
-  'Delhi',
-  'Punjab',
-  'Uttar Pradesh',
-  'Rajasthan',
-  'Chandigarh',
-  'Maharashtra',
-  'Karnataka',
-  'Tamil Nadu',
-  'Gujarat',
-  'West Bengal',
-  'Telangana',
-  'Andhra Pradesh',
-  'Kerala',
-  'Madhya Pradesh',
-  'Bihar',
-  'Odisha',
-  'Goa',
-  'Uttarakhand',
-  'Himachal Pradesh',
-  'Jammu & Kashmir',
-  'Assam',
-  'Jharkhand',
-  'Chhattisgarh',
-];
+export { INDIAN_STATES };
 
 const PREFERENCE_OPTIONS = [
   { value: 'NA', label: 'Standard Clean & Fold' },
@@ -256,6 +232,9 @@ export default function CustomerModal({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehavior: 'contain',
       }}
     >
       <div
@@ -265,6 +244,7 @@ export default function CustomerModal({
           maxWidth: '840px',
           width: '100%',
           maxHeight: '92vh',
+          minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
           borderRadius: '16px',
@@ -425,7 +405,10 @@ export default function CustomerModal({
           style={{
             padding: '20px 24px',
             overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
             flex: 1,
+            minHeight: 0,
             display: 'flex',
             flexDirection: 'column',
             gap: '18px',

@@ -8,6 +8,9 @@ import {
   assignPackage,
   createOrder,
   recordPayment,
+  saveSettings,
+  getNextOrderNo,
+  formatOrderNo,
 } from '../src/lib/persistence.js';
 
 import {
@@ -448,3 +451,141 @@ test('8. Automatic Wallet Credit Deduction (Full & Partial) upon Order Intake', 
   const custAfterOrder2 = store.customers.find((c) => c.id === customer.id);
   assert.equal(custAfterOrder2.walletBalance, 0, 'Wallet balance reduced to 0');
 });
+
+test('9. Early Delivery Surcharge calculation (e.g. 25%) and invoice verification', async () => {
+  let store = createInitialData();
+  store.settings.taxEnabled = true;
+  store.settings.taxPercent = 18;
+
+  store = await createCustomer({
+    name: 'Sameer Khan',
+    mobile: '9812345678',
+  }, store);
+  const customer = store.customers.find((c) => c.mobile === '9812345678');
+  assert.ok(customer);
+
+  // Gross 1,000, discount 200 -> Subtotal before express = 800
+  // Express 25% on 800 = 200 -> Subtotal with express = 1,000
+  // Tax 18% on 1,000 = 180 -> Total = 1,180
+  store = await createOrder({
+    customerId: customer.id,
+    type: 'pieces',
+    service: 'Dry cleaning',
+    items: [{ id: 'm-suit', name: 'Suit', category: 'Men', unitPrice: 500, quantity: 2 }],
+    grossAmount: 1000,
+    discountAmount: 200,
+    discountPercent: 20,
+    discountName: 'Loyalty 20%',
+    expressPercent: 25,
+    expressLabel: 'Early Delivery (24-48 Hours)',
+  }, store);
+
+  const order = store.orders[0];
+  assert.ok(order);
+  assert.equal(order.grossAmount, 1000);
+  assert.equal(order.discountAmount, 200);
+  assert.equal(order.expressDelivery, true);
+  assert.equal(order.expressPercent, 25);
+  assert.equal(order.expressAmount, 200, 'Express surcharge must be 25% of taxable subtotal (800 * 0.25 = 200)');
+  assert.equal(order.taxAmount, 180, 'GST 18% on 1000 = 180');
+  assert.equal(order.totalAmount, 1180, 'Grand total must equal 1000 subtotal + 180 tax = 1180');
+});
+
+test('10. GST is completely suppressed across tickets, orders and persistence when disabled by admin', async () => {
+  let store = createInitialData();
+  
+  // Admin disables GST in settings
+  store = await saveSettings({ taxEnabled: false }, store);
+  assert.equal(store.settings.taxEnabled, false, 'Store settings must preserve taxEnabled: false');
+
+  store = await createCustomer({
+    name: 'Priya Sharma',
+    mobile: '9877712345',
+  }, store);
+  const customer = store.customers.find((c) => c.mobile === '9877712345');
+
+  // Place order with disabled GST
+  store = await createOrder({
+    customerId: customer.id,
+    type: 'pieces',
+    service: 'Dry cleaning',
+    items: [{ id: 'm-suit', name: 'Suit', category: 'Men', unitPrice: 400, quantity: 1 }],
+    grossAmount: 400,
+    discountAmount: 0,
+    discountPercent: 0,
+    taxEnabled: false,
+  }, store);
+
+  const order = store.orders[0];
+  assert.equal(order.taxAmount, 0, 'Tax amount must be strictly 0 when GST is disabled');
+  assert.equal(order.taxPercent, 0, 'Tax percent must be 0 when GST is disabled');
+  assert.equal(order.totalAmount, 400, 'Total bill must be 400 without any tax added');
+
+  // Verify Thermal Receipt PDF suppresses GSTIN and tax lines
+  const pdfDoc = generateThermalReceiptPdf({
+    order,
+    customer,
+    settings: store.settings,
+    cashierName: 'Counter 1',
+  });
+  assert.ok(pdfDoc, 'PDF receipt generates cleanly with GST disabled');
+});
+
+test('11. Custom Order Number editing (#w123) and subsequent automatic sequential incrementation (#w124, #w125)', async () => {
+  // Test helper functions
+  assert.equal(getNextOrderNo('#w123'), '#w124', '#w123 should increment to #w124');
+  assert.equal(getNextOrderNo('w123'), 'w124', 'w123 should increment to w124');
+  assert.equal(getNextOrderNo('#W123'), '#W124', '#W123 should increment to #W124');
+  assert.equal(getNextOrderNo('B6163'), 'B6164', 'B6163 should increment to B6164');
+  assert.equal(getNextOrderNo('ORD-009'), 'ORD-010', 'ORD-009 should increment to ORD-010 with padding');
+  assert.equal(formatOrderNo('#w123'), '#w123');
+  assert.equal(formatOrderNo('w123'), '#w123');
+
+  let store = createInitialData();
+  store = await createCustomer({ name: 'Rahul Verma', mobile: '9899123456' }, store);
+  const customer = store.customers.find((c) => c.mobile === '9899123456');
+
+  // 1. First order is created with user edited custom order number "#w123"
+  store = await createOrder({
+    orderNo: '#w123',
+    customerId: customer.id,
+    type: 'pieces',
+    service: 'Dry cleaning',
+    items: [{ id: 'm-shirt', name: 'Shirt', unitPrice: 100, quantity: 2 }],
+    grossAmount: 200,
+  }, store);
+
+  const order1 = store.orders[0];
+  assert.equal(order1.orderNo, '#w123', 'First order must have the edited order number #w123');
+  assert.equal(store.settings.lastOrderNo, '#w123');
+  assert.equal(store.settings.nextOrderNo, '#w124', 'Settings nextOrderNo must automatically be #w124');
+  assert.equal(order1.items[0].barcode, '#w123-1', 'Item barcodes must match custom order number');
+
+  // 2. Second order is placed without providing an explicit number -> must auto-increment to "#w124"
+  store = await createOrder({
+    customerId: customer.id,
+    type: 'pieces',
+    service: 'Dry cleaning',
+    items: [{ id: 'm-shirt', name: 'Shirt', unitPrice: 100, quantity: 1 }],
+    grossAmount: 100,
+  }, store);
+
+  const order2 = store.orders[0];
+  assert.equal(order2.orderNo, '#w124', 'Second order must automatically increment to #w124');
+  assert.equal(store.settings.lastOrderNo, '#w124');
+  assert.equal(store.settings.nextOrderNo, '#w125', 'Settings nextOrderNo must automatically advance to #w125');
+
+  // 3. Third order is placed -> must auto-increment to "#w125"
+  store = await createOrder({
+    customerId: customer.id,
+    type: 'pieces',
+    service: 'Dry cleaning',
+    items: [{ id: 'm-trouser', name: 'Trouser', unitPrice: 150, quantity: 1 }],
+    grossAmount: 150,
+  }, store);
+
+  const order3 = store.orders[0];
+  assert.equal(order3.orderNo, '#w125', 'Third order must automatically increment to #w125');
+  assert.equal(store.settings.nextOrderNo, '#w126', 'Settings nextOrderNo must automatically advance to #w126');
+});
+

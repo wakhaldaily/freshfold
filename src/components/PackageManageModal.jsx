@@ -170,7 +170,7 @@ export default function PackageManageModal({
           </button>
         </div>
 
-        <div className="modal-content" style={{ padding: '24px', maxHeight: '76vh', overflowY: 'auto' }}>
+        <div className="modal-content" style={{ padding: '24px', flex: 1, minHeight: 0, maxHeight: '76vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
           {/* Header Action */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#666' }}>

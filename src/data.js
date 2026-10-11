@@ -100,7 +100,8 @@ export const initialPackageCatalog = [
 export const packageCatalog = initialPackageCatalog;
 
 export const defaultSettings = {
-  storeName: 'Fresh Fold',
+  storeName: 'Clean Clear Dry Cleaning',
+  storeNameCreated: false,
   tagline: 'Premium Fabric Care & Dry Cleaning',
   phone: '70057 28774',
   address: 'Shop 12, Ground Floor, Galleria Market',
@@ -109,8 +110,15 @@ export const defaultSettings = {
   taxPercent: 18,
   taxNumber: '07AAAAA0000A1Z5',
   splitGst: true,
-  receiptFooter: 'Free Home pick and delivery. GST extra. Goods not collected within 30 days are not store liability.',
+  receiptFooter: 'Thank you for choosing Clean Clear Dry Cleaning! Free Home pick and delivery. GST extra. Goods not collected within 30 days are not store liability.',
   currency: '₹',
+  expressDeliveryEnabled: true,
+  expressDeliveryPercent: 25,
+  expressOptions: [
+    { id: 'standard', label: 'Standard Delivery', percent: 0, days: 3 },
+    { id: 'express-25', label: 'Early / Express Delivery (24-48 Hours)', percent: 25, days: 1 },
+    { id: 'same-day-50', label: 'Same Day Urgent Delivery', percent: 50, days: 0 },
+  ],
 };
 
 export const defaultStaff = [
@@ -128,6 +136,45 @@ export const initialAdmins = [
     securityQuestion: 'What city is this store in?',
     securityAnswer: 'gurugram',
   },
+];
+
+export const INDIAN_STATES = [
+  'Andaman and Nicobar Islands',
+  'Andhra Pradesh',
+  'Arunachal Pradesh',
+  'Assam',
+  'Bihar',
+  'Chandigarh',
+  'Chhattisgarh',
+  'Dadra and Nagar Haveli and Daman and Diu',
+  'Delhi',
+  'Goa',
+  'Gujarat',
+  'Haryana',
+  'Himachal Pradesh',
+  'Jammu & Kashmir',
+  'Jharkhand',
+  'Karnataka',
+  'Kerala',
+  'Ladakh',
+  'Lakshadweep',
+  'Madhya Pradesh',
+  'Maharashtra',
+  'Manipur',
+  'Meghalaya',
+  'Mizoram',
+  'Nagaland',
+  'Odisha',
+  'Puducherry',
+  'Punjab',
+  'Rajasthan',
+  'Sikkim',
+  'Tamil Nadu',
+  'Telangana',
+  'Tripura',
+  'Uttar Pradesh',
+  'Uttarakhand',
+  'West Bengal',
 ];
 
 export const services = [

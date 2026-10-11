@@ -9,12 +9,15 @@ import {
   Coins,
   Copy,
   Edit2,
+  ExternalLink,
   FileText,
+  Globe,
   HelpCircle,
   Info,
   KeyRound,
   Lock,
   MapPin,
+  MessageSquare,
   Percent,
   Phone,
   Plus,
@@ -22,6 +25,7 @@ import {
   RotateCcw,
   Save,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   Store,
   Tag,
@@ -251,6 +255,26 @@ export default function SettingsModal({
               {staff.length}
             </span>
           </button>
+          <button
+            type="button"
+            className={`settings-tab-pill ${activeTab === 'delivery' ? 'active' : ''}`}
+            onClick={() => setActiveTab('delivery')}
+          >
+            <Clock size={16} /> Early Delivery Surcharge
+            <span className="settings-tab-badge">
+              {formData.expressDeliveryEnabled !== false ? `${formData.expressDeliveryPercent !== undefined ? formData.expressDeliveryPercent : 25}%` : 'Off'}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`settings-tab-pill ${activeTab === 'whatsapp' ? 'active' : ''}`}
+            onClick={() => setActiveTab('whatsapp')}
+          >
+            <MessageSquare size={16} /> WhatsApp Dispatch
+            <span className="settings-tab-badge">
+              {formData.whatsappDispatchMode === 'web' ? 'Web' : 'App'}
+            </span>
+          </button>
         </div>
 
         {/* Form Body */}
@@ -283,7 +307,7 @@ export default function SettingsModal({
                           type="text"
                           value={formData.storeName}
                           onChange={(e) => handleChange('storeName', e.target.value)}
-                          placeholder="e.g. Fresh Fold"
+                          placeholder="e.g. Clean Clear Dry Cleaning"
                           required
                           style={{ paddingLeft: '34px' }}
                         />
@@ -470,7 +494,7 @@ export default function SettingsModal({
 
                   <div className="settings-receipt-paper">
                     <div style={{ textAlign: 'center', fontWeight: 800, fontSize: '14px', letterSpacing: '0.5px' }}>
-                      {formData.storeName || 'Fresh Fold'}
+                      {formData.storeName || 'Clean Clear Dry Cleaning'}
                     </div>
                     {formData.tagline && (
                       <div style={{ textAlign: 'center', fontSize: '10px', color: '#52525b', marginTop: '2px' }}>
@@ -1153,6 +1177,377 @@ export default function SettingsModal({
                     >
                       <Plus size={15} /> Add Operator
                     </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB 4: EARLY / EXPRESS DELIVERY SURCHARGE                 */}
+            {/* ========================================================= */}
+            {activeTab === 'delivery' && (
+              <div style={{ display: 'grid', gap: '16px' }}>
+                <div className="settings-card">
+                  <div className="settings-card-header">
+                    <div>
+                      <div className="settings-card-title">
+                        <Clock size={16} /> Early Delivery Surcharge Configuration
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                        Charge an additional percentage (e.g. 25%) when customers request urgent or fast turnaround
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: '14px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.expressDeliveryEnabled !== false}
+                        onChange={(e) => handleChange('expressDeliveryEnabled', e.target.checked)}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--settings-text)' }}>
+                        Enable Early Delivery / Express Surcharges at Checkout
+                      </span>
+                    </label>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', background: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <div>
+                        <label className="field-label" style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+                          Standard Express Surcharge (%)
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={formData.expressDeliveryPercent !== undefined ? formData.expressDeliveryPercent : 25}
+                            onChange={(e) => handleChange('expressDeliveryPercent', Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                            style={{ width: '100px', fontWeight: 700, fontSize: '14px', textAlign: 'center' }}
+                          />
+                          <span style={{ fontSize: '14px', fontWeight: 700, color: '#475569' }}>%</span>
+                        </div>
+                        <small style={{ color: '#64748b', fontSize: '11px', display: 'block', marginTop: '6px' }}>
+                          Default early delivery percentage applied during intake (customizable anytime)
+                        </small>
+                      </div>
+
+                      <div>
+                        <label className="field-label" style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+                          Calculation Preview on ₹1,000 Order
+                        </label>
+                        <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '11.5px', display: 'grid', gap: '3px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Order Subtotal:</span>
+                            <span>₹1,000.00</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#d97706', fontWeight: 700 }}>
+                            <span>Early Delivery (+{formData.expressDeliveryPercent !== undefined ? formData.expressDeliveryPercent : 25}%):</span>
+                            <span>+₹{(1000 * ((formData.expressDeliveryPercent !== undefined ? formData.expressDeliveryPercent : 25) / 100)).toFixed(2)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 800, borderTop: '1px dashed #cbd5e1', paddingTop: '3px' }}>
+                            <span>Total Before Tax:</span>
+                            <span>₹{(1000 + 1000 * ((formData.expressDeliveryPercent !== undefined ? formData.expressDeliveryPercent : 25) / 100)).toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Delivery Turnaround Options List */}
+                <div className="settings-card">
+                  <div className="settings-card-header">
+                    <div>
+                      <div className="settings-card-title">
+                        <Sparkles size={16} /> Delivery Surcharge Tiers
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                        Predefined turnaround options shown to the cashier during order placement
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    {(formData.expressOptions || defaultSettings.expressOptions).map((opt, idx) => (
+                      <div
+                        key={opt.id || idx}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'minmax(140px, 2fr) 110px 100px auto',
+                          gap: '10px',
+                          alignItems: 'center',
+                          background: '#f8fafc',
+                          padding: '10px 14px',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <input
+                          type="text"
+                          value={opt.label}
+                          placeholder="Option Label (e.g. 24H Rush)"
+                          onChange={(e) => {
+                            const next = [...(formData.expressOptions || defaultSettings.expressOptions)];
+                            next[idx] = { ...next[idx], label: e.target.value };
+                            handleChange('expressOptions', next);
+                          }}
+                          style={{ fontSize: '12px', fontWeight: 600 }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={opt.percent}
+                            placeholder="%"
+                            onChange={(e) => {
+                              const next = [...(formData.expressOptions || defaultSettings.expressOptions)];
+                              next[idx] = { ...next[idx], percent: Number(e.target.value) || 0 };
+                              handleChange('expressOptions', next);
+                            }}
+                            style={{ width: '65px', fontSize: '12px', textAlign: 'center', fontWeight: 700 }}
+                          />
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>% fee</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="14"
+                            value={opt.days !== undefined ? opt.days : 1}
+                            placeholder="Days"
+                            onChange={(e) => {
+                              const next = [...(formData.expressOptions || defaultSettings.expressOptions)];
+                              next[idx] = { ...next[idx], days: Number(e.target.value) || 0 };
+                              handleChange('expressOptions', next);
+                            }}
+                            style={{ width: '50px', fontSize: '12px', textAlign: 'center' }}
+                          />
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>days</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          disabled={(formData.expressOptions || defaultSettings.expressOptions).length <= 1}
+                          onClick={() => {
+                            const next = (formData.expressOptions || defaultSettings.expressOptions).filter((_, i) => i !== idx);
+                            handleChange('expressOptions', next);
+                          }}
+                          title="Remove option"
+                        >
+                          <Trash2 size={14} color="#ef4444" />
+                        </button>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      style={{ width: 'fit-content', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginTop: '4px' }}
+                      onClick={() => {
+                        const currentOpts = formData.expressOptions || defaultSettings.expressOptions;
+                        const newOpt = {
+                          id: `opt-${Date.now()}`,
+                          label: 'Super Express Service',
+                          percent: 30,
+                          days: 1,
+                        };
+                        handleChange('expressOptions', [...currentOpts, newOpt]);
+                      }}
+                    >
+                      <Plus size={14} /> Add Delivery Surcharge Option
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB 5: WHATSAPP DISPATCH & AUTOMATION                     */}
+            {/* ========================================================= */}
+            {activeTab === 'whatsapp' && (
+              <div className="settings-section-animate">
+                {/* 1. Dispatch Mode Selection */}
+                <div className="settings-card" style={{ marginBottom: '18px' }}>
+                  <div className="settings-card-header">
+                    <div>
+                      <div className="settings-card-title">
+                        <MessageSquare size={16} /> WhatsApp Dispatch Method
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                        Choose how the counter triggers WhatsApp messages to customers when bills are shared
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+                    <div
+                      onClick={() => handleChange('whatsappDispatchMode', 'app')}
+                      style={{
+                        padding: '14px',
+                        borderRadius: '10px',
+                        border: formData.whatsappDispatchMode !== 'web' ? '2px solid #16a34a' : '1px solid #e2e8f0',
+                        background: formData.whatsappDispatchMode !== 'web' ? '#f0fdf4' : '#ffffff',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#166534', fontSize: '13px' }}>
+                          <Smartphone size={16} /> WhatsApp Desktop / Mobile App
+                        </div>
+                        {formData.whatsappDispatchMode !== 'web' && (
+                          <span style={{ fontSize: '10px', background: '#16a34a', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                            RECOMMENDED
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin: 0, fontSize: '11px', color: '#475569', lineHeight: 1.45 }}>
+                        Launches the installed WhatsApp Desktop App (Mac or Windows) or Mobile App directly via <code>whatsapp://</code> protocol. Does not require browser tab login.
+                      </p>
+                    </div>
+
+                    <div
+                      onClick={() => handleChange('whatsappDispatchMode', 'web')}
+                      style={{
+                        padding: '14px',
+                        borderRadius: '10px',
+                        border: formData.whatsappDispatchMode === 'web' ? '2px solid #16a34a' : '1px solid #e2e8f0',
+                        background: formData.whatsappDispatchMode === 'web' ? '#f0fdf4' : '#ffffff',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>
+                          <Globe size={16} /> WhatsApp Web in Browser
+                        </div>
+                        {formData.whatsappDispatchMode === 'web' && (
+                          <span style={{ fontSize: '10px', background: '#16a34a', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin: 0, fontSize: '11px', color: '#475569', lineHeight: 1.45 }}>
+                        Opens a WhatsApp Web browser tab (<code>web.whatsapp.com</code>). Ideal if counter staff already has WhatsApp Web linked on this browser.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. How to Connect Store WhatsApp (Device Link Instructions) */}
+                <div className="settings-card" style={{ marginBottom: '18px' }}>
+                  <div className="settings-card-header">
+                    <div>
+                      <div className="settings-card-title">
+                        <Smartphone size={16} /> How to Link Store WhatsApp (One-Time Setup)
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                        Follow these steps to link your store counter phone so messages send in 1 click
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#0284c7', color: '#fff', display: 'grid', placeItems: 'center', fontSize: '11px', fontWeight: 800, flexShrink: 0 }}>
+                        1
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#334155' }}>
+                        <strong>Option A: Install WhatsApp Mac / PC App (Fastest)</strong>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                          If you download the official WhatsApp app on this computer, clicking "WhatsApp App" on any receipt opens the desktop app directly with the customer chat ready.
+                        </div>
+                        <a
+                          href="https://www.whatsapp.com/download"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#0284c7', fontWeight: 700, marginTop: '6px', textDecoration: 'none' }}
+                        >
+                          <ExternalLink size={12} /> Download WhatsApp Desktop App
+                        </a>
+                      </div>
+                    </div>
+
+                    <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#16a34a', color: '#fff', display: 'grid', placeItems: 'center', fontSize: '11px', fontWeight: 800, flexShrink: 0 }}>
+                        2
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#334155' }}>
+                        <strong>Option B: Link WhatsApp Web (In This Browser)</strong>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                          On your phone's WhatsApp: tap <strong>Settings &gt; Linked Devices &gt; Link a Device</strong>. Then open WhatsApp Web in this browser, check <strong>"Stay logged in"</strong>, and scan once.
+                        </div>
+                        <a
+                          href="https://web.whatsapp.com"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#16a34a', fontWeight: 700, marginTop: '6px', textDecoration: 'none' }}
+                        >
+                          <ExternalLink size={12} /> Open WhatsApp Web to Link Once
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Automated Cloud API (Optional Meta Integration) */}
+                <div className="settings-card">
+                  <div className="settings-card-header">
+                    <div>
+                      <div className="settings-card-title">
+                        <Sparkles size={16} /> Fully Automated Cloud Dispatch (Meta API - Optional)
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                        Allows silent background sending without needing any WhatsApp window open
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.whatsappCloudApiEnabled || false}
+                        onChange={(e) => handleChange('whatsappCloudApiEnabled', e.target.checked)}
+                        style={{ width: '16px', height: '16px' }}
+                      />
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--settings-text-primary)' }}>
+                        Enable Meta WhatsApp Business Cloud API for Automated Background Sending
+                      </span>
+                    </label>
+
+                    {formData.whatsappCloudApiEnabled && (
+                      <div style={{ display: 'grid', gap: '10px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                            Meta Phone Number ID
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 104829104829104"
+                            value={formData.whatsappPhoneNumberId || ''}
+                            onChange={(e) => handleChange('whatsappPhoneNumberId', e.target.value)}
+                            style={{ width: '100%', fontSize: '12px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                            Permanent Access Token
+                          </label>
+                          <input
+                            type="password"
+                            placeholder="EAAG..."
+                            value={formData.whatsappAccessToken || ''}
+                            onChange={(e) => handleChange('whatsappAccessToken', e.target.value)}
+                            style={{ width: '100%', fontSize: '12px' }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

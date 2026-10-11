@@ -1,16 +1,24 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import {
   Check,
   Copy,
   Download,
+  ExternalLink,
   FileText,
+  Globe,
+  Image as ImageIcon,
   MessageSquare,
   Printer,
+  QrCode,
   ReceiptText,
+  Send,
   Share2,
+  Smartphone,
   Sparkles,
   X,
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
 import {
   downloadThermalReceiptPdf,
   formatDate,
@@ -19,7 +27,9 @@ import {
   shareReceiptViaWebShare,
   shareReceiptWhatsApp,
 } from '../lib/pdfGenerator.js';
+import { buildPublicBillUrl } from '../lib/billSecurity.js';
 import { formatMoney } from '../lib/persistence.js';
+import CrystalClearBill from './CrystalClearBill.jsx';
 
 export default function ThermalReceiptModal({
   isOpen,
@@ -31,7 +41,43 @@ export default function ThermalReceiptModal({
   currentStaff,
   onToast,
 }) {
+  const [format, setFormat] = useState('standard');
   const [copied, setCopied] = useState(false);
+  const [copiedImage, setCopiedImage] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [billUrl, setBillUrl] = useState('');
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  // Pre-generate the public digital bill URL and QR code image when modal opens
+  useEffect(() => {
+    let active = true;
+    if (isOpen && order) {
+      buildPublicBillUrl(order, customer)
+        .then((url) => {
+          if (!active) return;
+          setBillUrl(url);
+          if (url) {
+            QRCode.toDataURL(url, {
+              width: 320,
+              margin: 1,
+              color: {
+                dark: '#0f172a',
+                light: '#ffffff',
+              },
+            })
+              .then((dataUrl) => {
+                if (active) setQrCodeUrl(dataUrl);
+              })
+              .catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      active = false;
+    };
+  }, [isOpen, order?.id, order?.orderNo, order?.createdAt, customer?.mobile]);
 
   if (!isOpen || !order) return null;
 
@@ -47,6 +93,52 @@ export default function ThermalReceiptModal({
 
   const cashierName = currentStaff?.name || 'Counter Cashier';
 
+  const captureReceiptBlob = async () => {
+    const el = document.getElementById('print-invoice');
+    if (!el) return null;
+    try {
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      return new Promise((resolve) => {
+        canvas.toBlob((b) => resolve(b), 'image/png');
+      });
+    } catch (e) {
+      console.warn('Canvas capture error', e);
+      return null;
+    }
+  };
+
+  const handleCopyImage = async () => {
+    setCapturing(true);
+    try {
+      const blob = await captureReceiptBlob();
+      if (!blob) throw new Error('Could not capture receipt image');
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        setCopiedImage(true);
+        onToast?.('Receipt image copied to clipboard! Paste (Ctrl+V) into WhatsApp.');
+        setTimeout(() => setCopiedImage(false), 2400);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `CleanClear_Receipt_${order.orderNo || order.id}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+        onToast?.('Receipt image downloaded.');
+      }
+    } catch (err) {
+      console.warn('Image copy error', err);
+      onToast?.('Could not copy image to clipboard.');
+    } finally {
+      setCapturing(false);
+    }
+  };
+
   const handleDownloadPdf = () => {
     downloadThermalReceiptPdf({
       order,
@@ -54,17 +146,44 @@ export default function ThermalReceiptModal({
       settings,
       payments,
       cashierName,
+      format,
     });
-    onToast?.('Thermal receipt PDF downloaded.');
+    onToast?.(format === 'standard' ? 'Standard tax invoice PDF downloaded.' : 'Thermal receipt PDF downloaded.');
   };
 
-  const handleWhatsApp = () => {
+  const handleWhatsApp = (targetMode = 'auto') => {
+    let mode = targetMode;
+    if (mode === 'auto') {
+      const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+      mode = isMobile ? 'universal' : (settings?.whatsappDispatchMode || 'app');
+    }
+
     shareReceiptWhatsApp({
       order,
       customer,
       settings,
       payments,
+      billUrl,
+      mode,
+      useApp: mode === 'app',
+      useWeb: mode === 'web',
     });
+
+    onToast?.(`WhatsApp opened for ${customer?.name || 'customer'} (+91 ${customer?.mobile || ''})!`);
+
+    // 2. In background, copy receipt image to clipboard for easy pasting (Ctrl+V)
+    captureReceiptBlob()
+      .then((blob) => {
+        if (blob && navigator.clipboard && window.ClipboardItem) {
+          navigator.clipboard
+            .write([new ClipboardItem({ 'image/png': blob })])
+            .then(() => {
+              onToast?.('WhatsApp opened & receipt image copied to clipboard (Ctrl+V)!');
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
   };
 
   const handleWebShare = async () => {
@@ -83,7 +202,7 @@ export default function ThermalReceiptModal({
   };
 
   const handleCopy = async () => {
-    const text = getReceiptShareText({ order, customer, settings, payments });
+    const text = getReceiptShareText({ order, customer, settings, payments, billUrl });
     await navigator.clipboard.writeText(text);
     setCopied(true);
     onToast?.('Receipt text copied to clipboard.');
@@ -100,7 +219,7 @@ export default function ThermalReceiptModal({
         className="modal-panel invoice-modal"
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: '480px',
+          width: format === 'standard' ? '880px' : '480px',
           maxWidth: '96vw',
           maxHeight: '94vh',
           display: 'flex',
@@ -109,6 +228,7 @@ export default function ThermalReceiptModal({
           borderRadius: '16px',
           boxShadow: '0 25px 70px rgba(15, 23, 42, 0.25)',
           overflow: 'hidden',
+          transition: 'width 0.2s ease',
         }}
       >
         {/* Modal Header */}
@@ -139,9 +259,11 @@ export default function ThermalReceiptModal({
               <ReceiptText size={18} />
             </div>
             <div>
-              <span className="caption-label">Thermal Bill · 80mm Roll</span>
+              <span className="caption-label">
+                {format === 'standard' ? 'Standard Tax Invoice · Crystal Clear' : 'Thermal Slip · 80mm Roll'}
+              </span>
               <h3 style={{ margin: 0, fontSize: '16px', color: '#0f172a', fontWeight: 800 }}>
-                Invoice #{order.orderNo}
+                Invoice {order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`}
               </h3>
             </div>
           </div>
@@ -168,6 +290,43 @@ export default function ThermalReceiptModal({
             flexWrap: 'wrap',
           }}
         >
+          {/* Bill Format Selector Tabs */}
+          <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '8px', padding: '2px', marginRight: 'auto' }}>
+            <button
+              type="button"
+              onClick={() => setFormat('standard')}
+              style={{
+                padding: '5px 12px',
+                fontSize: '11px',
+                fontWeight: format === 'standard' ? 700 : 500,
+                borderRadius: '6px',
+                border: 'none',
+                background: format === 'standard' ? '#ffffff' : 'transparent',
+                color: format === 'standard' ? '#0f172a' : '#64748b',
+                boxShadow: format === 'standard' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                cursor: 'pointer',
+              }}
+            >
+              📋 Standard Invoice (Crystal Clear)
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormat('thermal')}
+              style={{
+                padding: '5px 12px',
+                fontSize: '11px',
+                fontWeight: format === 'thermal' ? 700 : 500,
+                borderRadius: '6px',
+                border: 'none',
+                background: format === 'thermal' ? '#ffffff' : 'transparent',
+                color: format === 'thermal' ? '#0f172a' : '#64748b',
+                boxShadow: format === 'thermal' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                cursor: 'pointer',
+              }}
+            >
+              🧾 80mm Slip
+            </button>
+          </div>
           {/* Download PDF button */}
           <button
             type="button"
@@ -187,28 +346,104 @@ export default function ThermalReceiptModal({
             <Download size={14} /> Download PDF
           </button>
 
-          {/* WhatsApp Share button */}
+          {/* WhatsApp Share Button Group (App / wa.me & Web) */}
+          <div
+            style={{
+              display: 'inline-flex',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              border: '1px solid #86efac',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => handleWhatsApp()}
+              style={{
+                fontSize: '11px',
+                minHeight: '36px',
+                padding: '0 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: '#15803d',
+                background: '#f0fdf4',
+                border: 'none',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title={`Send WhatsApp receipt to +91 ${customer?.mobile || ''}`}
+            >
+              <MessageSquare size={14} color="#16a34a" /> WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={() => handleWhatsApp('app')}
+              style={{
+                fontSize: '11px',
+                minHeight: '36px',
+                padding: '0 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                color: '#15803d',
+                background: '#f0fdf4',
+                border: 'none',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title="Launch native WhatsApp Desktop App (Mac/Windows) or Mobile App directly"
+            >
+              <Smartphone size={14} color="#16a34a" /> WhatsApp App
+            </button>
+            <button
+              type="button"
+              onClick={() => handleWhatsApp('web')}
+              style={{
+                fontSize: '11px',
+                minHeight: '36px',
+                padding: '0 10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                color: '#166534',
+                background: '#dcfce7',
+                borderLeft: '1px solid #86efac',
+                borderTop: 'none',
+                borderRight: 'none',
+                borderBottom: 'none',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title="Open customer's chat in WhatsApp Web browser tab"
+            >
+              <Globe size={13} color="#166534" /> Web
+            </button>
+          </div>
+
+          {/* Copy Receipt as Image button */}
           <button
             type="button"
-            onClick={handleWhatsApp}
+            className="button button-quiet"
+            onClick={handleCopyImage}
+            disabled={capturing}
             style={{
               fontSize: '11px',
               minHeight: '36px',
-              padding: '0 13px',
+              padding: '0 11px',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              color: '#15803d',
-              borderColor: '#86efac',
-              background: '#f0fdf4',
-              border: '1px solid #86efac',
+              gap: '5px',
               borderRadius: '8px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
+              fontWeight: 600,
             }}
+            title="Copy receipt as PNG image to clipboard"
           >
-            <MessageSquare size={14} color="#16a34a" /> WhatsApp
+            {copiedImage ? <Check size={14} color="#15803d" /> : <ImageIcon size={13} />}
+            {copiedImage ? 'Copied Image' : 'Copy Image'}
           </button>
 
           {/* Web Share button */}
@@ -269,6 +504,123 @@ export default function ThermalReceiptModal({
           </button>
         </div>
 
+        {/* WhatsApp Customer Remote Dispatch Bar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'linear-gradient(90deg, #f0fdf4 0%, #ecfdf5 100%)',
+            borderBottom: '1px solid #bbf7d0',
+            padding: '11px 18px',
+            gap: '12px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '9px',
+                background: '#16a34a',
+                color: '#ffffff',
+                display: 'grid',
+                placeItems: 'center',
+                flexShrink: 0,
+                boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)',
+              }}
+            >
+              <MessageSquare size={18} />
+            </div>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: '#14532d', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>Send Bill to Customer WhatsApp</span>
+                <span style={{ fontSize: '10px', background: '#dcfce7', color: '#166534', padding: '1px 7px', borderRadius: '4px', fontWeight: 700 }}>
+                  Remote Delivery
+                </span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#15803d', marginTop: '1px' }}>
+                Customer: <strong>{customer?.name || 'Customer'}</strong> · Mobile: <strong>+91 {customer?.mobile || 'No mobile number'}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => handleWhatsApp('app')}
+              style={{
+                padding: '7px 13px',
+                fontSize: '11px',
+                fontWeight: 700,
+                background: '#16a34a',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '7px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                boxShadow: '0 2px 5px rgba(22, 163, 74, 0.25)',
+              }}
+              title="Open customer's chat directly in WhatsApp Mac/Windows Desktop App or Mobile App"
+            >
+              <Smartphone size={13} /> WhatsApp App
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleWhatsApp('web')}
+              style={{
+                padding: '7px 12px',
+                fontSize: '11px',
+                fontWeight: 700,
+                background: '#ffffff',
+                color: '#166534',
+                border: '1px solid #86efac',
+                borderRadius: '7px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+              title="Open customer's chat in WhatsApp Web in browser"
+            >
+              <Globe size={13} /> WhatsApp Web
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (billUrl) {
+                  navigator.clipboard.writeText(billUrl);
+                  setCopiedLink(true);
+                  onToast?.('Digital bill link copied!');
+                  setTimeout(() => setCopiedLink(false), 2000);
+                }
+              }}
+              style={{
+                padding: '7px 11px',
+                fontSize: '11px',
+                fontWeight: 600,
+                background: '#ffffff',
+                color: '#475569',
+                border: '1px solid #cbd5e1',
+                borderRadius: '7px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+              title="Copy verified digital bill link"
+            >
+              {copiedLink ? <Check size={12} color="#15803d" /> : <Copy size={12} />}
+              {copiedLink ? 'Copied' : 'Copy Link'}
+            </button>
+          </div>
+        </div>
+
         {/* Scrollable Receipt Preview Area */}
         <div
           className="modal-content"
@@ -276,27 +628,54 @@ export default function ThermalReceiptModal({
             padding: '24px 20px',
             background: '#f1f5f9',
             overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
             flex: 1,
+            minHeight: 0,
             display: 'flex',
             justifyContent: 'center',
           }}
         >
-          {/* Authentic 80mm Thermal Paper Roll */}
-          <div
-            id="print-invoice"
-            className="invoice-paper"
-            style={{
-              width: '100%',
-              maxWidth: '350px',
-              background: '#ffffff',
-              borderRadius: '4px',
-              padding: '22px 18px',
-              boxShadow: '0 12px 36px rgba(0, 0, 0, 0.09), 0 2px 6px rgba(0, 0, 0, 0.04)',
-              borderTop: '5px dashed #cbd5e1',
-              borderBottom: '5px dashed #cbd5e1',
-              borderLeft: '1px solid #e2e8f0',
-              borderRight: '1px solid #e2e8f0',
-              fontFamily: "'SF Mono', 'Roboto Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace",
+          {format === 'standard' ? (
+            <div
+              id="print-invoice"
+              className="invoice-paper crystal-clear-print"
+              style={{
+                width: '100%',
+                maxWidth: '820px',
+                background: '#ffffff',
+                borderRadius: '6px',
+                boxShadow: '0 12px 36px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04)',
+                border: '1px solid #e2e8f0',
+                overflow: 'hidden',
+              }}
+            >
+              <CrystalClearBill
+                order={order}
+                customer={customer}
+                settings={settings}
+                cashierName={cashierName}
+                previousDue={0}
+                qrCodeUrl={qrCodeUrl}
+              />
+            </div>
+          ) : (
+            /* Authentic 80mm Thermal Paper Roll */
+            <div
+              id="print-invoice"
+              className="invoice-paper"
+              style={{
+                width: '100%',
+                maxWidth: '350px',
+                background: '#ffffff',
+                borderRadius: '4px',
+                padding: '22px 18px',
+                boxShadow: '0 12px 36px rgba(0, 0, 0, 0.09), 0 2px 6px rgba(0, 0, 0, 0.04)',
+                borderTop: '5px dashed #cbd5e1',
+                borderBottom: '5px dashed #cbd5e1',
+                borderLeft: '1px solid #e2e8f0',
+                borderRight: '1px solid #e2e8f0',
+                fontFamily: "'SF Mono', 'Roboto Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace",
               color: '#0f172a',
               fontSize: '11px',
               lineHeight: 1.45,
@@ -366,7 +745,7 @@ export default function ThermalReceiptModal({
             >
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>ORDER NO:</span>
-                <strong>#{order.orderNo}</strong>
+                <strong>{order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>DATE/TIME:</span>
@@ -547,8 +926,15 @@ export default function ThermalReceiptModal({
 
               {discount > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: '#64748b' }}>Taxable Subtotal:</span>
+                  <span style={{ color: '#64748b' }}>{settings?.taxEnabled ? 'Taxable Subtotal:' : 'Subtotal:'}</span>
                   <strong>{formatMoney(taxable)}</strong>
+                </div>
+              )}
+
+              {order.expressAmount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b45309' }}>
+                  <span>⚡ {order.expressLabel || `Early Delivery (+${order.expressPercent}%)`}:</span>
+                  <strong>+{formatMoney(order.expressAmount)}</strong>
                 </div>
               )}
 
@@ -640,7 +1026,24 @@ export default function ThermalReceiptModal({
               <strong style={{ fontSize: '10px', color: '#0f172a' }}>
                 * * * {order.orderNo} * * *
               </strong>
-              <span>{settings?.receiptFooter || 'Thank you for choosing Fresh Fold!'}</span>
+
+              {qrCodeUrl && (
+                <div style={{ margin: '8px auto 6px', textAlign: 'center' }}>
+                  <img
+                    src={qrCodeUrl}
+                    alt="Digital Bill QR"
+                    style={{ width: '92px', height: '92px', display: 'block', margin: '0 auto', imageRendering: 'pixelated' }}
+                  />
+                  <div style={{ fontSize: '8px', color: '#0f172a', marginTop: '3px', fontWeight: 700, letterSpacing: '0.4px' }}>
+                    SCAN FOR DIGITAL BILL & TRACKING
+                  </div>
+                  <div style={{ fontSize: '7.5px', color: '#64748b' }}>
+                    #{order.orderNo || order.id}
+                  </div>
+                </div>
+              )}
+
+              <span>{settings?.receiptFooter || 'Thank you for choosing Clean Clear Dry Cleaning!'}</span>
               <small style={{ color: '#64748b' }}>
                 Please present this invoice during garment pickup.
               </small>
@@ -649,6 +1052,7 @@ export default function ThermalReceiptModal({
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

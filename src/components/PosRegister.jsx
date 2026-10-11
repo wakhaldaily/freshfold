@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
-  CalendarDays, Check, ChevronDown, ChevronRight, Edit3, Filter, Minus, Plus,
-  ReceiptText, Scale, Search, Shirt, Sparkles, Sun, Tag, Trash2, UserPlus,
+  CalendarDays, Check, ChevronDown, ChevronRight, Clock, Edit3, Filter, Minus, Plus,
+  ReceiptText, RotateCcw, Scale, Search, Shirt, Sparkles, Sun, Tag, Trash2, UserPlus,
   Users, Wallet, Waves, Wind, X,
 } from 'lucide-react';
-import { garmentCatalog, services, weightServices } from '../data.js';
-import { formatMoney } from '../lib/persistence.js';
+import { defaultSettings, garmentCatalog, services, weightServices } from '../data.js';
+import { formatMoney, formatOrderNo, getNextOrderNo } from '../lib/persistence.js';
 import { findBestPackageDiscount, isGarmentEligible } from '../lib/packageDiscountEngine.js';
 import ItemTagModal from './ItemTagModal.jsx';
 import CustomSelect from './CustomSelect.jsx';
@@ -14,6 +14,7 @@ export default function PosRegister({
   customers = [],
   customerPackages = [],
   packages = [],
+  orders = [],
   initialCustomer = null,
   initialOrderType = 'pieces',
   settings = {},
@@ -32,6 +33,32 @@ export default function PosRegister({
 }) {
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomer?.id || customers[0]?.id || '');
   const [orderType, setOrderType] = useState(initialOrderType); // 'pieces' or 'weight'
+
+  // Default next order number based on store settings or latest order in sequence
+  const defaultNextOrderNo = useMemo(() => {
+    if (settings?.nextOrderNo) return settings.nextOrderNo;
+    if (orders && orders.length > 0 && orders[0]?.orderNo) {
+      return getNextOrderNo(orders[0].orderNo);
+    }
+    return 'B6164';
+  }, [settings?.nextOrderNo, orders]);
+
+  const [customOrderNo, setCustomOrderNo] = useState(defaultNextOrderNo);
+  const [hasManuallyEditedOrderNo, setHasManuallyEditedOrderNo] = useState(false);
+
+  // Synchronize when default sequence advances and user hasn't typed a custom override
+  useEffect(() => {
+    if (!hasManuallyEditedOrderNo) {
+      setCustomOrderNo(defaultNextOrderNo);
+    }
+  }, [defaultNextOrderNo, hasManuallyEditedOrderNo]);
+
+  // Check if chosen order number already exists in current orders
+  const isDuplicateOrderNo = useMemo(() => {
+    if (!customOrderNo || !customOrderNo.trim()) return false;
+    const target = customOrderNo.trim().toLowerCase();
+    return (orders || []).some((o) => (o.orderNo || '').trim().toLowerCase() === target);
+  }, [customOrderNo, orders]);
 
   // Service Selection:
   // For pieces: 'Dry cleaning', 'Steam press', 'Premium laundry', 'Club Fresh DC', 'Club Fresh SP'
@@ -69,6 +96,7 @@ export default function PosRegister({
     return d.toISOString().slice(0, 10);
   });
   const [submitting, setSubmitting] = useState(false);
+  const [mobilePosTab, setMobilePosTab] = useState('catalog'); // 'catalog' | 'ticket'
 
   // Active customer
   const currentCustomer = customers.find((c) => c.id === selectedCustomerId) || customers[0] || null;
@@ -279,12 +307,43 @@ export default function PosRegister({
     return { discountPercent: 0, discountAmount: 0, discountName: '' };
   }, [bestDiscount, customerBaseDiscountPercent, grossAmount, currentCustomer]);
 
-  const taxableSubtotal = Math.max(0, grossAmount - discountAmount);
+  const [selectedExpressId, setSelectedExpressId] = useState('standard');
+  const [customExpressPercent, setCustomExpressPercent] = useState('');
+
+  const expressOptions = useMemo(() => {
+    if (Array.isArray(settings?.expressOptions) && settings.expressOptions.length > 0) {
+      return settings.expressOptions;
+    }
+    return defaultSettings.expressOptions;
+  }, [settings]);
+
+  const activeExpressOption = expressOptions.find((o) => o.id === selectedExpressId) || expressOptions[0] || null;
+  const isCustomExpress = selectedExpressId === 'custom';
+  const expressPercent = isCustomExpress
+    ? Math.max(0, Math.min(100, Number(customExpressPercent) || 0))
+    : Number(activeExpressOption?.percent || 0);
+
+  const taxableSubtotalBeforeExpress = Math.max(0, grossAmount - discountAmount);
+  const expressAmount = expressPercent > 0
+    ? Math.round((taxableSubtotalBeforeExpress * (expressPercent / 100) + Number.EPSILON) * 100) / 100
+    : 0;
+
+  const taxableSubtotal = taxableSubtotalBeforeExpress + expressAmount;
 
   const taxEnabled = settings?.taxEnabled ?? true;
   const taxPercent = taxEnabled ? Number(settings?.taxPercent ?? 18) : 0;
   const taxAmount = taxEnabled ? Math.round((taxableSubtotal * (taxPercent / 100) + Number.EPSILON) * 100) / 100 : 0;
   const grandTotal = Math.round((taxableSubtotal + taxAmount + Number.EPSILON) * 100) / 100;
+
+  const handleSelectExpress = (optId) => {
+    setSelectedExpressId(optId);
+    const matched = expressOptions.find((o) => o.id === optId);
+    if (matched && matched.days !== undefined) {
+      const d = new Date();
+      d.setDate(d.getDate() + matched.days);
+      setDueDate(d.toISOString().slice(0, 10));
+    }
+  };
 
   // Submit Order
   const handlePlaceOrder = async (e) => {
@@ -302,9 +361,16 @@ export default function PosRegister({
       return;
     }
 
+    const activeOrderNo = (customOrderNo && customOrderNo.trim()) || defaultNextOrderNo;
+    if (isDuplicateOrderNo) {
+      onToast(`Order number "${activeOrderNo}" is already in use by an existing order. Please choose a unique order number.`);
+      return;
+    }
+
     setSubmitting(true);
     try {
       const payload = {
+        orderNo: activeOrderNo,
         customerId: currentCustomer.id,
         customerCode: currentCustomer.customerCode || currentCustomer.code || '',
         customerGstin: currentCustomer.gstin || '',
@@ -323,12 +389,24 @@ export default function PosRegister({
         discountAmount,
         discountPercent,
         discountName: discountName,
+        expressDelivery: expressAmount > 0,
+        expressPercent,
+        expressAmount,
+        expressLabel: isCustomExpress
+          ? `Early Delivery (+${expressPercent}%)`
+          : (activeExpressOption?.label ? `${activeExpressOption.label} (+${expressPercent}%)` : `Early Delivery (+${expressPercent}%)`),
+        taxEnabled: Boolean(taxEnabled),
         taxAmount,
         taxPercent,
         totalAmount: grandTotal,
         dueDate,
       };
       await onCompleteOrder(payload);
+
+      // Auto-advance sequence for the next order intake! (e.g. #w123 -> #w124)
+      const nextSequenceNo = getNextOrderNo(activeOrderNo);
+      setCustomOrderNo(nextSequenceNo);
+      setHasManuallyEditedOrderNo(false);
     } catch (err) {
       onToast(err.message || 'Failed to place order.');
     } finally {
@@ -352,10 +430,27 @@ export default function PosRegister({
             </button>
           )}
           <div>
-            <span className="caption-label">Fresh Fold Register</span>
-            <h2 style={{ margin: 0, fontSize: '20px', color: '#1e293b' }}>
-              {orderType === 'weight' ? 'Order by Weight (Bundle Intake)' : 'New Laundry Intake (Piece by Piece)'}
-            </h2>
+            <span className="caption-label">Clean Clear Register</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: '20px', color: '#1e293b' }}>
+                {orderType === 'weight' ? 'Order by Weight (Bundle Intake)' : 'New Laundry Intake (Piece by Piece)'}
+              </h2>
+              <span
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  color: isDuplicateOrderNo ? '#b91c1c' : '#2563eb',
+                  background: isDuplicateOrderNo ? '#fee2e2' : '#eff6ff',
+                  border: isDuplicateOrderNo ? '1px solid #fca5a5' : '1px solid #bfdbfe',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  fontFamily: 'monospace',
+                  letterSpacing: '0.4px',
+                }}
+              >
+                {formatOrderNo(customOrderNo || defaultNextOrderNo)}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -493,10 +588,36 @@ export default function PosRegister({
         )}
       </div>
 
+      {/* Mobile-Only Tab Switcher (Catalog vs Order Ticket) */}
+      <div className="pos-mobile-nav-tabs">
+        <button
+          type="button"
+          className={mobilePosTab === 'catalog' ? 'active' : ''}
+          onClick={() => setMobilePosTab('catalog')}
+        >
+          <Shirt size={14} /> Catalog & Clothes
+        </button>
+        <button
+          type="button"
+          className={mobilePosTab === 'ticket' ? 'active' : ''}
+          onClick={() => setMobilePosTab('ticket')}
+        >
+          <ReceiptText size={14} /> Ticket & Checkout
+          {((orderType === 'pieces' && cartItems.length > 0) || (orderType === 'weight' && Number(weightKg) > 0)) && (
+            <span style={{ background: '#2563eb', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>
+              {orderType === 'pieces' ? cartItems.reduce((s, it) => s + it.quantity, 0) : '1'}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Main 2-Column POS Layout: Intake on Left, Live Cart Ticket on Right */}
       <div className="pos-register-layout">
         {/* LEFT COLUMN: Garment Catalog or Weight Entry */}
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px', display: 'grid', gap: '16px', minWidth: 0, width: '100%', boxSizing: 'border-box' }}>
+        <div
+          className={`pos-column-catalog ${mobilePosTab === 'ticket' ? 'hidden-mobile' : ''}`}
+          style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px', display: 'grid', gap: '16px', minWidth: 0, width: '100%', boxSizing: 'border-box' }}
+        >
           {/* Order Type & Service Switcher */}
           <div style={{ display: 'grid', gap: '10px', paddingBottom: '14px', borderBottom: '1px solid #f1f5f9' }}>
             {/* Row 1: Mode Switcher (Pieces vs Weight) + Active Info */}
@@ -1145,41 +1266,191 @@ export default function PosRegister({
         </div>
 
         {/* RIGHT COLUMN: LIVE CART TICKET & CHECKOUT */}
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px 16px', display: 'grid', gap: '14px', position: 'sticky', top: '20px', width: '100%', boxSizing: 'border-box' }}>
+        <div
+          id="pos-ticket-panel"
+          className={`pos-column-ticket ${mobilePosTab === 'catalog' ? 'hidden-mobile' : ''}`}
+          style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px 16px', display: 'grid', gap: '14px', position: 'sticky', top: '20px', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', overflow: 'hidden' }}
+        >
+          {/* Mobile Back Button to Catalog */}
+          {mobilePosTab === 'ticket' && (
+            <button
+              type="button"
+              className="button button-quiet"
+              style={{ minHeight: '32px', fontSize: '11px', justifySelf: 'start', display: 'flex', alignItems: 'center', gap: '4px' }}
+              onClick={() => {
+                setMobilePosTab('catalog');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            >
+              ← Back to Garment Catalog
+            </button>
+          )}
+
           {/* Ticket Header */}
-          <div style={{ paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ paddingBottom: '12px', borderBottom: '1px solid #f1f5f9', minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
               <span className="caption-label">Counter Ticket</span>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px', flexShrink: 0 }}>
                 {orderType === 'weight' ? `WEIGHT · ${selectedWeightService}` : `PIECES · ${selectedPieceService}`}
               </span>
             </div>
-            <h3 style={{ margin: '4px 0 0', fontSize: '16px', color: '#1e293b' }}>
+            <h3 style={{ margin: '4px 0 0', fontSize: '16px', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {currentCustomer ? currentCustomer.name : 'Walk-in Customer'}
             </h3>
             <small style={{ color: '#64748b' }}>
               📞 +91 {currentCustomer?.mobile || '—'} · Wallet: ₹{currentCustomer?.walletBalance || 0}
             </small>
+
+            {/* Editable Order Number Control */}
+            <div
+              style={{
+                marginTop: '10px',
+                background: isDuplicateOrderNo ? '#fff1f2' : hasManuallyEditedOrderNo ? '#eff6ff' : '#f8fafc',
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: isDuplicateOrderNo ? '1.5px solid #fca5a5' : hasManuallyEditedOrderNo ? '1.5px solid #bfdbfe' : '1px solid #e2e8f0',
+                display: 'grid',
+                gap: '5px',
+                minWidth: 0,
+                width: '100%',
+                boxSizing: 'border-box',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minWidth: 0 }}>
+                <label
+                  htmlFor="pos-order-no-input"
+                  style={{
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    color: isDuplicateOrderNo ? '#b91c1c' : '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    cursor: 'pointer',
+                    minWidth: 0,
+                  }}
+                >
+                  <ReceiptText size={13} color={isDuplicateOrderNo ? '#ef4444' : '#2563eb'} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Order Number</span>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                  {hasManuallyEditedOrderNo && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomOrderNo(defaultNextOrderNo);
+                        setHasManuallyEditedOrderNo(false);
+                      }}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#64748b',
+                        fontSize: '10px',
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '2px',
+                        textDecoration: 'underline',
+                      }}
+                      title="Reset to default sequence"
+                    >
+                      <RotateCcw size={10} /> Reset
+                    </button>
+                  )}
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      color: isDuplicateOrderNo ? '#b91c1c' : hasManuallyEditedOrderNo ? '#1d4ed8' : '#15803d',
+                      background: isDuplicateOrderNo ? '#fee2e2' : hasManuallyEditedOrderNo ? '#dbeafe' : '#dcfce7',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {isDuplicateOrderNo ? 'Duplicate' : hasManuallyEditedOrderNo ? 'Customized' : 'Auto Sequence'}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#fff',
+                  border: isDuplicateOrderNo ? '1.5px solid #ef4444' : hasManuallyEditedOrderNo ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '5px 8px',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  minWidth: 0,
+                }}
+              >
+                <input
+                  id="pos-order-no-input"
+                  type="text"
+                  value={customOrderNo}
+                  onChange={(e) => {
+                    setCustomOrderNo(e.target.value);
+                    setHasManuallyEditedOrderNo(true);
+                  }}
+                  placeholder="e.g. #w123 or B6164"
+                  title="Edit order number (subsequent orders will automatically increment from this)"
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    outline: 'none',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    width: '100%',
+                    minWidth: 0,
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.4px',
+                  }}
+                />
+                <Edit3 size={13} color={hasManuallyEditedOrderNo ? '#2563eb' : '#94a3b8'} style={{ flexShrink: 0 }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minWidth: 0 }}>
+                <span
+                  style={{
+                    fontSize: '10px',
+                    color: isDuplicateOrderNo ? '#b91c1c' : '#64748b',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {isDuplicateOrderNo
+                    ? '⚠️ Order number already exists in records.'
+                    : `Next order will be ${getNextOrderNo(customOrderNo || defaultNextOrderNo)}`}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Active Package Discount Banner */}
           {bestDiscount && bestDiscount.discountAmount > 0 ? (
-            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#065f46' }}>
-              <Sparkles size={16} color="#059669" />
-              <div>
-                <strong>{bestDiscount.discountName} Applied</strong>
-                <span style={{ display: 'block', fontSize: '11px', color: '#047857' }}>
+            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#065f46', minWidth: 0 }}>
+              <Sparkles size={16} color="#059669" style={{ flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bestDiscount.discountName} Applied</strong>
+                <span style={{ display: 'block', fontSize: '11px', color: '#047857', wordBreak: 'break-word' }}>
                   {bestDiscount.explanation}
                 </span>
               </div>
             </div>
           ) : (
             customerActivePackages.length > 0 && allEvaluations.length > 0 && (
-              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#1e40af' }}>
-                <Tag size={14} color="#2563eb" />
-                <div>
-                  <strong>Package Enrolled: {allEvaluations[0]?.package?.name}</strong>
-                  <span style={{ display: 'block', fontSize: '10px', color: '#1d4ed8', marginTop: '2px' }}>
+              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#1e40af', minWidth: 0 }}>
+                <Tag size={14} color="#2563eb" style={{ flexShrink: 0 }} />
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Package: {allEvaluations[0]?.package?.name}</strong>
+                  <span style={{ display: 'block', fontSize: '10px', color: '#1d4ed8', marginTop: '2px', wordBreak: 'break-word' }}>
                     {allEvaluations[0]?.explanation || allEvaluations[0]?.reason}
                   </span>
                 </div>
@@ -1188,16 +1459,16 @@ export default function PosRegister({
           )}
 
           {/* Items / Bundle Summary List */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {orderType === 'pieces' ? `Order Garments (${cartItems.length})` : 'Weight Laundry Bundle'}
               </span>
               {orderType === 'pieces' && cartItems.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setCartItems([])}
-                  style={{ border: 'none', background: 'none', color: '#ef4444', fontSize: '11px', cursor: 'pointer', padding: 0 }}
+                  style={{ border: 'none', background: 'none', color: '#ef4444', fontSize: '11px', cursor: 'pointer', padding: 0, flexShrink: 0 }}
                 >
                   Clear Cart
                 </button>
@@ -1205,9 +1476,9 @@ export default function PosRegister({
             </div>
 
             {orderType === 'pieces' ? (
-              <div style={{ maxHeight: '250px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
+              <div style={{ maxHeight: '260px', overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', display: 'grid', gap: '8px', minWidth: 0 }}>
                 {cartItems.length === 0 ? (
-                  <div style={{ padding: '24px 10px', textAlign: 'center', color: '#94a3b8', fontSize: '12px', border: '1px dashed #e2e8f0', borderRadius: '8px' }}>
+                  <div style={{ padding: '24px 10px', textAlign: 'center', color: '#94a3b8', fontSize: '12px', border: '1px dashed #e2e8f0', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }}>
                     Select garments from the catalog on the left
                   </div>
                 ) : (
@@ -1224,18 +1495,19 @@ export default function PosRegister({
                           borderRadius: '8px',
                           display: 'grid',
                           gap: '6px',
+                          minWidth: 0,
                         }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <strong style={{ fontSize: '13px', display: 'block', color: '#1e293b' }}>{item.name}</strong>
-                            <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            <strong style={{ fontSize: '13px', display: 'block', color: '#1e293b', wordBreak: 'break-word' }}>{item.name}</strong>
+                            <span style={{ fontSize: '11px', color: '#64748b', wordBreak: 'break-word', display: 'block' }}>
                               {item.service} · {formatMoney(lineUnitPrice)} ea
-                              {addonSum > 0 && <span style={{ color: '#16a34a' }}> (incl. +₹{addonSum} addons)</span>}
+                              {addonSum > 0 && <span style={{ color: '#16a34a' }}> (+₹{addonSum})</span>}
                             </span>
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                             <button
                               type="button"
                               className="icon-button"
@@ -1258,7 +1530,7 @@ export default function PosRegister({
                             <button
                               type="button"
                               className="icon-button"
-                              style={{ width: '22px', height: '22px', color: '#ef4444', marginLeft: '4px' }}
+                              style={{ width: '22px', height: '22px', color: '#ef4444', marginLeft: '2px' }}
                               onClick={() => handleRemoveItem(idx)}
                             >
                               <Trash2 size={12} />
@@ -1369,46 +1641,164 @@ export default function PosRegister({
             )}
           </div>
 
-          {/* Promised Due Date Picker */}
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
-              Promised Ready Date
-            </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-              <CalendarDays size={16} color="#64748b" />
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', fontWeight: 600, color: '#1e293b', width: '100%' }}
-              />
+          {/* Promised Due Date & Delivery Turnaround Options */}
+          <div style={{ display: 'grid', gap: '10px', minWidth: 0, width: '100%' }}>
+            <div style={{ minWidth: 0, width: '100%' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
+                Promised Ready Date
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box', minWidth: 0 }}>
+                <CalendarDays size={16} color="#64748b" style={{ flexShrink: 0 }} />
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', fontWeight: 600, color: '#1e293b', width: '100%', minWidth: 0 }}
+                />
+              </div>
             </div>
+
+            {/* Early Delivery Turnaround Speed Pills */}
+            {settings?.expressDeliveryEnabled !== false && (
+              <div style={{ minWidth: 0, width: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', minWidth: 0, gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
+                    <Clock size={14} color="#d97706" style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Delivery Turnaround</span>
+                  </label>
+                  {expressPercent > 0 && (
+                    <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 700, background: '#fef3c7', padding: '1px 6px', borderRadius: '4px', flexShrink: 0 }}>
+                      +{expressPercent}% Early
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px', width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+                  {expressOptions.map((opt) => {
+                    const isSelected = selectedExpressId === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleSelectExpress(opt.id)}
+                        style={{
+                          padding: '6px 8px',
+                          borderRadius: '6px',
+                          border: isSelected ? '2px solid #d97706' : '1px solid #cbd5e1',
+                          background: isSelected ? '#fffbeb' : '#ffffff',
+                          color: isSelected ? '#92400e' : '#334155',
+                          fontSize: '11px',
+                          fontWeight: isSelected ? 700 : 500,
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '2px',
+                          width: '100%',
+                          minWidth: 0,
+                          boxSizing: 'border-box',
+                          overflow: 'hidden',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', minWidth: 0, gap: '4px' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }} title={opt.label}>
+                            {opt.label}
+                          </span>
+                          {isSelected && <Check size={12} color="#d97706" style={{ flexShrink: 0 }} />}
+                        </div>
+                        <span style={{ fontSize: '10px', color: isSelected ? '#b45309' : '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, display: 'block' }}>
+                          {opt.percent > 0 ? `+${opt.percent}% Surcharge` : 'Standard'}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExpressId('custom')}
+                    style={{
+                      padding: '6px 8px',
+                      borderRadius: '6px',
+                      border: selectedExpressId === 'custom' ? '2px solid #d97706' : '1px solid #cbd5e1',
+                      background: selectedExpressId === 'custom' ? '#fffbeb' : '#ffffff',
+                      color: selectedExpressId === 'custom' ? '#92400e' : '#334155',
+                      fontSize: '11px',
+                      fontWeight: selectedExpressId === 'custom' ? 700 : 500,
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                      width: '100%',
+                      minWidth: 0,
+                      boxSizing: 'border-box',
+                      overflow: 'hidden',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', minWidth: 0, gap: '4px' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>Custom Early %</span>
+                      {selectedExpressId === 'custom' && <Check size={12} color="#d97706" style={{ flexShrink: 0 }} />}
+                    </div>
+                    <span style={{ fontSize: '10px', color: selectedExpressId === 'custom' ? '#b45309' : '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, display: 'block' }}>
+                      Enter custom %
+                    </span>
+                  </button>
+                </div>
+
+                {selectedExpressId === 'custom' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fffbeb', border: '1px solid #fde68a', padding: '6px 10px', borderRadius: '6px', marginTop: '6px', width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#92400e', whiteSpace: 'nowrap', flexShrink: 0 }}>Custom Surcharge:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      placeholder="25"
+                      value={customExpressPercent}
+                      onChange={(e) => setCustomExpressPercent(e.target.value)}
+                      style={{ width: '60px', minWidth: 0, padding: '2px 6px', fontSize: '12px', fontWeight: 700, borderRadius: '4px', border: '1px solid #d97706', textAlign: 'center', boxSizing: 'border-box' }}
+                    />
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400e', flexShrink: 0 }}>%</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Pricing & Tax Summary Breakdown */}
-          <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'grid', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b' }}>
-              <span>Gross Subtotal:</span>
-              <span>{formatMoney(grossAmount)}</span>
+          <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'grid', gap: '6px', minWidth: 0, width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b', minWidth: 0 }}>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Gross Subtotal:</span>
+              <span style={{ flexShrink: 0, fontWeight: 600 }}>{formatMoney(grossAmount)}</span>
             </div>
 
             {discountAmount > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#059669', fontWeight: 600 }}>
-                <span>Package Discount ({discountPercent}%):</span>
-                <span>-{formatMoney(discountAmount)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#059669', fontWeight: 600, minWidth: 0 }}>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Package Discount ({discountPercent}%):</span>
+                <span style={{ flexShrink: 0 }}>-{formatMoney(discountAmount)}</span>
+              </div>
+            )}
+
+            {expressAmount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#b45309', fontWeight: 600, minWidth: 0 }}>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  ⚡ {selectedExpressId === 'custom' ? 'Custom Early Delivery' : activeExpressOption?.label} (+{expressPercent}%):
+                </span>
+                <span style={{ flexShrink: 0 }}>+{formatMoney(expressAmount)}</span>
               </div>
             )}
 
             {taxEnabled && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b' }}>
-                <span>{settings?.taxLabel || 'GST'} ({taxPercent}%):</span>
-                <span>+{formatMoney(taxAmount)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b', minWidth: 0 }}>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{settings?.taxLabel || 'GST'} ({taxPercent}%):</span>
+                <span style={{ flexShrink: 0, fontWeight: 600 }}>+{formatMoney(taxAmount)}</span>
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 800, color: '#1e293b', paddingTop: '6px', borderTop: '1px solid #e2e8f0' }}>
-              <span>Total Bill:</span>
-              <span style={{ color: '#0f172a' }}>{formatMoney(grandTotal)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '16px', fontWeight: 800, color: '#1e293b', paddingTop: '6px', borderTop: '1px solid #e2e8f0', minWidth: 0 }}>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Total Bill:</span>
+              <span style={{ flexShrink: 0, color: '#0f172a' }}>{formatMoney(grandTotal)}</span>
             </div>
 
             {currentCustomer?.walletBalance > 0 && (
@@ -1422,15 +1812,16 @@ export default function PosRegister({
                   flexDirection: 'column',
                   gap: '4px',
                   fontSize: '11px',
+                  minWidth: 0,
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d', fontWeight: 700 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Wallet size={13} /> Package Wallet Credit:
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', color: '#15803d', fontWeight: 700, minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <Wallet size={13} style={{ flexShrink: 0 }} /> Package Wallet Credit:
                   </span>
-                  <span>{formatMoney(currentCustomer.walletBalance)}</span>
+                  <span style={{ flexShrink: 0 }}>{formatMoney(currentCustomer.walletBalance)}</span>
                 </div>
-                <div style={{ color: '#166534', fontSize: '10.5px', lineHeight: 1.35 }}>
+                <div style={{ color: '#166534', fontSize: '10.5px', lineHeight: 1.35, wordBreak: 'break-word' }}>
                   {currentCustomer.walletBalance >= grandTotal ? (
                     <span>✓ Bill will be automatically deducted in full from wallet credits upon order placement. (Remaining balance: ₹0.00)</span>
                   ) : (
@@ -1445,29 +1836,53 @@ export default function PosRegister({
           <button
             type="button"
             className="button button-primary"
-            style={{ width: '100%', minHeight: '44px', fontSize: '14px', fontWeight: 700, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+            style={{ width: '100%', maxWidth: '100%', minWidth: 0, minHeight: '46px', fontSize: '13.5px', fontWeight: 700, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '10px 14px', whiteSpace: 'normal', wordBreak: 'break-word', boxSizing: 'border-box' }}
             disabled={submitting || (orderType === 'pieces' ? cartItems.length === 0 : !(Number(weightKg) > 0))}
             onClick={handlePlaceOrder}
           >
             {currentCustomer?.walletBalance >= grandTotal ? (
               <>
-                <Wallet size={18} />
-                {submitting ? 'Placing Order...' : `Place Order & Pay with Wallet (${formatMoney(grandTotal)})`}
+                <Wallet size={18} style={{ flexShrink: 0 }} />
+                <span>{submitting ? 'Placing Order...' : `Place Order & Pay with Wallet (${formatMoney(grandTotal)})`}</span>
               </>
             ) : currentCustomer?.walletBalance > 0 ? (
               <>
-                <Wallet size={18} />
-                {submitting ? 'Placing Order...' : `Place Order (Auto-deduct ${formatMoney(currentCustomer.walletBalance)})`}
+                <Wallet size={18} style={{ flexShrink: 0 }} />
+                <span>{submitting ? 'Placing Order...' : `Place Order (Auto-deduct ${formatMoney(currentCustomer.walletBalance)})`}</span>
               </>
             ) : (
               <>
-                <ReceiptText size={18} />
-                {submitting ? 'Placing Order...' : `Checkout · ${formatMoney(grandTotal)}`}
+                <ReceiptText size={18} style={{ flexShrink: 0 }} />
+                <span>{submitting ? 'Placing Order...' : `Checkout · ${formatMoney(grandTotal)}`}</span>
               </>
             )}
           </button>
         </div>
       </div>
+
+      {/* Mobile Sticky Quick Order Action Bar */}
+      {mobilePosTab === 'catalog' && ((orderType === 'pieces' && cartItems.length > 0) || (orderType === 'weight' && Number(weightKg) > 0)) && (
+        <div className="mobile-cart-float-bar">
+          <div style={{ display: 'grid', gap: '2px', minWidth: 0 }}>
+            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+              {orderType === 'pieces' ? `${cartItems.reduce((s, it) => s + it.quantity, 0)} Garments in Ticket` : `${weightKg} kg Bundle`}
+            </span>
+            <strong style={{ fontSize: '15px', color: '#ffffff' }}>
+              {formatMoney(grandTotal)}
+            </strong>
+          </div>
+          <button
+            type="button"
+            className="btn-checkout"
+            onClick={() => {
+              setMobilePosTab('ticket');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          >
+            Review & Place Order →
+          </button>
+        </div>
+      )}
 
       {/* Item Tagging Modal for Piece Cart Items */}
       {taggingItemIndex !== null && (

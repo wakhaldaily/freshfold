@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { KeyRound, Lock, Mail, ShieldAlert, ShieldCheck, User, UserPlus, X } from 'lucide-react';
 import CustomSelect from './CustomSelect.jsx';
+import { isDemoAllowed } from '../lib/authConfig.js';
 
 export default function AdminAuthModal({
   isOpen,
@@ -52,6 +53,12 @@ export default function AdminAuthModal({
   const handleLogin = (e) => {
     e.preventDefault();
     const emailQuery = loginEmail.trim().toLowerCase();
+
+    if (!isDemoAllowed() && (emailQuery === 'admin@freshfold.test' || loginPassword === 'admin123')) {
+      onToast('Demo admin accounts are disabled in production. Please use your registered administrator credentials.');
+      return;
+    }
+
     const matched = admins.find(
       (a) => (a.email.toLowerCase() === emailQuery || a.name.toLowerCase() === emailQuery) && a.password === loginPassword
     );
@@ -160,7 +167,7 @@ export default function AdminAuthModal({
           </button>
         </div>
 
-        <div className="modal-content" style={{ padding: '24px' }}>
+        <div className="modal-content" style={{ padding: '24px', flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
           {/* 1. SIGN IN FORM */}
           {mode === 'login' && (
             <form onSubmit={handleLogin} style={{ display: 'grid', gap: '14px' }}>
@@ -223,9 +230,11 @@ export default function AdminAuthModal({
                 </button>
               </div>
 
-              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', fontSize: '11px', color: '#64748b', textAlign: 'center', marginTop: '6px' }}>
-                Default Demo Admin: <code>admin@freshfold.test</code> · Password: <code>admin123</code>
-              </div>
+              {isDemoAllowed() && (
+                <div style={{ background: '#fefce8', border: '1px solid #fef08a', padding: '10px 12px', borderRadius: '8px', fontSize: '11px', color: '#854d0e', textAlign: 'center', marginTop: '6px' }}>
+                  🧪 Testing Demo Admin: <code>admin@freshfold.test</code> · Password: <code>admin123</code>
+                </div>
+              )}
             </form>
           )}
 

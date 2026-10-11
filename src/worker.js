@@ -7,7 +7,7 @@ const fallbackPackages = [
 ];
 
 const fallbackSettings = {
-  storeName: 'FreshFold Laundry',
+  storeName: 'Clean Clear Dry Cleaning',
   tagline: 'Premium Fabric Care & Dry Cleaning',
   phone: '+91 98765 43210',
   address: 'Shop 14, Galleria Market, Sector 28, Gurugram',
@@ -16,7 +16,7 @@ const fallbackSettings = {
   taxPercent: 18,
   taxNumber: '07AAAAA0000A1Z5',
   splitGst: true,
-  receiptFooter: 'Thank you for choosing FreshFold! Goods not collected within 30 days are not store liability.',
+  receiptFooter: 'Thank you for choosing Clean Clear Dry Cleaning! Goods not collected within 30 days are not store liability.',
   currency: '₹',
 };
 
@@ -36,6 +36,23 @@ const kgRates = {
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
 const id = (prefix) => `${prefix}-${crypto.randomUUID()}`;
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+function getNextOrderNo(currentOrderNo) {
+  if (!currentOrderNo || typeof currentOrderNo !== 'string') return 'B6164';
+  const trimmed = currentOrderNo.trim();
+  if (!trimmed) return 'B6164';
+
+  const match = trimmed.match(/^(.*?)(\d+)$/);
+  if (match) {
+    const prefix = match[1];
+    const numStr = match[2];
+    const nextNum = parseInt(numStr, 10) + 1;
+    const nextNumStr = String(nextNum).padStart(numStr.length, '0');
+    return `${prefix}${nextNumStr}`;
+  }
+
+  return `${trimmed}1`;
+}
 
 async function handleApi(request, env) {
   const url = new URL(request.url);
@@ -60,7 +77,10 @@ async function handleApi(request, env) {
       ]);
 
       const packages = rawPackages.length ? rawPackages : fallbackPackages;
-      const settings = rawSettings[0]?.config || fallbackSettings;
+      const settings = {
+        ...fallbackSettings,
+        ...(rawSettings[0]?.config || {}),
+      };
       const staff = rawStaff.length ? rawStaff : fallbackStaff;
 
       return response({ customers, orders, customerPackages, payments, packageSales, walletTransactions, packages, settings, staff });
@@ -125,9 +145,11 @@ async function handleApi(request, env) {
     // --- STORE SETTINGS & STAFF ---
     if (method === 'PATCH' && path === '/api/settings') {
       const body = await request.json();
-      await sql`INSERT INTO store_settings (id, config) VALUES ('current', ${JSON.stringify(body)}::jsonb)
-        ON CONFLICT (id) DO UPDATE SET config = ${JSON.stringify(body)}::jsonb`;
-      return response({ success: true });
+      const existingRows = await sql`SELECT config FROM store_settings WHERE id = 'current' LIMIT 1`.catch(() => []);
+      const merged = { ...fallbackSettings, ...(existingRows[0]?.config || {}), ...body };
+      await sql`INSERT INTO store_settings (id, config) VALUES ('current', ${JSON.stringify(merged)}::jsonb)
+        ON CONFLICT (id) DO UPDATE SET config = ${JSON.stringify(merged)}::jsonb`;
+      return response({ success: true, settings: merged });
     }
 
     if (method === 'PUT' && path === '/api/staff') {
@@ -144,7 +166,15 @@ async function handleApi(request, env) {
     if (method === 'POST' && path === '/api/orders') {
       const body = await request.json();
       const orderId = id('ord');
-      const orderNo = `F${new Date().toISOString().slice(2, 10).replaceAll('-', '')}${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
+      let orderNo = body.orderNo ? String(body.orderNo).trim() : '';
+      if (!orderNo) {
+        const lastOrderRows = await sql`SELECT order_no AS "orderNo" FROM orders ORDER BY created_at DESC LIMIT 1`;
+        if (lastOrderRows.length > 0 && lastOrderRows[0].orderNo) {
+          orderNo = getNextOrderNo(lastOrderRows[0].orderNo);
+        } else {
+          orderNo = `B6164`;
+        }
+      }
       const type = body.type === 'weight' ? 'weight' : 'pieces';
       const serviceName = String(body.service || 'Dry cleaning');
       let items = [];
@@ -186,11 +216,37 @@ async function handleApi(request, env) {
         discountAmount = roundMoney(grossAmount * discountPercent / 100);
         discountName = bestDiscount?.name || '';
       }
-      const subtotal = Math.max(0, grossAmount - discountAmount);
+      const subtotalBeforeExpress = Math.max(0, grossAmount - discountAmount);
+      const expressPercent = Number(body.expressPercent || 0);
+      const expressAmount = expressPercent > 0
+        ? roundMoney(subtotalBeforeExpress * (expressPercent / 100))
+        : roundMoney(Number(body.expressAmount || 0));
+      const expressLabel = body.expressLabel || (expressPercent > 0 ? `Early Delivery (+${expressPercent}%)` : '');
+      const subtotal = subtotalBeforeExpress + expressAmount;
 
-      // Tax engine
-      const taxPercent = Number(body.taxPercent !== undefined ? body.taxPercent : 18);
-      const taxAmount = body.taxEnabled !== false ? roundMoney(subtotal * taxPercent / 100) : 0;
+      if (expressAmount > 0 && Array.isArray(items)) {
+        items.push({
+          id: id('surcharge'),
+          name: expressLabel || 'Early Delivery Surcharge',
+          category: 'Service Surcharge',
+          service: serviceName,
+          unitPrice: expressAmount,
+          quantity: 1,
+          isSurcharge: true,
+          status: 'Applied',
+        });
+      }
+
+      // Tax engine (strictly respects store settings and payload flag)
+      const settingsRows = await sql`SELECT config FROM store_settings WHERE id = 'current' LIMIT 1`.catch(() => []);
+      const currentSettings = { ...fallbackSettings, ...(settingsRows[0]?.config || {}) };
+      const isTaxEnabled = body.taxEnabled !== undefined
+        ? Boolean(body.taxEnabled)
+        : (currentSettings.taxEnabled !== false);
+      const taxPercent = isTaxEnabled
+        ? Number(body.taxPercent !== undefined ? body.taxPercent : (currentSettings.taxPercent ?? 18))
+        : 0;
+      const taxAmount = isTaxEnabled ? roundMoney(subtotal * taxPercent / 100) : 0;
       const totalAmount = roundMoney(subtotal + taxAmount);
 
       // Check customer wallet balance for auto-deducting credits
@@ -290,6 +346,63 @@ async function handleApi(request, env) {
       if (!['Received', 'Processing', 'Ready', 'Delivered', 'Cancelled'].includes(body.status)) return response({ error: 'Invalid order status.' }, 400);
       const rows = await sql`UPDATE orders SET status = ${body.status}, items = CASE WHEN order_type = 'pieces' THEN COALESCE((SELECT jsonb_agg(jsonb_set(line, '{status}', to_jsonb(${body.status}::text))) FROM jsonb_array_elements(items) AS lines(line)), items) ELSE items END WHERE id = ${orderId} RETURNING id`;
       return rows.length ? response({ id: orderId }) : response({ error: 'Order not found.' }, 404);
+    }
+
+    // --- PUBLIC BILL VIEW (SECURE TOKEN VERIFIED) ---
+    const publicBillMatch = path.match(/^\/api\/public-bill\/([^/]+)$/);
+    if (method === 'GET' && publicBillMatch) {
+      const rawIdentifier = decodeURIComponent(publicBillMatch[1]).trim();
+      const token = String(url.searchParams.get('token') || '').trim().toLowerCase();
+
+      const orderRows = await sql`SELECT id, order_no AS "orderNo", customer_id AS "customerId", order_type AS type, service, items, weight_kg AS "weightKg", weight_note AS "weightNote", gross_amount AS "grossAmount", discount_amount AS "discountAmount", discount_percent AS "discountPercent", discount_name AS "discountName", tax_amount AS "taxAmount", tax_percent AS "taxPercent", total_amount AS "totalAmount", paid_amount AS "paidAmount", balance_amount AS "balanceAmount", status, due_date AS "dueDate", created_at AS "createdAt" FROM orders WHERE id = ${rawIdentifier} OR LOWER(order_no) = LOWER(${rawIdentifier}) LIMIT 1`;
+      if (!orderRows.length) return response({ error: 'Order not found.' }, 404);
+      const ord = orderRows[0];
+
+      const customerRows = await sql`SELECT id, name, mobile FROM customers WHERE id = ${ord.customerId} LIMIT 1`;
+      const cust = customerRows[0] || { name: 'Valued Customer', mobile: '' };
+
+      const cleanMobile = String(cust.mobile || '').replace(/\D/g, '').slice(-10);
+      const candidateSeeds = [
+        `${ord.id}:${ord.orderNo}:${ord.createdAt || ''}:${cleanMobile}:freshfold-secure-bill-v1`,
+      ];
+      if (ord.createdAt) {
+        try {
+          const iso = new Date(ord.createdAt).toISOString();
+          candidateSeeds.push(`${ord.id}:${ord.orderNo}:${iso}:${cleanMobile}:freshfold-secure-bill-v1`);
+          candidateSeeds.push(`${ord.id}:${ord.orderNo}:${iso.slice(0, 19)}:${cleanMobile}:freshfold-secure-bill-v1`);
+          candidateSeeds.push(`${ord.id}:${ord.orderNo}:${iso.slice(0, 10)}:${cleanMobile}:freshfold-secure-bill-v1`);
+        } catch {}
+      }
+      candidateSeeds.push(`${ord.id}:${ord.orderNo}::${cleanMobile}:freshfold-secure-bill-v1`);
+
+      let tokenMatches = false;
+      for (const seed of candidateSeeds) {
+        const msgUint8 = new TextEncoder().encode(seed);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+        if (hashHex.toLowerCase() === token) {
+          tokenMatches = true;
+          break;
+        }
+      }
+
+      if (!tokenMatches) {
+        return response({ error: 'Invalid or expired bill token.' }, 403);
+      }
+
+      const [settingsRows, paymentRows] = await Promise.all([
+        sql`SELECT config FROM store_settings WHERE id = 'current' LIMIT 1`.catch(() => []),
+        sql`SELECT id, amount, method, created_at AS "createdAt" FROM payments WHERE order_id = ${ord.id} ORDER BY created_at ASC`.catch(() => []),
+      ]);
+      const settings = settingsRows[0]?.config || fallbackSettings;
+
+      return response({
+        order: ord,
+        customer: { name: cust.name, mobile: cust.mobile },
+        settings,
+        payments: paymentRows,
+      });
     }
 
     return response({ error: 'Not found.' }, 404);

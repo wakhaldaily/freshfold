@@ -12,9 +12,50 @@ function number(value) {
   return Number(value || 0);
 }
 
+/**
+ * Calculates the next auto-incremented order number based on the latest order number.
+ * Supports arbitrary prefixes (e.g. "#w123" -> "#w124", "w123" -> "w124", "B6163" -> "B6164", "ORD-009" -> "ORD-010").
+ */
+export function getNextOrderNo(currentOrderNo) {
+  if (!currentOrderNo || typeof currentOrderNo !== 'string') return 'B6164';
+  const trimmed = currentOrderNo.trim();
+  if (!trimmed) return 'B6164';
+
+  const match = trimmed.match(/^(.*?)(\d+)$/);
+  if (match) {
+    const prefix = match[1];
+    const numStr = match[2];
+    const nextNum = parseInt(numStr, 10) + 1;
+    const nextNumStr = String(nextNum).padStart(numStr.length, '0');
+    return `${prefix}${nextNumStr}`;
+  }
+
+  return `${trimmed}1`;
+}
+
+/**
+ * Formats order number consistently for display (e.g. ensures single '#' prefix without doubling).
+ */
+export function formatOrderNo(orderNo) {
+  if (!orderNo) return '';
+  const str = String(orderNo).trim();
+  return str.startsWith('#') ? str : `#${str}`;
+}
+
 function normalize(data) {
+  const currentOrders = Array.isArray(data.orders) ? data.orders : [];
+  const latestOrderNo = currentOrders[0]?.orderNo;
+  const initialNextOrderNo = data.settings?.nextOrderNo || (latestOrderNo ? getNextOrderNo(latestOrderNo) : 'B6164');
+
   return {
-    settings: data.settings || { ...defaultSettings },
+    settings: {
+      ...defaultSettings,
+      nextOrderNo: initialNextOrderNo,
+      ...(data.settings || {}),
+      expressOptions: Array.isArray(data.settings?.expressOptions) && data.settings.expressOptions.length > 0
+        ? data.settings.expressOptions
+        : defaultSettings.expressOptions,
+    },
     staff: Array.isArray(data.staff) && data.staff.length ? data.staff : [...defaultStaff],
     admins: Array.isArray(data.admins) && data.admins.length ? data.admins : [...initialAdmins],
     packages: (Array.isArray(data.packages) && data.packages.length > 0 ? data.packages : [...initialPackageCatalog]).map((pkg) => {
@@ -57,7 +98,7 @@ function normalize(data) {
   };
 }
 
-function loadLocal() {
+export function loadLocal() {
   try {
     if (typeof localStorage !== 'undefined') {
       const value = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('freshfold-pos-v3');
@@ -104,7 +145,9 @@ export async function loadStore() {
       throw new Error('No database API response.');
     }
     remoteMode = true;
-    return normalize(data);
+    const normalized = normalize(data);
+    saveLocal(normalized);
+    return normalized;
   } catch {
     remoteMode = false;
     return loadLocal();
@@ -337,11 +380,31 @@ export async function assignPackage(customerId, templateId, paymentMethod, curre
   });
 }
 
-// --- ORDERS (WITH TAX & DISCOUNT ENGINE) ---
+// --- ORDERS (WITH TAX & DISCOUNT ENGINE & EDITABLE AUTO-INCREMENTING ORDER NUMBERS) ---
 export async function createOrder(order, current) {
   if (remoteMode) return finishRemoteMutation('/api/orders', 'POST', order);
-  const lastNumber = current.orders.reduce((max, item) => Math.max(max, Number(item.orderNo?.replace(/\D/g, '') || 0)), 6163);
-  const orderNo = `B${lastNumber + 1}`;
+  
+  // Use custom order number if provided, otherwise compute from settings or latest order in sequence
+  let orderNo = order.orderNo ? String(order.orderNo).trim() : '';
+  if (!orderNo) {
+    if (current.settings?.nextOrderNo) {
+      orderNo = current.settings.nextOrderNo;
+    } else if (current.orders && current.orders.length > 0 && current.orders[0]?.orderNo) {
+      orderNo = getNextOrderNo(current.orders[0].orderNo);
+    } else {
+      const lastNumber = current.orders.reduce((max, item) => Math.max(max, Number(item.orderNo?.replace(/\D/g, '') || 0)), 6163);
+      orderNo = `B${lastNumber + 1}`;
+    }
+  }
+
+  // Pre-calculate next order number for subsequent orders (e.g. #w123 -> #w124)
+  const computedNextOrderNo = getNextOrderNo(orderNo);
+  const updatedSettings = {
+    ...(current.settings || {}),
+    lastOrderNo: orderNo,
+    nextOrderNo: computedNextOrderNo,
+  };
+
   const id = `ord-${crypto.randomUUID()}`;
   const itemLines = (order.items || []).map((item, index) => ({
     ...item,
@@ -352,10 +415,19 @@ export async function createOrder(order, current) {
 
   const gross = Number(order.grossAmount || 0);
   const discount = Number(order.discountAmount || 0);
-  const subtotal = Math.max(0, gross - discount);
+  const subtotalBeforeExpress = Math.max(0, gross - discount);
+
+  const expressPercent = Number(order.expressPercent || 0);
+  const expressAmount = expressPercent > 0
+    ? Math.round((subtotalBeforeExpress * (expressPercent / 100) + Number.EPSILON) * 100) / 100
+    : Number(order.expressAmount || 0);
+  const expressLabel = order.expressLabel || (expressPercent > 0 ? `Early Delivery (+${expressPercent}%)` : '');
+
+  const subtotal = subtotalBeforeExpress + expressAmount;
   const settings = current.settings || defaultSettings;
-  const taxPercent = settings.taxEnabled ? Number(settings.taxPercent || 0) : 0;
-  const taxAmount = settings.taxEnabled ? Math.round((subtotal * (taxPercent / 100) + Number.EPSILON) * 100) / 100 : 0;
+  const isTaxEnabled = order.taxEnabled !== undefined ? Boolean(order.taxEnabled) : Boolean(settings.taxEnabled);
+  const taxPercent = isTaxEnabled ? Number(settings.taxPercent || 0) : 0;
+  const taxAmount = isTaxEnabled ? Math.round((subtotal * (taxPercent / 100) + Number.EPSILON) * 100) / 100 : 0;
   const totalAmount = Math.round((subtotal + taxAmount + Number.EPSILON) * 100) / 100;
 
   // Auto-deduct from customer's package wallet credits if available
@@ -375,6 +447,10 @@ export async function createOrder(order, current) {
     discountAmount: discount,
     discountPercent: Number(order.discountPercent || 0),
     discountName: order.discountName || '',
+    expressDelivery: expressAmount > 0,
+    expressPercent,
+    expressAmount,
+    expressLabel,
     taxAmount,
     taxPercent,
     totalAmount,
@@ -420,6 +496,7 @@ export async function createOrder(order, current) {
   return saveLocal({
     ...current,
     orders: [newOrder, ...current.orders],
+    settings: updatedSettings,
     customers,
     payments,
     walletTransactions,

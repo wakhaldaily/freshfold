@@ -50,8 +50,8 @@ export default function PackageSaleModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-content" style={{ padding: '20px', display: 'grid', gap: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <div className="modal-content" style={{ padding: '20px', display: 'grid', gap: '16px', flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
             <span className="field-label">Select Package Plan</span>
             <div style={{ display: 'grid', gap: '10px' }}>
               {packages.map((pkg) => {
