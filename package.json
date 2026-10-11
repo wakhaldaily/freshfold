@@ -10,7 +10,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "deploy": "npm run build && wrangler deploy",
     "db:setup": "node scripts/setup-db.mjs",
-    "test": "node --test test/**/*.test.js"
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
