@@ -3,6 +3,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Delete,
+  Eye,
+  EyeOff,
   KeyRound,
   Lock,
   Mail,
@@ -34,13 +36,16 @@ export default function AppLoginScreen({
 }) {
   const isDemo = isDemoAllowed();
   const envName = getAppEnvironment();
-  // In production, if no real custom admin exists yet, default to first-time setup
-  const isFirstTimeProduction = !isDemo && (admins.filter((a) => a.email !== 'admin@freshfold.test').length === 0);
-  const [authMode, setAuthMode] = useState(isFirstTimeProduction ? 'signup' : 'pin'); // 'pin' | 'admin' | 'signup'
+  // Always default to Sign In page ('admin') on initial load as requested
+  const [authMode, setAuthMode] = useState('admin'); // 'admin' | 'pin' | 'signup'
 
   // Staff PIN State
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState('');
+
+  // Password visibility toggles
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
 
   // Admin Login State
   const [adminEmail, setAdminEmail] = useState('');
@@ -515,16 +520,33 @@ export default function AppLoginScreen({
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
                   Admin Password
                 </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px', background: '#fff' }}>
                   <Lock size={16} color="#64748b" />
                   <input
-                    type="password"
+                    type={showAdminPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
                     required
                     style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px' }}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword((prev) => !prev)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      color: '#64748b',
+                    }}
+                    title={showAdminPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showAdminPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
 
@@ -656,14 +678,33 @@ export default function AppLoginScreen({
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
                   Password (min 6 characters)
                 </label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={signupPassword}
-                  onChange={(e) => setSignupPassword(e.target.value)}
-                  required
-                  style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #cbd5e1', borderRadius: '8px', fontSize: '13px' }}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '8px 12px', background: '#fff' }}>
+                  <input
+                    type={showSignupPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    required
+                    style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSignupPassword((v) => !v)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      color: '#64748b',
+                    }}
+                    title={showSignupPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showSignupPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showSignupPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
 
               <div style={{ marginBottom: '12px' }}>

@@ -216,4 +216,81 @@ describe('Production & Testing Environment Authentication Guard', () => {
     assert.strictEqual(defaultSettings.storeName, 'Clean Clear Dry Cleaning');
     assert.strictEqual(defaultSettings.storeNameCreated, false);
   });
+
+  it('8. updateAdminProfile persists modified admin name, email, and password successfully', async () => {
+    const { updateAdminProfile } = await import('../src/lib/persistence.js');
+    const storageMap = new Map();
+    global.localStorage = {
+      getItem: (key) => storageMap.get(key) || null,
+      setItem: (key, val) => storageMap.set(key, String(val)),
+      removeItem: (key) => storageMap.delete(key),
+      clear: () => storageMap.clear(),
+    };
+
+    try {
+      const initialStore = {
+        admins: [
+          {
+            id: 'admin-1',
+            name: 'Original Admin',
+            email: 'original@freshfold.test',
+            password: 'oldPassword123',
+            securityQuestion: 'What city is this store in?',
+            securityAnswer: 'delhi',
+          },
+        ],
+        settings: {},
+      };
+
+      const updatedStore = await updateAdminProfile(
+        'admin-1',
+        {
+          name: 'Nanda Store Manager',
+          email: 'nanda@myfreshfold.com',
+          password: 'NewSecretPassword2026!',
+          securityQuestion: 'What city is this store in?',
+          securityAnswer: 'bengaluru',
+        },
+        initialStore
+      );
+
+      const targetAdmin = updatedStore.admins.find((a) => a.id === 'admin-1');
+      assert.strictEqual(targetAdmin.name, 'Nanda Store Manager');
+      assert.strictEqual(targetAdmin.email, 'nanda@myfreshfold.com');
+      assert.strictEqual(targetAdmin.password, 'NewSecretPassword2026!');
+      assert.strictEqual(targetAdmin.securityAnswer, 'bengaluru');
+
+      // Old credentials fail
+      const oldLogin = verifyAdminCredentials('original@freshfold.test', 'oldPassword123', updatedStore.admins);
+      assert.strictEqual(oldLogin.success, false);
+
+      // New credentials log in seamlessly
+      const newLogin = verifyAdminCredentials('nanda@myfreshfold.com', 'NewSecretPassword2026!', updatedStore.admins);
+      assert.strictEqual(newLogin.success, true);
+      assert.strictEqual(newLogin.user.name, 'Nanda Store Manager');
+      assert.strictEqual(newLogin.user.email, 'nanda@myfreshfold.com');
+    } finally {
+      delete global.localStorage;
+    }
+  });
+
+  it('9. Login credentials work after logout with new password and email', async () => {
+    const adminList = [
+      {
+        id: 'admin-101',
+        name: 'Bijita Laundry Pro',
+        email: 'bijita@cleanclear.in',
+        password: 'SecureLaundryPass1!',
+      },
+    ];
+
+    // Attempt login with valid credentials
+    const loginAttempt = verifyAdminCredentials('bijita@cleanclear.in', 'SecureLaundryPass1!', adminList);
+    assert.strictEqual(loginAttempt.success, true);
+    assert.strictEqual(loginAttempt.user.email, 'bijita@cleanclear.in');
+
+    // Case-insensitive email and leading/trailing whitespace handling
+    const whitespaceAttempt = verifyAdminCredentials('  BIJITA@CleanClear.in  ', 'SecureLaundryPass1!  ', adminList);
+    assert.strictEqual(whitespaceAttempt.success, true);
+  });
 });

@@ -10,13 +10,17 @@ import {
   Copy,
   Edit2,
   ExternalLink,
+  Eye,
+  EyeOff,
   FileText,
   Globe,
   HelpCircle,
   Info,
   KeyRound,
   Lock,
+  Mail,
   MapPin,
+  Megaphone,
   MessageSquare,
   Percent,
   Phone,
@@ -30,6 +34,7 @@ import {
   Store,
   Tag,
   Trash2,
+  User,
   UserCheck,
   Users,
   X,
@@ -42,8 +47,12 @@ export default function SettingsModal({
   onClose,
   settings,
   staffList = [],
+  adminUser = null,
+  adminsList = [],
+  onOpenPamphlet,
   onSaveSettings,
   onSaveStaff,
+  onUpdateAdmin,
   onToast,
 }) {
   const [activeTab, setActiveTab] = useState('store');
@@ -57,12 +66,46 @@ export default function SettingsModal({
   const [testAmount, setTestAmount] = useState(1000);
   const [saving, setSaving] = useState(false);
 
+  // Admin Profile & Security State
+  const primaryAdmin = (adminsList && adminsList.length > 0)
+    ? (adminsList.find((a) => a.id === adminUser?.id) || adminsList[0])
+    : {
+        id: adminUser?.id || 'admin-1',
+        name: adminUser?.name || 'Store Administrator',
+        email: adminUser?.email || 'admin@freshfold.test',
+        password: adminUser?.password || 'admin123',
+        securityQuestion: 'What city is this store in?',
+        securityAnswer: 'gurugram',
+      };
+
+  const [adminName, setAdminName] = useState(primaryAdmin?.name || '');
+  const [adminEmail, setAdminEmail] = useState(primaryAdmin?.email || '');
+  const [adminPassword, setAdminPassword] = useState(primaryAdmin?.password || '');
+  const [adminSecurityQuestion, setAdminSecurityQuestion] = useState(primaryAdmin?.securityQuestion || 'What city is this store in?');
+  const [adminSecurityAnswer, setAdminSecurityAnswer] = useState(primaryAdmin?.securityAnswer || '');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
       setFormData({ ...settings });
       setStaff([...staffList]);
+      const currentAdm = (adminsList && adminsList.length > 0)
+        ? (adminsList.find((a) => a.id === adminUser?.id) || adminsList[0])
+        : {
+            id: adminUser?.id || 'admin-1',
+            name: adminUser?.name || 'Store Administrator',
+            email: adminUser?.email || 'admin@freshfold.test',
+            password: adminUser?.password || 'admin123',
+            securityQuestion: 'What city is this store in?',
+            securityAnswer: 'gurugram',
+          };
+      setAdminName(currentAdm.name || '');
+      setAdminEmail(currentAdm.email || '');
+      setAdminPassword(currentAdm.password || '');
+      setAdminSecurityQuestion(currentAdm.securityQuestion || 'What city is this store in?');
+      setAdminSecurityAnswer(currentAdm.securityAnswer || '');
     }
-  }, [isOpen, settings, staffList]);
+  }, [isOpen, settings, staffList, adminsList, adminUser]);
 
   // Handle escape key
   useEffect(() => {
@@ -81,6 +124,35 @@ export default function SettingsModal({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleSaveAdminDirect = async () => {
+    if (!adminName.trim()) {
+      onToast?.('Please enter an administrator name.');
+      return;
+    }
+    if (!adminEmail.trim()) {
+      onToast?.('Please enter an administrator email.');
+      return;
+    }
+    if (!adminPassword || adminPassword.length < 6) {
+      onToast?.('Password must be at least 6 characters.');
+      return;
+    }
+    try {
+      if (onUpdateAdmin) {
+        await onUpdateAdmin(primaryAdmin.id, {
+          name: adminName.trim(),
+          email: adminEmail.trim().toLowerCase(),
+          password: adminPassword.trim(),
+          securityQuestion: adminSecurityQuestion,
+          securityAnswer: adminSecurityAnswer.trim(),
+        });
+      }
+      onToast?.('Administrator profile & password updated successfully.');
+    } catch (err) {
+      onToast?.(err.message || 'Failed to update administrator details.');
+    }
+  };
+
   const handleSave = async (e) => {
     if (e) e.preventDefault();
     setSaving(true);
@@ -89,10 +161,19 @@ export default function SettingsModal({
       if (onSaveStaff) {
         await onSaveStaff(staff);
       }
-      onToast('Store & tax settings saved successfully.');
+      if (onUpdateAdmin && (adminName.trim() || adminEmail.trim())) {
+        await onUpdateAdmin(primaryAdmin.id, {
+          name: adminName.trim() || primaryAdmin.name,
+          email: adminEmail.trim().toLowerCase(),
+          password: adminPassword.trim() || primaryAdmin.password,
+          securityQuestion: adminSecurityQuestion,
+          securityAnswer: adminSecurityAnswer.trim(),
+        });
+      }
+      onToast?.('Store, tax, and administrator settings saved successfully.');
       onClose();
     } catch (err) {
-      onToast(err.message || 'Failed to save settings.');
+      onToast?.(err.message || 'Failed to save settings.');
     } finally {
       setSaving(false);
     }
@@ -273,6 +354,16 @@ export default function SettingsModal({
             <MessageSquare size={16} /> WhatsApp Dispatch
             <span className="settings-tab-badge">
               {formData.whatsappDispatchMode === 'web' ? 'Web' : 'App'}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`settings-tab-pill ${activeTab === 'admin' ? 'active' : ''}`}
+            onClick={() => setActiveTab('admin')}
+          >
+            <ShieldCheck size={16} /> Admin Profile & Security
+            <span className="settings-tab-badge">
+              {adminEmail ? adminEmail.split('@')[0] : 'Admin'}
             </span>
           </button>
         </div>
@@ -592,6 +683,40 @@ export default function SettingsModal({
                     <div style={{ textAlign: 'center', fontSize: '9px', marginTop: '6px', fontWeight: 700 }}>
                       *** THANK YOU FOR VISITING ***
                     </div>
+                  </div>
+
+                  {/* Customer Outreach & Pamphlet Action Card */}
+                  <div
+                    style={{
+                      background: 'var(--settings-card-subtle-bg)',
+                      border: '1px solid var(--settings-card-border)',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '12px',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: '12px', display: 'block', color: 'var(--settings-text-primary)' }}>
+                        Customer Marketing Pamphlet & Contact Flyer
+                      </strong>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                        Generate, print, or share a professional dry cleaning flyer with your store admin contact and WhatsApp QR code.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={() => {
+                        onClose();
+                        onOpenPamphlet?.();
+                      }}
+                      style={{ fontSize: '11.5px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    >
+                      <Megaphone size={14} color="#2563eb" /> Generate Pamphlet
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1548,6 +1673,229 @@ export default function SettingsModal({
                         </div>
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB 6: ADMIN PROFILE & PASSWORD SECURITY                  */}
+            {/* ========================================================= */}
+            {activeTab === 'admin' && (
+              <div className="settings-split-layout">
+                {/* Left Column: Form Fields */}
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  {/* Card 1: Admin Profile Details */}
+                  <div className="settings-card">
+                    <div className="settings-card-header">
+                      <div className="settings-card-title">
+                        <User size={16} /> Administrator Profile & Identity
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                        Root store manager
+                      </span>
+                    </div>
+
+                    <label className="field-group">
+                      <span className="field-label">Administrator Full Name</span>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="text"
+                          value={adminName}
+                          onChange={(e) => setAdminName(e.target.value)}
+                          placeholder="e.g. Store Administrator"
+                          required
+                          style={{ paddingLeft: '34px' }}
+                        />
+                        <User
+                          size={15}
+                          style={{
+                            position: 'absolute',
+                            left: '11px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            color: 'var(--settings-placeholder)',
+                          }}
+                        />
+                      </div>
+                    </label>
+
+                    <label className="field-group">
+                      <span className="field-label">Administrator Login Email</span>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="email"
+                          value={adminEmail}
+                          onChange={(e) => setAdminEmail(e.target.value)}
+                          placeholder="admin@yourstore.com"
+                          required
+                          style={{ paddingLeft: '34px' }}
+                        />
+                        <Mail
+                          size={15}
+                          style={{
+                            position: 'absolute',
+                            left: '11px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            color: 'var(--settings-placeholder)',
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', marginTop: '4px', display: 'block' }}>
+                        Used to sign in to the terminal after logout or lock.
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Card 2: Password & Account Security */}
+                  <div className="settings-card">
+                    <div className="settings-card-header">
+                      <div className="settings-card-title">
+                        <Lock size={16} /> Password & Recovery Security
+                      </div>
+                      <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700 }}>
+                        Encrypted Storage
+                      </span>
+                    </div>
+
+                    <label className="field-group">
+                      <span className="field-label">Administrator Password</span>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <input
+                          type={showAdminPassword ? 'text' : 'password'}
+                          value={adminPassword}
+                          onChange={(e) => setAdminPassword(e.target.value)}
+                          placeholder="Enter password (min 6 characters)"
+                          required
+                          style={{ width: '100%', paddingLeft: '34px', paddingRight: '36px' }}
+                        />
+                        <Lock
+                          size={15}
+                          style={{
+                            position: 'absolute',
+                            left: '11px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            color: 'var(--settings-placeholder)',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAdminPassword((v) => !v)}
+                          style={{
+                            position: 'absolute',
+                            right: '10px',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: 0,
+                            color: 'var(--settings-placeholder)',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                          title={showAdminPassword ? 'Hide password' : 'Show password'}
+                          aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showAdminPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', marginTop: '4px', display: 'block' }}>
+                        Must be at least 6 characters. Use the eye icon to verify what you typed.
+                      </span>
+                    </label>
+
+                    <div className="field-group">
+                      <span className="field-label">Security Recovery Question</span>
+                      <CustomSelect
+                        value={adminSecurityQuestion}
+                        onChange={(val) => setAdminSecurityQuestion(val)}
+                        options={[
+                          { value: 'What city is this store in?', label: 'What city is this store in?' },
+                          { value: 'What is your primary phone last 4 digits?', label: 'What is your primary phone last 4 digits?' },
+                          { value: 'What was your first pet name?', label: 'What was your first pet name?' },
+                        ]}
+                      />
+                    </div>
+
+                    <label className="field-group">
+                      <span className="field-label">Security Recovery Answer</span>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="text"
+                          value={adminSecurityAnswer}
+                          onChange={(e) => setAdminSecurityAnswer(e.target.value)}
+                          placeholder="e.g. gurugram"
+                          style={{ paddingLeft: '34px' }}
+                        />
+                        <KeyRound
+                          size={15}
+                          style={{
+                            position: 'absolute',
+                            left: '11px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            color: 'var(--settings-placeholder)',
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', marginTop: '4px', display: 'block' }}>
+                        Answer used for password recovery if you ever forget your password.
+                      </span>
+                    </label>
+
+                    <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="settings-footer-save-btn"
+                        onClick={handleSaveAdminDirect}
+                        style={{ padding: '8px 16px', fontSize: '12px' }}
+                      >
+                        <Check size={14} /> Update Admin Profile & Password
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Live Credential Status & Preview Card */}
+                <div style={{ display: 'grid', gap: '16px', alignContent: 'start' }}>
+                  <div className="settings-card" style={{ background: 'var(--settings-card-alt-bg, #f8fafc)' }}>
+                    <div className="settings-card-header">
+                      <div className="settings-card-title">
+                        <ShieldCheck size={16} color="#16a34a" /> Active Login Credentials
+                      </div>
+                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '999px', background: '#dcfce7', color: '#15803d', fontWeight: 700 }}>
+                        LIVE
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '13px', display: 'grid', gap: '10px', padding: '6px 0' }}>
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Current Admin Name</span>
+                        <strong style={{ fontSize: '14px', color: 'var(--settings-text-primary)' }}>{adminName || 'Store Administrator'}</strong>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Login Email</span>
+                        <strong style={{ fontSize: '14px', color: 'var(--settings-text-primary)' }}>{adminEmail || 'admin@freshfold.test'}</strong>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Password Status</span>
+                        <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle2 size={13} /> {adminPassword ? `${adminPassword.length} characters configured` : 'Active'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Recovery Question</span>
+                        <span style={{ fontSize: '12px', color: 'var(--settings-text-primary)' }}>{adminSecurityQuestion}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(37, 99, 235, 0.08)', border: '1px solid rgba(37, 99, 235, 0.2)', fontSize: '11px', color: '#1d4ed8', lineHeight: 1.5 }}>
+                      💡 When you update your email and password here, you can immediately lock the terminal or log out and log back in using your new credentials.
+                    </div>
                   </div>
                 </div>
               </div>

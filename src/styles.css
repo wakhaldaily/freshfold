@@ -1069,6 +1069,9 @@ h1, h2, h3, p { margin-top: 0; }
   .pos-register-layout {
     grid-template-columns: 1fr !important;
   }
+  .pamphlet-layout-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 .pos-column-ticket {
@@ -1100,6 +1103,35 @@ h1, h2, h3, p { margin-top: 0; }
   #print-invoice { position: absolute; inset: 0 auto auto 0; width: 74mm; margin: 0; border: 0; box-shadow: none; padding: 0; font-size: 9pt; }
   .invoice-modal, .invoice-modal .modal-panel, .invoice-modal .modal-content { width: 74mm; max-width: none; max-height: none; overflow: visible; border: 0; border-radius: 0; box-shadow: none; padding: 0; background: #fff; }
   .invoice-actions, .modal-header { display: none !important; }
+
+  /* --- STORE PAMPHLET & FLYER PRINT OVERRIDES --- */
+  body.printing-pamphlet {
+    background: #ffffff !important;
+  }
+  body.printing-pamphlet #print-invoice {
+    display: none !important;
+  }
+  body.printing-pamphlet #print-pamphlet,
+  body.printing-pamphlet #print-pamphlet * {
+    visibility: visible !important;
+  }
+  body.printing-pamphlet #print-pamphlet {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body.printing-pamphlet .pamphlet-controls,
+  body.printing-pamphlet .modal-header {
+    display: none !important;
+  }
 }
 
 /* --- STORE & TAX SETTINGS STYLES --- */

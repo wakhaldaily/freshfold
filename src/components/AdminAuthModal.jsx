@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KeyRound, Lock, Mail, ShieldAlert, ShieldCheck, User, UserPlus, X } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Lock, Mail, ShieldAlert, ShieldCheck, User, UserPlus, X } from 'lucide-react';
 import CustomSelect from './CustomSelect.jsx';
 import { isDemoAllowed } from '../lib/authConfig.js';
 
@@ -14,6 +14,11 @@ export default function AdminAuthModal({
 }) {
   const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'forgot'
   
+  // Show / Hide password toggles
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
+
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -202,13 +207,35 @@ export default function AdminAuthModal({
                     Forgot password?
                   </button>
                 </div>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  required
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showLoginPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    required
+                    style={{ width: '100%', paddingRight: '36px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword((v) => !v)}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      color: '#64748b',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                    title={showLoginPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showLoginPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </label>
 
               <button
@@ -269,13 +296,35 @@ export default function AdminAuthModal({
 
               <label className="field-group">
                 <span className="field-label">Password (min 6 characters)</span>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={signupPassword}
-                  onChange={(e) => setSignupPassword(e.target.value)}
-                  required
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showSignupPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    required
+                    style={{ width: '100%', paddingRight: '36px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSignupPassword((v) => !v)}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      color: '#64748b',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                    title={showSignupPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showSignupPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showSignupPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </label>
 
               <div className="field-group">
@@ -384,13 +433,35 @@ export default function AdminAuthModal({
 
                   <label className="field-group">
                     <span className="field-label">Set New Password</span>
-                    <input
-                      type="password"
-                      placeholder="At least 6 characters"
-                      value={forgotNewPassword}
-                      onChange={(e) => setForgotNewPassword(e.target.value)}
-                      required
-                    />
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <input
+                        type={showForgotNewPassword ? 'text' : 'password'}
+                        placeholder="At least 6 characters"
+                        value={forgotNewPassword}
+                        onChange={(e) => setForgotNewPassword(e.target.value)}
+                        required
+                        style={{ width: '100%', paddingRight: '36px' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotNewPassword((v) => !v)}
+                        style={{
+                          position: 'absolute',
+                          right: '10px',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 0,
+                          color: '#64748b',
+                          display: 'flex',
+                          alignItems: 'center',
+                        }}
+                        title={showForgotNewPassword ? 'Hide password' : 'Show password'}
+                        aria-label={showForgotNewPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showForgotNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </label>
 
                   <button type="submit" className="button primary" style={{ width: '100%' }}>

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   BadgePercent, Calendar, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, CreditCard,
   Download, Edit, FileSpreadsheet, Files, FileText, Filter, House, KeyRound, LayoutDashboard, Lock, LogOut, Mail,
-  Menu, Minus, Package, PackagePlus, PanelLeft, PanelLeftClose, Pencil, Phone, Plus, Printer, ReceiptText,
+  Megaphone, Menu, Minus, Package, PackagePlus, PanelLeft, PanelLeftClose, Pencil, Phone, Plus, Printer, ReceiptText,
   Scale, Search, Settings, ShieldCheck, Shirt, ShoppingBag, Smartphone, Sparkles, Store,
   Trash2, UserPlus, UserRound, Users, Wallet, Waves, Wind, X,
 } from 'lucide-react';
@@ -11,7 +11,7 @@ import {
   assignPackage, clearAdminSession, createAdmin, createCustomer, createOrder,
   createPackage, deleteCustomer, deletePackage, formatMoney, getAdminSession, isRemoteMode,
   loadStore, recordPayment, resetAdminPassword, saveSettings, saveStaff, setAdminSession,
-  updateCustomer, updateOrderStatus, updatePackage,
+  updateAdminProfile, updateCustomer, updateOrderStatus, updatePackage,
   saveCustomAddon, saveCustomBrand, saveCustomColor, saveCustomDefect,
 } from './lib/persistence.js';
 import { downloadBatchInvoicesPdf, formatDate, formatDateTime } from './lib/pdfGenerator.js';
@@ -35,6 +35,7 @@ import CustomerModal from './components/CustomerModal.jsx';
 import PosRegister from './components/PosRegister.jsx';
 import PublicBillView from './components/PublicBillView.jsx';
 import AppLoginScreen from './components/AppLoginScreen.jsx';
+import PamphletModal from './components/PamphletModal.jsx';
 import { AppSkeleton, TableSkeleton } from './components/SkeletonLoader.jsx';
 import {
   isDemoAllowed,
@@ -496,6 +497,19 @@ export default function App() {
             className="nav-item"
             onClick={() => {
               setMobileMenuOpen(false);
+              setModal({ type: 'pamphlet' });
+            }}
+            data-tooltip="Store Pamphlet & Customer Flyer"
+          >
+            <Megaphone size={18} />
+            <span>Store Pamphlet</span>
+          </button>
+
+          <button
+            type="button"
+            className="nav-item"
+            onClick={() => {
+              setMobileMenuOpen(false);
               requireAdmin(() => setModal({ type: 'settings' }));
             }}
             data-tooltip="Store & Tax Settings"
@@ -734,7 +748,7 @@ export default function App() {
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     className="button button-primary"
@@ -742,6 +756,16 @@ export default function App() {
                     onClick={() => setView('new-order')}
                   >
                     <Plus size={16} /> New Order (Register)
+                  </button>
+
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    style={{ minHeight: '44px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    onClick={() => setModal({ type: 'pamphlet' })}
+                    title="Generate printable store pamphlet & flyer for customer outreach"
+                  >
+                    <Megaphone size={15} color="#2563eb" /> Store Pamphlet
                   </button>
 
                   <button
@@ -1752,11 +1776,29 @@ export default function App() {
         onClose={() => setModal(null)}
         settings={data.settings}
         staffList={data.staff}
+        adminUser={adminUser || authSession}
+        adminsList={data.admins || []}
+        onOpenPamphlet={() => setModal({ type: 'pamphlet' })}
         onSaveSettings={async (newSettings) => {
           await runMutation((cur) => saveSettings(newSettings, cur), 'Settings saved.');
         }}
         onSaveStaff={async (newStaff) => {
           await runMutation((cur) => saveStaff(newStaff, cur), 'Staff updated.');
+        }}
+        onUpdateAdmin={async (adminId, updatedFields) => {
+          await runMutation(async (cur) => {
+            const next = await updateAdminProfile(adminId, updatedFields, cur);
+            const updatedUser = (next.admins || []).find((a) => a.id === adminId) || {
+              id: adminId,
+              name: updatedFields.name,
+              email: updatedFields.email,
+              role: 'admin',
+              type: 'admin',
+            };
+            setAdminUserState((prev) => (prev ? { ...prev, ...updatedUser } : prev));
+            setAuthSession((prev) => (prev?.role === 'admin' || prev?.type === 'admin' ? { ...prev, ...updatedUser } : prev));
+            return next;
+          }, 'Administrator profile and credentials updated.');
         }}
         onToast={showToast}
       />
@@ -1854,7 +1896,17 @@ export default function App() {
         onToast={showToast}
       />
 
-      {/* 9. FIRST-TIME STORE NAME ONBOARDING (PRODUCTION MANDATORY) */}
+      {/* 9. STORE PAMPHLET & CUSTOMER CONTACT FLYER MODAL */}
+      <PamphletModal
+        isOpen={modal?.type === 'pamphlet'}
+        onClose={() => setModal(null)}
+        settings={data.settings}
+        packages={data.packages}
+        services={data.services}
+        onToast={showToast}
+      />
+
+      {/* 10. FIRST-TIME STORE NAME ONBOARDING (PRODUCTION MANDATORY) */}
       {!isDemoAllowed() && !data.settings?.storeNameCreated && (
         <div
           className="modal-backdrop"

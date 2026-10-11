@@ -47,6 +47,26 @@ function normalize(data) {
   const latestOrderNo = currentOrders[0]?.orderNo;
   const initialNextOrderNo = data.settings?.nextOrderNo || (latestOrderNo ? getNextOrderNo(latestOrderNo) : 'B6164');
 
+  // Preserve stored admins if incoming payload from API bootstrap does not include an admins table
+  let existingAdmins = [];
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('freshfold-pos-v3');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed.admins) && parsed.admins.length > 0) {
+          existingAdmins = parsed.admins;
+        }
+      }
+    }
+  } catch {}
+
+  const resolvedAdmins = Array.isArray(data.admins) && data.admins.length > 0
+    ? data.admins
+    : (data.settings?.admins && Array.isArray(data.settings.admins) && data.settings.admins.length > 0)
+      ? data.settings.admins
+      : (existingAdmins.length > 0 ? existingAdmins : [...initialAdmins]);
+
   return {
     settings: {
       ...defaultSettings,
@@ -57,7 +77,7 @@ function normalize(data) {
         : defaultSettings.expressOptions,
     },
     staff: Array.isArray(data.staff) && data.staff.length ? data.staff : [...defaultStaff],
-    admins: Array.isArray(data.admins) && data.admins.length ? data.admins : [...initialAdmins],
+    admins: resolvedAdmins,
     packages: (Array.isArray(data.packages) && data.packages.length > 0 ? data.packages : [...initialPackageCatalog]).map((pkg) => {
       const defaultMatch = initialPackageCatalog.find((d) => d.id === pkg.id);
       return {
@@ -227,6 +247,98 @@ export async function resetAdminPassword(adminId, newPassword, current) {
     admins: (current.admins || initialAdmins).map((a) =>
       a.id === adminId ? { ...a, password: newPassword } : a
     ),
+  });
+}
+
+/**
+ * Updates an administrator's profile (name, email, password, recovery question/answer).
+ * Persists immediately to local storage and updates active session if needed.
+ */
+export async function updateAdminProfile(adminId, updates, current) {
+  const currentAdmins = Array.isArray(current?.admins) && current.admins.length > 0
+    ? current.admins
+    : [...initialAdmins];
+
+  const cleanName = updates.name ? String(updates.name).trim() : undefined;
+  const cleanEmail = updates.email ? String(updates.email).trim().toLowerCase() : undefined;
+  const cleanPassword = updates.password ? String(updates.password).trim() : undefined;
+  const cleanAnswer = updates.securityAnswer ? String(updates.securityAnswer).trim().toLowerCase() : undefined;
+
+  let found = false;
+  const nextAdmins = currentAdmins.map((admin) => {
+    if (admin.id === adminId || (!adminId && currentAdmins.length === 1)) {
+      found = true;
+      return {
+        ...admin,
+        ...(cleanName ? { name: cleanName } : {}),
+        ...(cleanEmail ? { email: cleanEmail } : {}),
+        ...(cleanPassword ? { password: cleanPassword } : {}),
+        ...(updates.securityQuestion ? { securityQuestion: updates.securityQuestion } : {}),
+        ...(cleanAnswer ? { securityAnswer: cleanAnswer } : {}),
+      };
+    }
+    return admin;
+  });
+
+  if (!found && (cleanName || cleanEmail)) {
+    nextAdmins.push({
+      id: adminId || `admin-${Date.now()}`,
+      name: cleanName || 'Store Administrator',
+      email: cleanEmail || 'admin@freshfold.test',
+      password: cleanPassword || 'admin123',
+      securityQuestion: updates.securityQuestion || 'What city is this store in?',
+      securityAnswer: cleanAnswer || 'gurugram',
+    });
+  }
+
+  // Update localStorage session if currently logged in
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const activeRaw = localStorage.getItem('freshfold_active_session_v1');
+      if (activeRaw) {
+        const active = JSON.parse(activeRaw);
+        if (active.id === adminId || active.role === 'admin' || active.type === 'admin') {
+          const updatedActive = {
+            ...active,
+            ...(cleanName ? { name: cleanName } : {}),
+            ...(cleanEmail ? { email: cleanEmail } : {}),
+          };
+          localStorage.setItem('freshfold_active_session_v1', JSON.stringify(updatedActive));
+        }
+      }
+
+      const adminRaw = localStorage.getItem(SESSION_ADMIN_KEY);
+      if (adminRaw) {
+        const adminSession = JSON.parse(adminRaw);
+        if (adminSession.id === adminId || currentAdmins.length === 1) {
+          const updatedAdminSession = {
+            ...adminSession,
+            ...(cleanName ? { name: cleanName } : {}),
+            ...(cleanEmail ? { email: cleanEmail } : {}),
+          };
+          localStorage.setItem(SESSION_ADMIN_KEY, JSON.stringify(updatedAdminSession));
+        }
+      }
+    }
+  } catch {}
+
+  // If remoteMode, sync admins into store settings
+  if (remoteMode) {
+    try {
+      await api('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ admins: nextAdmins }),
+      });
+    } catch {}
+  }
+
+  return saveLocal({
+    ...current,
+    admins: nextAdmins,
+    settings: {
+      ...(current.settings || {}),
+      admins: nextAdmins,
+    },
   });
 }
 
