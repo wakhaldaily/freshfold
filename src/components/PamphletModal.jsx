@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   X, Printer, Download, Share2, Copy, Check, Phone, MessageSquare,
   MapPin, Clock, Sparkles, Shirt, Wind, Waves, CheckCircle2,
-  QrCode, FileText, ArrowRight, Eye, RefreshCw, Star, Tag, Palette
+  QrCode, FileText, ArrowRight, Eye, RefreshCw, Star, Tag, Palette,
+  Snowflake, Gift, Flame, Percent
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import html2canvas from 'html2canvas';
@@ -24,6 +25,11 @@ export default function PamphletModal({
   const [promoSubtext, setPromoSubtext] = useState('Call or WhatsApp our admin team to schedule an instant doorstep pickup!');
   const [timing, setTiming] = useState('Mon - Sun: 8:00 AM - 9:00 PM');
   
+  // Seasonal Winter Offer States
+  const [showWinterOffers, setShowWinterOffers] = useState(true);
+  const [winterHeadline, setWinterHeadline] = useState('❄️ SPECIAL WINTER WARMTH OFFERS — LIMITED TIME!');
+  const [winterSubtext, setWinterSubtext] = useState('Keep your sweaters, heavy blankets & home curtains pristine with exclusive winter savings!');
+
   const [format, setFormat] = useState('a4'); // 'a4', 'a5', 'digital'
   const [theme, setTheme] = useState('blue'); // 'blue', 'emerald', 'violet', 'amber', 'mono'
   const [showQr, setShowQr] = useState(true);
@@ -221,7 +227,13 @@ export default function PamphletModal({
 
   // Marketing Text generator for WhatsApp
   const marketingText = `🧺 *${storeName}* 🧺\n${tagline}\n\n` +
-    `📞 *Call Admin for Pickup:* +91 ${phone}\n` +
+    (showWinterOffers
+      ? `❄️ *EXCLUSIVE WINTER OFFERS (LIMITED TIME):*\n` +
+        `• 🧥 *5 Sweaters:* Pay for 5 Sweaters, Get 1 Sweater FREE!\n` +
+        `• 🛏️ *2 Combo Blankets:* 20% to 25% OFF on Heavy Blankets & Quilts!\n` +
+        `• 🪟 *Curtains:* Flat 25% OFF on Curtain Dry Cleaning & Steam Pressing!\n\n`
+      : '') +
+    `📞 *Call Admin for Free Pickup:* +91 ${phone}\n` +
     `💬 *WhatsApp Booking:* ${waUrl}\n` +
     `📍 *Store Location:* ${address}\n` +
     `⏰ *Timings:* ${timing}\n\n` +
@@ -231,7 +243,7 @@ export default function PamphletModal({
     `• 🧺 *Wash & Fold / Wash & Iron:* Everyday clothes & sheets by kilo (from ₹90/kg)\n` +
     `• 🛏️ *Heavy Household:* Blankets, Quilts, Dohar, Curtains & Sofa Covers\n` +
     `• ⚡ *Express Turnaround:* 24-48 Hours delivery available for urgent orders\n\n` +
-    `🎁 *SPECIAL OFFER:* ${promoHeadline}\n\n` +
+    `🎁 *Welcome Deal:* ${promoHeadline}\n\n` +
     `👉 Save our number and message us on WhatsApp anytime for easy doorstep laundry pickups!`;
 
   const handleShareWhatsApp = () => {
@@ -551,6 +563,7 @@ export default function PamphletModal({
               </span>
 
               {[
+                { label: '❄️ Winter Special Offers Showcase', checked: showWinterOffers, set: setShowWinterOffers },
                 { label: 'Direct WhatsApp Contact QR Code', checked: showQr, set: setShowQr },
                 { label: 'Services & Price Guide Menu', checked: showPrices, set: setShowPrices },
                 { label: 'Wallet Bonus & Membership Plans', checked: showPackages, set: setShowPackages },
@@ -567,6 +580,49 @@ export default function PamphletModal({
                 </label>
               ))}
             </div>
+
+            {/* Winter Offer Customizer */}
+            {showWinterOffers && (
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'grid', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Snowflake size={14} color="#0284c7" />
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Winter Campaign Settings
+                  </span>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '10.5px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '2px' }}>
+                    Winter Campaign Title
+                  </label>
+                  <input
+                    type="text"
+                    value={winterHeadline}
+                    onChange={(e) => setWinterHeadline(e.target.value)}
+                    style={{ width: '100%', padding: '5px 8px', fontSize: '11px', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '10.5px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '2px' }}>
+                    Campaign Tagline
+                  </label>
+                  <input
+                    type="text"
+                    value={winterSubtext}
+                    onChange={(e) => setWinterSubtext(e.target.value)}
+                    style={{ width: '100%', padding: '5px 8px', fontSize: '11px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  />
+                </div>
+
+                <div style={{ background: '#f0f9ff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #bae6fd', fontSize: '10.5px', color: '#0369a1', lineHeight: 1.4 }}>
+                  ✨ <strong>3 Active Deals Highlighted:</strong><br />
+                  1. 🧥 5 Sweaters + 1 Free<br />
+                  2. 🛏️ 2 Combo Blankets (20% to 25% Off)<br />
+                  3. 🪟 Curtains Deep Clean (Flat 25% Off)
+                </div>
+              </div>
+            )}
           </div>
 
           {/* RIGHT: LIVE INTERACTIVE PAMPHLET PREVIEW */}
@@ -829,6 +885,312 @@ export default function PamphletModal({
                     </div>
                   )}
                 </div>
+
+                {/* ❄️ EXCLUSIVE WINTER SPECIAL OFFERS (FEATURED SEASONAL PROMOTION) */}
+                {showWinterOffers && (
+                  <div
+                    style={{
+                      background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #fef3c7 100%)',
+                      border: '2px dashed #0284c7',
+                      borderRadius: '12px',
+                      padding: format === 'a5' ? '12px 14px' : '16px 20px',
+                      boxShadow: '0 4px 12px rgba(2, 132, 199, 0.08)',
+                      position: 'relative',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Decorative Snowflake Watermark */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        right: '-15px',
+                        bottom: '-20px',
+                        opacity: 0.12,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <Snowflake size={120} color="#0284c7" />
+                    </div>
+
+                    {/* Section Header with Festive Seasonal Ribbons */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '6px',
+                        marginBottom: '12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '8px',
+                            background: '#0284c7',
+                            color: '#ffffff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
+                          }}
+                        >
+                          <Snowflake size={16} />
+                        </div>
+                        <div>
+                          <h4
+                            style={{
+                              margin: 0,
+                              fontSize: format === 'a5' ? '13px' : '15px',
+                              fontWeight: 900,
+                              color: '#0369a1',
+                              letterSpacing: '-0.2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <span>{winterHeadline}</span>
+                          </h4>
+                          <p style={{ margin: '1px 0 0', fontSize: '10.5px', color: '#0284c7', fontWeight: 600 }}>
+                            {winterSubtext}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span
+                          style={{
+                            fontSize: '10px',
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.6px',
+                            background: '#dc2626',
+                            color: '#ffffff',
+                            padding: '3px 9px',
+                            borderRadius: '999px',
+                            boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Flame size={11} /> Seasonal Specials
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* The 3 Highlighted Winter Deals Grid */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, 1fr)',
+                        gap: format === 'a5' ? '8px' : '12px',
+                      }}
+                    >
+                      {/* DEAL 1: 5 SWEATERS + 1 FREE */}
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          borderRadius: '10px',
+                          border: '1.5px solid #bae6fd',
+                          padding: format === 'a5' ? '10px 8px' : '12px 12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)',
+                          position: 'relative',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '0',
+                            right: '0',
+                            background: 'linear-gradient(135deg, #e11d48, #be123c)',
+                            color: '#fff',
+                            fontSize: '9px',
+                            fontWeight: 900,
+                            padding: '2px 8px',
+                            borderBottomLeftRadius: '8px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.4px',
+                          }}
+                        >
+                          BUY 5 GET 1 FREE
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '18px' }}>🧥</span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>
+                              Sweaters & Woolens
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: format === 'a5' ? '13px' : '15px', fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>
+                            5 Sweaters = 1 FREE!
+                          </div>
+
+                          <p style={{ margin: '6px 0 0', fontSize: '10px', color: '#475569', lineHeight: 1.35 }}>
+                            Pay for 5 Sweaters, get the 6th Sweater dry cleaned <strong>FREE</strong>. Woolmark-safe conditioning & lint de-pilling.
+                          </p>
+                        </div>
+
+                        <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '9.5px', color: '#64748b' }}>All Cardigans & Pullovers</span>
+                          <span style={{ fontSize: '10px', fontWeight: 800, color: '#e11d48', background: '#ffe4e6', padding: '1px 6px', borderRadius: '4px' }}>
+                            100% Free
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* DEAL 2: 2 COMBO BLANKETS 20% TO 25% OFF */}
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          borderRadius: '10px',
+                          border: '1.5px solid #fde68a',
+                          padding: format === 'a5' ? '10px 8px' : '12px 12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)',
+                          position: 'relative',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '0',
+                            right: '0',
+                            background: 'linear-gradient(135deg, #d97706, #b45309)',
+                            color: '#fff',
+                            fontSize: '9px',
+                            fontWeight: 900,
+                            padding: '2px 8px',
+                            borderBottomLeftRadius: '8px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.4px',
+                          }}
+                        >
+                          20% - 25% OFF
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '18px' }}>🛏️</span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>
+                              Heavy Quilts & Blankets
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: format === 'a5' ? '13px' : '15px', fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>
+                            2 Combo Blankets Offer
+                          </div>
+
+                          <p style={{ margin: '6px 0 0', fontSize: '10px', color: '#475569', lineHeight: 1.35 }}>
+                            Get <strong>20% to 25% OFF</strong> on cleaning any 2 double blankets, mink blankets, quilts or heavy rajais.
+                          </p>
+                        </div>
+
+                        <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '9.5px', color: '#64748b' }}>Deep Anti-bacterial Wash</span>
+                          <span style={{ fontSize: '10px', fontWeight: 800, color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '4px' }}>
+                            Combo Deal
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* DEAL 3: CURTAIN 25% OFF */}
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          borderRadius: '10px',
+                          border: '1.5px solid #a7f3d0',
+                          padding: format === 'a5' ? '10px 8px' : '12px 12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)',
+                          position: 'relative',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '0',
+                            right: '0',
+                            background: 'linear-gradient(135deg, #059669, #047857)',
+                            color: '#fff',
+                            fontSize: '9px',
+                            fontWeight: 900,
+                            padding: '2px 8px',
+                            borderBottomLeftRadius: '8px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.4px',
+                          }}
+                        >
+                          FLAT 25% OFF
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '18px' }}>🪟</span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+                              Home Drapes & Decor
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: format === 'a5' ? '13px' : '15px', fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>
+                            Curtains Deep Clean 25%
+                          </div>
+
+                          <p style={{ margin: '6px 0 0', fontSize: '10px', color: '#475569', lineHeight: 1.35 }}>
+                            Enjoy <strong>Flat 25% OFF</strong> on all window curtains & heavy draperies. Dust extraction & steam press finish.
+                          </p>
+                        </div>
+
+                        <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '9.5px', color: '#64748b' }}>German Steam Pressing</span>
+                          <span style={{ fontSize: '10px', fontWeight: 800, color: '#047857', background: '#d1fae5', padding: '1px 6px', borderRadius: '4px' }}>
+                            Flat 25% Off
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bottom Claim Instructions */}
+                    <div
+                      style={{
+                        marginTop: '10px',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        background: 'rgba(255, 255, 255, 0.8)',
+                        border: '1px solid #bae6fd',
+                        fontSize: '10.5px',
+                        color: '#0369a1',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '4px',
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        <strong>💡 How to Claim:</strong> Mention <em>"WINTER OFFER"</em> during doorstep pickup or WhatsApp booking.
+                      </span>
+                      <span style={{ fontWeight: 700, color: '#e11d48' }}>
+                        Valid This Winter Season · Free Pickup & Drop
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* 2. SERVICES & MENU HIGHLIGHTS */}
                 {showPrices && (
