@@ -193,9 +193,27 @@ async function handleApi(request, env) {
       const taxAmount = body.taxEnabled !== false ? roundMoney(subtotal * taxPercent / 100) : 0;
       const totalAmount = roundMoney(subtotal + taxAmount);
 
+      // Check customer wallet balance for auto-deducting credits
+      const customerRows = await sql`SELECT wallet_balance AS "walletBalance" FROM customers WHERE id = ${String(body.customerId)}`;
+      const walletBalance = Number(customerRows[0]?.walletBalance || 0);
+      const autoDeduct = Math.min(walletBalance, totalAmount);
+      const paidAmount = autoDeduct;
+      const balanceAmount = roundMoney(Math.max(0, totalAmount - autoDeduct));
+
       await sql`INSERT INTO orders (id, order_no, customer_id, order_type, service, items, weight_kg, weight_note, gross_amount, discount_amount, discount_percent, discount_name, tax_amount, tax_percent, total_amount, paid_amount, balance_amount, status, due_date)
-        VALUES (${orderId}, ${orderNo}, ${String(body.customerId)}, ${type}, ${serviceName}, ${JSON.stringify(items)}::jsonb, ${weightKg}, ${String(body.weightNote || '')}, ${grossAmount}, ${discountAmount}, ${discountPercent}, ${discountName}, ${taxAmount}, ${taxPercent}, ${totalAmount}, 0, ${totalAmount}, 'Received', ${String(body.dueDate || new Date().toISOString().slice(0, 10))})`;
-      return response({ id: orderId, orderNo }, 201);
+        VALUES (${orderId}, ${orderNo}, ${String(body.customerId)}, ${type}, ${serviceName}, ${JSON.stringify(items)}::jsonb, ${weightKg}, ${String(body.weightNote || '')}, ${grossAmount}, ${discountAmount}, ${discountPercent}, ${discountName}, ${taxAmount}, ${taxPercent}, ${totalAmount}, ${paidAmount}, ${balanceAmount}, 'Received', ${String(body.dueDate || new Date().toISOString().slice(0, 10))})`;
+
+      if (autoDeduct > 0) {
+        const payId = id('pay');
+        const wtId = id('wt');
+        await Promise.all([
+          sql`UPDATE customers SET wallet_balance = GREATEST(0, wallet_balance - ${autoDeduct}) WHERE id = ${String(body.customerId)}`,
+          sql`INSERT INTO payments (id, order_id, customer_id, amount, method) VALUES (${payId}, ${orderId}, ${String(body.customerId)}, ${autoDeduct}, 'wallet')`,
+          sql`INSERT INTO wallet_transactions (id, customer_id, order_id, kind, amount, description) VALUES (${wtId}, ${String(body.customerId)}, ${orderId}, 'debit', ${autoDeduct}, ${'Payment for ' + orderNo})`,
+        ]);
+      }
+
+      return response({ id: orderId, orderNo, autoDeduct, paidAmount, balanceAmount }, 201);
     }
 
     // --- PACKAGE SALE (LIFETIME / NO EXPIRY) ---

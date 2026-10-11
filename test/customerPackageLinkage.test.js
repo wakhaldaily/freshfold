@@ -370,27 +370,81 @@ test('7. Full End-to-End Lifecycle Linkage: Intake -> Package -> POS Order -> Wa
   assert.equal(placedOrder.grossAmount, 1250);
   assert.equal(placedOrder.customerGstin, '07AABCK5544R1Z2');
   assert.equal(placedOrder.customerPreference, 'Folded (Travel Pack)');
-  assert.equal(placedOrder.balanceAmount, placedOrder.totalAmount);
+  // Money is now automatically deducted from customer's wallet credits upon order placement!
+  assert.equal(placedOrder.balanceAmount, 0, 'Order balance is automatically cleared from wallet credits upon placement');
+  assert.equal(placedOrder.paidAmount, placedOrder.totalAmount, 'Order paidAmount matches total amount automatically');
 
-  // Step 4: Pay entire bill using customer's wallet balance
-  store = await recordPayment(placedOrder.id, placedOrder.totalAmount, 'wallet', store);
-  const paidOrder = store.orders.find((o) => o.id === placedOrder.id);
-  assert.equal(paidOrder.balanceAmount, 0, 'Order balance must be fully cleared');
-  assert.equal(paidOrder.paidAmount, placedOrder.totalAmount);
-
-  // Verify wallet balance deduction
+  // Verify wallet balance deduction happened immediately upon placement
   const finalCust = store.customers.find((c) => c.id === customer.id);
-  assert.equal(finalCust.walletBalance, 20500 - placedOrder.totalAmount);
+  assert.equal(finalCust.walletBalance, 20500 - placedOrder.totalAmount, 'Customer wallet balance immediately deducted');
+  assert.ok(store.payments.some((p) => p.orderId === placedOrder.id && p.method === 'wallet'), 'Wallet payment record created');
+  assert.ok(store.walletTransactions.some((wt) => wt.orderId === placedOrder.id && wt.kind === 'debit'), 'Wallet debit ledger created');
 
   // Step 5: Thermal receipt verification
   const receiptPdf = generateThermalReceiptPdf({
-    order: paidOrder,
+    order: placedOrder,
     customer: finalCust,
     settings: store.settings,
-    payments: store.payments.filter((p) => p.orderId === paidOrder.id),
+    payments: store.payments.filter((p) => p.orderId === placedOrder.id),
     cashierName: 'Main Register',
   });
   assert.ok(receiptPdf);
   const pdfBlob = receiptPdf.output('blob');
   assert.ok(pdfBlob.size > 1000);
+});
+
+test('8. Automatic Wallet Credit Deduction (Full & Partial) upon Order Intake', async () => {
+  let store = createInitialData();
+
+  // Create customer
+  store = await createCustomer({
+    name: 'Rohan Verma',
+    mobile: '9876500011',
+  }, store);
+  const customer = store.customers.find((c) => c.mobile === '9876500011');
+  assert.ok(customer);
+
+  // Subscribe to Gold Package (adds ₹4,000 credits)
+  store = await assignPackage(customer.id, 'gold-pkg', 'cash', store);
+  const custAfterPkg = store.customers.find((c) => c.id === customer.id);
+  assert.equal(custAfterPkg.walletBalance, 4000, 'Customer has 4,000 wallet credits');
+
+  // Order 1: Order total ₹500 (Gross 500, Tax 0 for simplicity)
+  store.settings.taxEnabled = false;
+  store = await createOrder({
+    customerId: customer.id,
+    type: 'pieces',
+    service: 'Dry cleaning',
+    items: [{ id: 'm-shirt', name: 'Shirt', category: 'Men', unitPrice: 250, quantity: 2 }],
+    grossAmount: 500,
+    discountAmount: 0,
+    discountPercent: 0,
+  }, store);
+
+  const order1 = store.orders[0];
+  assert.equal(order1.totalAmount, 500);
+  assert.equal(order1.paidAmount, 500, 'Paid in full via auto-deducted wallet');
+  assert.equal(order1.balanceAmount, 0, 'No balance remaining');
+
+  const custAfterOrder1 = store.customers.find((c) => c.id === customer.id);
+  assert.equal(custAfterOrder1.walletBalance, 3500, 'Remaining wallet balance is 3,500');
+
+  // Order 2: Order total ₹4,000 (More than remaining ₹3,500 credit -> partial auto-deduction)
+  store = await createOrder({
+    customerId: customer.id,
+    type: 'pieces',
+    service: 'Dry cleaning',
+    items: [{ id: 'm-coat', name: 'Coat', category: 'Men', unitPrice: 1000, quantity: 4 }],
+    grossAmount: 4000,
+    discountAmount: 0,
+    discountPercent: 0,
+  }, store);
+
+  const order2 = store.orders[0];
+  assert.equal(order2.totalAmount, 4000);
+  assert.equal(order2.paidAmount, 3500, 'Partial auto-deduction of remaining 3,500 credits');
+  assert.equal(order2.balanceAmount, 500, 'Remaining 500 balance due');
+
+  const custAfterOrder2 = store.customers.find((c) => c.id === customer.id);
+  assert.equal(custAfterOrder2.walletBalance, 0, 'Wallet balance reduced to 0');
 });

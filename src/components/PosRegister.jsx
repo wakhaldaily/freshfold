@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   CalendarDays, Check, ChevronDown, ChevronRight, Edit3, Filter, Minus, Plus,
   ReceiptText, Scale, Search, Shirt, Sparkles, Sun, Tag, Trash2, UserPlus,
-  Users, Waves, Wind, X,
+  Users, Wallet, Waves, Wind, X,
 } from 'lucide-react';
 import { garmentCatalog, services, weightServices } from '../data.js';
 import { formatMoney } from '../lib/persistence.js';
@@ -1410,6 +1410,35 @@ export default function PosRegister({
               <span>Total Bill:</span>
               <span style={{ color: '#0f172a' }}>{formatMoney(grandTotal)}</span>
             </div>
+
+            {currentCustomer?.walletBalance > 0 && (
+              <div
+                style={{
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
+                  fontSize: '11px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d', fontWeight: 700 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Wallet size={13} /> Package Wallet Credit:
+                  </span>
+                  <span>{formatMoney(currentCustomer.walletBalance)}</span>
+                </div>
+                <div style={{ color: '#166534', fontSize: '10.5px', lineHeight: 1.35 }}>
+                  {currentCustomer.walletBalance >= grandTotal ? (
+                    <span>✓ Bill will be automatically deducted in full from wallet credits upon order placement. (Remaining balance: ₹0.00)</span>
+                  ) : (
+                    <span>✓ {formatMoney(currentCustomer.walletBalance)} will auto-deduct. Remaining {formatMoney(grandTotal - currentCustomer.walletBalance)} due at delivery.</span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 1-Click Checkout Button */}
@@ -1420,8 +1449,22 @@ export default function PosRegister({
             disabled={submitting || (orderType === 'pieces' ? cartItems.length === 0 : !(Number(weightKg) > 0))}
             onClick={handlePlaceOrder}
           >
-            <ReceiptText size={18} />
-            {submitting ? 'Placing Order...' : `Checkout · ${formatMoney(grandTotal)}`}
+            {currentCustomer?.walletBalance >= grandTotal ? (
+              <>
+                <Wallet size={18} />
+                {submitting ? 'Placing Order...' : `Place Order & Pay with Wallet (${formatMoney(grandTotal)})`}
+              </>
+            ) : currentCustomer?.walletBalance > 0 ? (
+              <>
+                <Wallet size={18} />
+                {submitting ? 'Placing Order...' : `Place Order (Auto-deduct ${formatMoney(currentCustomer.walletBalance)})`}
+              </>
+            ) : (
+              <>
+                <ReceiptText size={18} />
+                {submitting ? 'Placing Order...' : `Checkout · ${formatMoney(grandTotal)}`}
+              </>
+            )}
           </button>
         </div>
       </div>

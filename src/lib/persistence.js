@@ -358,6 +358,14 @@ export async function createOrder(order, current) {
   const taxAmount = settings.taxEnabled ? Math.round((subtotal * (taxPercent / 100) + Number.EPSILON) * 100) / 100 : 0;
   const totalAmount = Math.round((subtotal + taxAmount + Number.EPSILON) * 100) / 100;
 
+  // Auto-deduct from customer's package wallet credits if available
+  const customer = (current.customers || []).find((c) => c.id === order.customerId);
+  const walletBal = Number(customer?.walletBalance || 0);
+  const autoDeduct = Math.min(walletBal, totalAmount);
+  const paidAmount = autoDeduct;
+  const balanceAmount = Math.max(0, totalAmount - autoDeduct);
+  const createdAt = new Date().toISOString();
+
   const newOrder = {
     ...order,
     id,
@@ -370,12 +378,52 @@ export async function createOrder(order, current) {
     taxAmount,
     taxPercent,
     totalAmount,
-    paidAmount: 0,
-    balanceAmount: totalAmount,
+    paidAmount,
+    balanceAmount,
     status: 'Received',
-    createdAt: new Date().toISOString(),
+    createdAt,
   };
-  return saveLocal({ ...current, orders: [newOrder, ...current.orders] });
+
+  let customers = current.customers;
+  let payments = current.payments || [];
+  let walletTransactions = current.walletTransactions || [];
+
+  if (autoDeduct > 0) {
+    customers = current.customers.map((c) =>
+      c.id === order.customerId
+        ? { ...c, walletBalance: Math.max(0, c.walletBalance - autoDeduct) }
+        : c
+    );
+    const payment = {
+      id: `pay-${crypto.randomUUID()}`,
+      orderId: id,
+      customerId: order.customerId,
+      amount: autoDeduct,
+      method: 'wallet',
+      createdAt,
+    };
+    payments = [payment, ...payments];
+
+    const transaction = {
+      id: `wt-${crypto.randomUUID()}`,
+      customerId: order.customerId,
+      packageId: null,
+      orderId: id,
+      kind: 'debit',
+      amount: autoDeduct,
+      description: `Payment for ${orderNo}`,
+      createdAt,
+    };
+    walletTransactions = [transaction, ...walletTransactions];
+  }
+
+  return saveLocal({
+    ...current,
+    orders: [newOrder, ...current.orders],
+    customers,
+    payments,
+    walletTransactions,
+  });
 }
 
 // --- PAYMENTS ---

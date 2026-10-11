@@ -383,16 +383,14 @@ test('7. End-to-end package assignment and order creation flow', async () => {
 
   const placedOrder = store.orders[0];
   assert.ok(placedOrder);
-  assert.equal(placedOrder.balanceAmount, placedOrder.totalAmount);
-
-  // Pay using wallet
-  store = await recordPayment(placedOrder.id, placedOrder.totalAmount, 'wallet', store);
-  const paidOrder = store.orders.find((o) => o.id === placedOrder.id);
-  assert.equal(paidOrder.balanceAmount, 0);
-  assert.equal(paidOrder.paidAmount, placedOrder.totalAmount);
+  // Auto-deducted immediately upon order placement from customer's Gold Package wallet credit!
+  assert.equal(placedOrder.balanceAmount, 0, 'Balance cleared automatically from wallet');
+  assert.equal(placedOrder.paidAmount, placedOrder.totalAmount, 'Paid amount matches total amount');
 
   const custAfterPay = store.customers.find((c) => c.id === customer.id);
-  assert.equal(custAfterPay.walletBalance, 4000 - placedOrder.totalAmount);
+  assert.equal(custAfterPay.walletBalance, 4000 - placedOrder.totalAmount, 'Wallet balance immediately debited');
+  assert.ok(store.payments.some((p) => p.orderId === placedOrder.id && p.method === 'wallet'));
+  assert.ok(store.walletTransactions.some((wt) => wt.orderId === placedOrder.id && wt.kind === 'debit'));
 });
 
 test('8. End-to-end custom package creation, assignment, and order verification', async () => {
