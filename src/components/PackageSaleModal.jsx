@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BadgePercent, Banknote, CreditCard, Infinity, Smartphone, Wallet, X } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
+import { onActivateKey, useEscapeKey } from '../lib/a11y.js';
 
 export default function PackageSaleModal({
   isOpen,
@@ -13,6 +14,7 @@ export default function PackageSaleModal({
   const [selectedTemplateId, setSelectedTemplateId] = useState(packages[0]?.id || '');
   const [paymentMethod, setPaymentMethod] = useState('upi');
   const [loading, setLoading] = useState(false);
+  useEscapeKey(isOpen && Boolean(customer), onClose);
 
   if (!isOpen || !customer) return null;
 
@@ -39,11 +41,18 @@ export default function PackageSaleModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+      <div
+        className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="package-sale-modal-title"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: '520px' }}
+      >
         <div className="modal-header">
           <div>
             <span className="caption-label">Package Enrollment</span>
-            <h3>Sell Package to {customer.name}</h3>
+            <h3 id="package-sale-modal-title">Sell Package to {customer.name}</h3>
           </div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Close">
             <X size={18} />
@@ -61,7 +70,10 @@ export default function PackageSaleModal({
                 return (
                   <div
                     key={pkg.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedTemplateId(pkg.id)}
+                    onKeyDown={onActivateKey(() => setSelectedTemplateId(pkg.id))}
                     style={{
                       display: 'flex',
                       alignItems: 'center',

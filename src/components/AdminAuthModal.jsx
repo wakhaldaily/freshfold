@@ -1,19 +1,28 @@
-import React, { useState } from 'react';
-import { Eye, EyeOff, KeyRound, Lock, Mail, ShieldAlert, ShieldCheck, User, UserPlus, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Eye, EyeOff, X } from 'lucide-react';
 import CustomSelect from './CustomSelect.jsx';
-import { isDemoAllowed } from '../lib/authConfig.js';
 
+/**
+ * Admin sign-in, (local-only) sign-up and password recovery.
+ * All credential checks happen in the injected handlers: on the server when the
+ * Worker API is connected, or against browser storage in local demo mode.
+ */
 export default function AdminAuthModal({
   isOpen,
   onClose,
-  admins = [],
+  allowSignup = false,
+  showDemoHint = false,
+  onAuthenticate,
+  onRecoverQuestion,
+  onResetPassword,
   onLoginSuccess,
   onCreateAdmin,
-  onResetPassword,
   onToast,
 }) {
   const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'forgot'
-  
+  const [submitting, setSubmitting] = useState(false);
+  const panelRef = useRef(null);
+
   // Show / Hide password toggles
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
@@ -33,9 +42,21 @@ export default function AdminAuthModal({
   // Forgot password form state
   const [forgotStep, setForgotStep] = useState(1); // 1: identify, 2: answer & new pass
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotMatchedAdmin, setForgotMatchedAdmin] = useState(null);
+  const [forgotQuestion, setForgotQuestion] = useState('');
   const [forgotAnswer, setForgotAnswer] = useState('');
   const [forgotNewPassword, setForgotNewPassword] = useState('');
+
+  // Escape closes the dialog; focus moves into it when opened.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    const first = panelRef.current?.querySelector('input, button:not([aria-label="Close"])');
+    first?.focus();
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, mode, onClose]);
 
   if (!isOpen) return null;
 
@@ -49,45 +70,43 @@ export default function AdminAuthModal({
     setSignupAnswer('');
     setForgotStep(1);
     setForgotEmail('');
-    setForgotMatchedAdmin(null);
+    setForgotQuestion('');
     setForgotAnswer('');
     setForgotNewPassword('');
+  };
+
+  const withSubmitting = async (fn) => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await fn();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // --- 1. HANDLE SIGN IN ---
   const handleLogin = (e) => {
     e.preventDefault();
-    const emailQuery = loginEmail.trim().toLowerCase();
-
-    if (!isDemoAllowed() && (emailQuery === 'admin@freshfold.test' || loginPassword === 'admin123')) {
-      onToast('Demo admin accounts are disabled in production. Please use your registered administrator credentials.');
-      return;
-    }
-
-    const matched = admins.find(
-      (a) => (a.email.toLowerCase() === emailQuery || a.name.toLowerCase() === emailQuery) && a.password === loginPassword
-    );
-
-    if (matched) {
-      onLoginSuccess(matched);
-      onToast(`Welcome back, ${matched.name}! Admin mode unlocked.`);
-      resetAll();
-      onClose();
-    } else {
-      onToast('Invalid admin credentials. Please check your email or password.');
-    }
+    withSubmitting(async () => {
+      try {
+        const admin = await onAuthenticate(loginEmail.trim(), loginPassword);
+        onLoginSuccess(admin);
+        onToast(`Welcome back, ${admin?.name || 'Administrator'}! Admin mode unlocked.`);
+        resetAll();
+        onClose();
+      } catch (err) {
+        onToast(err.message || 'Invalid admin credentials. Please check your email or password.');
+      }
+    });
   };
 
-  // --- 2. HANDLE SIGN UP (CREATE NEW ADMIN) ---
-  const handleSignup = async (e) => {
+  // --- 2. HANDLE SIGN UP (LOCAL DEMO MODE ONLY) ---
+  const handleSignup = (e) => {
     e.preventDefault();
     const emailClean = signupEmail.trim().toLowerCase();
     if (!signupName.trim() || !emailClean || !signupPassword) {
       onToast('Please fill all required fields.');
-      return;
-    }
-    if (admins.some((a) => a.email.toLowerCase() === emailClean)) {
-      onToast('An admin account with this email already exists.');
       return;
     }
     if (signupPassword.length < 6) {
@@ -108,60 +127,68 @@ export default function AdminAuthModal({
       securityAnswer: signupAnswer.trim().toLowerCase(),
     };
 
-    try {
-      await onCreateAdmin(newAdmin);
-      onLoginSuccess(newAdmin);
-      onToast(`Admin account created! Logged in as ${newAdmin.name}.`);
-      resetAll();
-      onClose();
-    } catch (err) {
-      onToast(err.message || 'Failed to create admin.');
-    }
+    withSubmitting(async () => {
+      try {
+        await onCreateAdmin(newAdmin);
+        const { password, securityAnswer, ...identity } = newAdmin;
+        onLoginSuccess({ ...identity, role: 'admin', type: 'admin' });
+        onToast(`Admin account created! Logged in as ${newAdmin.name}.`);
+        resetAll();
+        onClose();
+      } catch (err) {
+        onToast(err.message || 'Failed to create admin.');
+      }
+    });
   };
 
   // --- 3. HANDLE FORGOT PASSWORD ---
   const handleForgotIdentify = (e) => {
     e.preventDefault();
-    const emailClean = forgotEmail.trim().toLowerCase();
-    const matched = admins.find((a) => a.email.toLowerCase() === emailClean);
-    if (!matched) {
-      onToast('No admin account found with that email.');
-      return;
-    }
-    setForgotMatchedAdmin(matched);
-    setForgotStep(2);
+    withSubmitting(async () => {
+      try {
+        const question = await onRecoverQuestion(forgotEmail.trim());
+        setForgotQuestion(question || 'What city is this store in?');
+        setForgotStep(2);
+      } catch (err) {
+        onToast(err.message || 'Could not start password recovery.');
+      }
+    });
   };
 
-  const handleForgotReset = async (e) => {
+  const handleForgotReset = (e) => {
     e.preventDefault();
-    if (!forgotMatchedAdmin) return;
-    if (forgotAnswer.trim().toLowerCase() !== forgotMatchedAdmin.securityAnswer?.toLowerCase()) {
-      onToast('Incorrect security answer. Please try again.');
-      return;
-    }
     if (forgotNewPassword.length < 6) {
       onToast('New password must be at least 6 characters.');
       return;
     }
-
-    try {
-      await onResetPassword(forgotMatchedAdmin.id, forgotNewPassword);
-      onLoginSuccess({ ...forgotMatchedAdmin, password: forgotNewPassword });
-      onToast('Password reset successfully! You are now logged in.');
-      resetAll();
-      onClose();
-    } catch (err) {
-      onToast(err.message || 'Failed to reset password.');
-    }
+    withSubmitting(async () => {
+      try {
+        const admin = await onResetPassword(forgotEmail.trim(), forgotAnswer, forgotNewPassword);
+        onLoginSuccess(admin);
+        onToast('Password reset successfully! You are now logged in.');
+        resetAll();
+        onClose();
+      } catch (err) {
+        onToast(err.message || 'Failed to reset password.');
+      }
+    });
   };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+      <div
+        ref={panelRef}
+        className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin-auth-title"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: '440px' }}
+      >
         <div className="modal-header">
           <div>
             <span className="caption-label">Administration Portal</span>
-            <h3>
+            <h3 id="admin-auth-title">
               {mode === 'login' && 'Admin Login'}
               {mode === 'signup' && 'Create Admin Account'}
               {mode === 'forgot' && 'Reset Admin Password'}
@@ -240,24 +267,27 @@ export default function AdminAuthModal({
 
               <button
                 type="submit"
+                disabled={submitting}
                 className="button primary"
                 style={{ marginTop: '6px', width: '100%' }}
               >
                 Sign In as Admin
               </button>
 
-              <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '12px', color: '#64748b' }}>
-                Need a new admin account?{' '}
-                <button
-                  type="button"
-                  onClick={() => setMode('signup')}
-                  style={{ border: 'none', background: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer' }}
-                >
-                  Create new admin
-                </button>
-              </div>
+              {allowSignup && (
+                <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '12px', color: '#64748b' }}>
+                  Need a new admin account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setMode('signup')}
+                    style={{ border: 'none', background: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Create new admin
+                  </button>
+                </div>
+              )}
 
-              {isDemoAllowed() && (
+              {showDemoHint && (
                 <div style={{ background: '#fefce8', border: '1px solid #fef08a', padding: '10px 12px', borderRadius: '8px', fontSize: '11px', color: '#854d0e', textAlign: 'center', marginTop: '6px' }}>
                   🧪 Testing Demo Admin: <code>admin@freshfold.test</code> · Password: <code>admin123</code>
                 </div>
@@ -266,7 +296,7 @@ export default function AdminAuthModal({
           )}
 
           {/* 2. SIGN UP (CREATE ADMIN) FORM */}
-          {mode === 'signup' && (
+          {mode === 'signup' && allowSignup && (
             <form onSubmit={handleSignup} style={{ display: 'grid', gap: '12px' }}>
               <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#64748b' }}>
                 Register an additional admin with full access to store settings.
@@ -354,6 +384,7 @@ export default function AdminAuthModal({
 
               <button
                 type="submit"
+                disabled={submitting}
                 className="button primary"
                 style={{ marginTop: '6px', width: '100%' }}
               >
@@ -394,7 +425,7 @@ export default function AdminAuthModal({
                     />
                   </label>
 
-                  <button type="submit" className="button primary" style={{ width: '100%' }}>
+                  <button type="submit" disabled={submitting} className="button primary" style={{ width: '100%' }}>
                     Continue to Security Question
                   </button>
 
@@ -412,10 +443,10 @@ export default function AdminAuthModal({
                 <form onSubmit={handleForgotReset} style={{ display: 'grid', gap: '14px' }}>
                   <div style={{ background: '#eff6ff', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
                     <span style={{ fontSize: '11px', color: '#1d4ed8', display: 'block', fontWeight: 700 }}>
-                      SECURITY VERIFICATION FOR {forgotMatchedAdmin?.name?.toUpperCase()}
+                      SECURITY VERIFICATION FOR {forgotEmail.trim().toLowerCase()}
                     </span>
                     <span style={{ fontSize: '12px', color: '#1e40af', marginTop: '4px', display: 'block' }}>
-                      Question: <strong>{forgotMatchedAdmin?.securityQuestion || 'What city is this store in?'}</strong>
+                      Question: <strong>{forgotQuestion || 'What city is this store in?'}</strong>
                     </span>
                   </div>
 
@@ -464,7 +495,7 @@ export default function AdminAuthModal({
                     </div>
                   </label>
 
-                  <button type="submit" className="button primary" style={{ width: '100%' }}>
+                  <button type="submit" disabled={submitting} className="button primary" style={{ width: '100%' }}>
                     Reset Password & Log In
                   </button>
 

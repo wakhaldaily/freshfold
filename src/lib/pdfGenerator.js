@@ -1,5 +1,54 @@
 import { jsPDF } from 'jspdf';
 import { buildPublicBillUrl } from './billSecurity.js';
+import { formatDate, formatDateTime, parseDateInput } from './dateFormat.js';
+
+export { formatDate, formatDateTime } from './dateFormat.js';
+
+/** Coerces any numeric-ish value (undefined, null, string) to a finite number. */
+function num(x) {
+  const n = Number(x || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function round2(x) {
+  return Math.round((num(x) + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Splits a tax amount into CGST/SGST halves. Each half is rounded to 2 decimals and
+ * the second half absorbs the remainder so that a + b === tax (to 2 decimals).
+ */
+export function splitTax(tax) {
+  const total = round2(tax);
+  const first = round2(total / 2);
+  const second = round2(total - first);
+  return [first, second];
+}
+
+/**
+ * Allocates a discount across line amounts proportionally, with the rounding
+ * remainder placed on the last line so the parts sum exactly to the discount.
+ */
+export function allocateDiscount(lineAmounts = [], discount = 0) {
+  const amounts = lineAmounts.map((a) => Math.max(0, num(a)));
+  const totalLines = amounts.reduce((s, a) => s + a, 0);
+  const target = round2(Math.min(Math.max(0, num(discount)), totalLines));
+  if (amounts.length === 0) return [];
+  if (target <= 0 || totalLines <= 0) return amounts.map(() => 0);
+
+  const parts = [];
+  let allocated = 0;
+  amounts.forEach((amt, idx) => {
+    if (idx === amounts.length - 1) {
+      parts.push(round2(target - allocated));
+    } else {
+      const share = round2((amt / totalLines) * target);
+      parts.push(share);
+      allocated = round2(allocated + share);
+    }
+  });
+  return parts;
+}
 
 /**
  * Format money as INR for display on receipt text/PDF.
@@ -8,29 +57,6 @@ import { buildPublicBillUrl } from './billSecurity.js';
 export function formatMoneyPdf(amount) {
   const num = Number(amount || 0);
   return `Rs. ${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-export function formatDateTime(isoString) {
-  if (!isoString) return new Date().toLocaleString('en-IN');
-  const d = new Date(isoString);
-  return d.toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
-
-export function formatDate(isoString) {
-  if (!isoString) return '—';
-  const d = new Date(isoString.slice(0, 10));
-  return d.toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
 }
 
 /**
@@ -49,7 +75,7 @@ export function generateThermalReceiptPdf({
     tagline: settings?.tagline || 'Premium Fabric Care & Dry Cleaning',
     phone: settings?.phone || '+91 98765 43210',
     address: settings?.address || 'Shop 14, Galleria Market, Sector 28, Gurugram',
-    taxNumber: settings?.taxNumber || '07AAAAA0000A1Z5',
+    taxNumber: settings?.taxNumber || '',
     taxLabel: settings?.taxLabel || 'GST',
     taxPercent: Number(settings?.taxPercent ?? 18),
     taxEnabled: settings?.taxEnabled ?? true,
@@ -64,7 +90,8 @@ export function generateThermalReceiptPdf({
   // Base header: 42mm, Meta: 24mm, Items: 10 + N*7mm, Breakdown: 38mm, Payments: 15mm, Footer: 28mm
   const itemsCount = isWeight ? 1 : Math.max(1, items.length);
   const paymentsCount = Math.max(1, payments.length);
-  const calculatedHeight = 44 + 26 + (itemsCount * 7.5) + 42 + (paymentsCount * 5.5) + 30;
+  const expressExtraHeight = num(order.expressAmount) > 0 ? 8 : 0;
+  const calculatedHeight = 44 + 26 + (itemsCount * 7.5) + 42 + expressExtraHeight + (paymentsCount * 5.5) + 30;
   const pageHeight = Math.max(140, Math.ceil(calculatedHeight));
   const pageWidth = 80; // Standard 80mm POS thermal roll width
 
@@ -142,11 +169,11 @@ export function generateThermalReceiptPdf({
   y += 3.6;
 
   doc.text(`Promised  : ${formatDate(order.dueDate)}`, leftX, y);
-  doc.text(`By: ${cashierName.slice(0, 10)}`, rightX, y, { align: 'right' });
+  doc.text(`By: ${String(cashierName || '').slice(0, 10)}`, rightX, y, { align: 'right' });
   y += 3.6;
 
   // Customer Info
-  doc.text(`Customer  : ${(customer?.name || 'Walk-in Customer').slice(0, 22)}`, leftX, y);
+  doc.text(`Customer  : ${String(customer?.name || 'Walk-in Customer').slice(0, 22)}`, leftX, y);
   y += 3.6;
   doc.text(`Mobile    : ${customer?.mobile || '—'}`, leftX, y);
   y += 3.6;
@@ -157,7 +184,7 @@ export function generateThermalReceiptPdf({
   }
   const pref = customer?.preference || order?.customerPreference;
   if (pref && pref !== 'NA') {
-    doc.text(`Wash Pref : ${pref.slice(0, 22)}`, leftX, y);
+    doc.text(`Wash Pref : ${String(pref).slice(0, 22)}`, leftX, y);
     y += 3.6;
   }
   y += 0.4;
@@ -183,9 +210,8 @@ export function generateThermalReceiptPdf({
     doc.text(`Weight Laundry: ${order.service || 'Bulk Wash'}`, leftX, y);
     y += 3.2;
     doc.setFont('courier', 'normal');
-    const rate = order.weightKg > 0 ? (order.grossAmount / order.weightKg).toFixed(2) : '—';
-    doc.text(`Weight: ${order.weightKg} kg (${order.weightClothesCount ? `${order.weightClothesCount} pcs` : 'Bulk'})`, leftX, y);
-    doc.text(`${order.grossAmount.toFixed(2)}`, rightX, y, { align: 'right' });
+    doc.text(`Weight: ${num(order.weightKg)} kg (${order.weightClothesCount ? `${order.weightClothesCount} pcs` : 'Bulk'})`, leftX, y);
+    doc.text(`${num(order.grossAmount).toFixed(2)}`, rightX, y, { align: 'right' });
     y += 3.4;
 
     if (Array.isArray(order.weightGarments) && order.weightGarments.length > 0) {
@@ -206,18 +232,19 @@ export function generateThermalReceiptPdf({
 
     if (order.weightNote) {
       doc.setFontSize(6.8);
-      doc.text(`Note: ${order.weightNote.slice(0, 36)}`, leftX, y);
+      doc.text(`Note: ${String(order.weightNote).slice(0, 36)}`, leftX, y);
       y += 3.2;
       doc.setFontSize(7.5);
     }
   } else if (items.length > 0) {
     items.forEach((item) => {
-      const addonExtra = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
-      const unitWithAddons = Number(item.unitPrice || 0) + addonExtra;
-      const lineTotal = Number(item.quantity || 1) * unitWithAddons;
+      const addonExtra = (Array.isArray(item.addons) ? item.addons : []).reduce((sum, a) => sum + num(a?.price), 0);
+      const unitWithAddons = num(item.unitPrice) + addonExtra;
+      const qty = num(item.quantity) || 1;
+      const lineTotal = qty * unitWithAddons;
 
       doc.setFont('courier', 'bold');
-      const nameText = `${item.name} (${item.service || order.service || 'Service'})`;
+      const nameText = `${item.name || 'Item'} (${item.service || order.service || 'Service'})`;
       doc.text(nameText.slice(0, 32), leftX, y);
       y += 3.2;
 
@@ -227,7 +254,7 @@ export function generateThermalReceiptPdf({
       } else {
         doc.text(item.category ? item.category : 'Standard', leftX, y);
       }
-      doc.text(`${item.quantity}`, 42, y, { align: 'center' });
+      doc.text(`${qty}`, 42, y, { align: 'center' });
       doc.text(`${unitWithAddons.toFixed(2)}`, 56, y, { align: 'right' });
       doc.text(`${lineTotal.toFixed(2)}`, rightX, y, { align: 'right' });
       y += 3.2;
@@ -253,20 +280,22 @@ export function generateThermalReceiptPdf({
     });
   } else {
     doc.text('No items specified', leftX, y);
-    doc.text(`${order.grossAmount.toFixed(2)}`, rightX, y, { align: 'right' });
+    doc.text(`${num(order.grossAmount).toFixed(2)}`, rightX, y, { align: 'right' });
     y += 4;
   }
 
   hr();
 
   // 5. TOTALS & TAX BREAKDOWN
-  const gross = Number(order.grossAmount || 0);
-  const discount = Number(order.discountAmount || 0);
-  const taxable = gross - discount;
-  const tax = Number(order.taxAmount || 0);
-  const total = Number(order.totalAmount || (taxable + tax));
-  const paid = Number(order.paidAmount || 0);
-  const balance = Number(order.balanceAmount ?? (total - paid));
+  const gross = num(order.grossAmount);
+  const discount = num(order.discountAmount);
+  const expressAmount = num(order.expressAmount);
+  const taxable = Math.max(0, gross - discount) + expressAmount;
+  const tax = num(order.taxAmount);
+  // Keep a legitimate 0 total; only fall back when totalAmount is missing
+  const total = num(order.totalAmount ?? (taxable + tax));
+  const paid = num(order.paidAmount);
+  const balance = num(order.balanceAmount ?? (total - paid));
 
   doc.setFont('courier', 'normal');
   doc.setFontSize(8);
@@ -276,11 +305,22 @@ export function generateThermalReceiptPdf({
   y += 3.6;
 
   if (discount > 0) {
-    const discountLabel = order.discountName ? `Discount (${order.discountName}):` : `Discount (${order.discountPercent}%):`;
+    const pct = num(order.discountPercent);
+    let discountLabel = 'Discount:';
+    if (order.discountName) discountLabel = `Discount (${order.discountName}):`;
+    else if (pct > 0) discountLabel = `Discount (${pct}%):`;
     doc.text(discountLabel.slice(0, 24), 40, y, { align: 'right' });
     doc.text(`-${formatMoneyPdf(discount)}`, rightX, y, { align: 'right' });
     y += 3.6;
+  }
 
+  if (expressAmount > 0) {
+    doc.text('Express:', 40, y, { align: 'right' });
+    doc.text(formatMoneyPdf(expressAmount), rightX, y, { align: 'right' });
+    y += 3.6;
+  }
+
+  if (discount > 0 || expressAmount > 0) {
     doc.text(store.taxEnabled ? 'Taxable Subtotal:' : 'Subtotal:', 40, y, { align: 'right' });
     doc.text(formatMoneyPdf(taxable), rightX, y, { align: 'right' });
     y += 3.6;
@@ -289,13 +329,13 @@ export function generateThermalReceiptPdf({
   if (store.taxEnabled && tax > 0) {
     if (store.splitGst) {
       const halfRate = (store.taxPercent / 2).toFixed(1);
-      const halfTax = tax / 2;
+      const [cgst, sgst] = splitTax(tax);
       doc.text(`CGST (${halfRate}%):`, 40, y, { align: 'right' });
-      doc.text(formatMoneyPdf(halfTax), rightX, y, { align: 'right' });
+      doc.text(formatMoneyPdf(cgst), rightX, y, { align: 'right' });
       y += 3.6;
 
       doc.text(`SGST (${halfRate}%):`, 40, y, { align: 'right' });
-      doc.text(formatMoneyPdf(halfTax), rightX, y, { align: 'right' });
+      doc.text(formatMoneyPdf(sgst), rightX, y, { align: 'right' });
       y += 3.6;
     } else {
       doc.text(`${store.taxLabel} (${store.taxPercent}%):`, 40, y, { align: 'right' });
@@ -348,7 +388,7 @@ export function generateThermalReceiptPdf({
   // 7. FOOTER & BARCODE SIMULATION
   doc.setFont('courier', 'normal');
   doc.setFontSize(7);
-  doc.text(`* * * ${order.orderNo || order.id} * * *`, centerX, y, { align: 'center' });
+  doc.text(`* * * ${order.orderNo || order.id || ''} * * *`, centerX, y, { align: 'center' });
   y += 3.5;
 
   if (store.footer) {
@@ -410,13 +450,13 @@ export function generateStandardInvoicePdf({
 }) {
   const storeName = settings?.storeName || 'Crystal Clear Dry Cleaning';
   const storeAddress = settings?.address || 'Near Union Bank, Wazirabad, Gurgaon-122004';
-  const taxNumber = settings?.taxNumber || '06AIEPK5981E1Z8';
+  const taxNumber = settings?.taxNumber || '';
   const taxEnabled = settings?.taxEnabled !== false;
   const expressPercent = Number(settings?.expressDeliveryPercent ?? 25);
 
   const items = (Array.isArray(order.items) ? order.items : []).filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge');
   const isWeight = order.type === 'weight';
-  const orderNo = order.orderNo || order.id || 'W1235';
+  const orderNo = String(order.orderNo || order.id || '');
 
   const rowsCount = isWeight ? 1 : Math.max(1, items.length);
   const calculatedHeight = Math.max(148, 120 + rowsCount * 9);
@@ -460,7 +500,7 @@ export function generateStandardInvoicePdf({
 
   // 2. Order Meta & Customer Info Grid
   const createdDate = formatDate(order.createdAt);
-  const dObj = new Date(order.createdAt || Date.now());
+  const dObj = parseDateInput(order.createdAt) || new Date();
   let h = dObj.getHours();
   const m = String(dObj.getMinutes()).padStart(2, '0');
   const s = String(dObj.getSeconds()).padStart(2, '0');
@@ -470,16 +510,18 @@ export function generateStandardInvoicePdf({
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
-  doc.text(orderNo, 10, y + 7.5);
+  if (orderNo) doc.text(orderNo, 10, y + 7.5);
 
   doc.setFontSize(7.5);
   doc.text(createdDate, 38, y + 4.5);
   doc.text(timeStr, 38, y + 8);
 
   // Barcode in center
-  drawCode39Bars(doc, orderNo, 85, y + 1.5, 6.5);
-  doc.setFontSize(6.5);
-  doc.text(`* ${orderNo}-3 *`, 105, y + 10.5, { align: 'center' });
+  if (orderNo) {
+    drawCode39Bars(doc, orderNo, 85, y + 1.5, 6.5);
+    doc.setFontSize(6.5);
+    doc.text(`* ${orderNo} *`, 105, y + 10.5, { align: 'center' });
+  }
 
   // Customer on right
   doc.setFont('helvetica', 'bold');
@@ -487,25 +529,30 @@ export function generateStandardInvoicePdf({
   doc.text(`${customer?.salutation ? `${customer.salutation} ` : ''}${customer?.name || 'Valued Customer'}-`, 145, y + 3.5);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.text(customer?.address || 'A 65A first floor sec 57 sushant lok 3', 145, y + 7);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Place of Supply- ${customer?.state || 'Haryana'}`, 145, y + 10.5);
+  if (customer?.address) {
+    doc.text(String(customer.address), 145, y + 7);
+  }
+  if (customer?.state) {
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Place of Supply- ${customer.state}`, 145, y + 10.5);
+  }
 
   y += 13;
   doc.line(10, y, 200, y);
 
   // 3. Financial Balance Strip
-  const grossAmount = Number(order.grossAmount || 0);
-  const discountAmount = Number(order.discountAmount || 0);
-  const discountPercent = Number(order.discountPercent || 0);
-  const expressAmount = Number(order.expressAmount || 0);
+  const grossAmount = num(order.grossAmount);
+  const discountAmount = num(order.discountAmount);
+  const discountPercent = num(order.discountPercent);
+  const expressAmount = num(order.expressAmount);
   const taxableSubtotal = Math.max(0, grossAmount - discountAmount) + expressAmount;
-  const taxAmount = taxEnabled ? Number(order.taxAmount || 0) : 0;
+  const taxAmount = taxEnabled ? num(order.taxAmount) : 0;
   const taxPercent = taxEnabled ? Number(order.taxPercent || 18) : 0;
-  const halfTax = taxAmount / 2;
-  const totalAmount = Number(order.totalAmount || (taxableSubtotal + taxAmount));
-  const paidAmount = Number(order.paidAmount || 0);
-  const prevDueVal = Number(previousDue || 0);
+  const [cgstAmount, sgstAmount] = splitTax(taxAmount);
+  // Keep a legitimate 0 total; only fall back when totalAmount is missing
+  const totalAmount = num(order.totalAmount ?? (taxableSubtotal + taxAmount));
+  const paidAmount = num(order.paidAmount);
+  const prevDueVal = num(previousDue);
   const balanceDue = Math.max(0, prevDueVal + (totalAmount - paidAmount));
   const advance = 0.00;
   const roundOff = Math.round((totalAmount - (taxableSubtotal + taxAmount)) * 100) / 100;
@@ -538,13 +585,14 @@ export function generateStandardInvoicePdf({
   // 4. Counts & Delivery Date
   const totalPcs = isWeight
     ? (Number(order.weightClothesCount) || (order.weightKg ? Math.round(order.weightKg) : 1))
-    : items.reduce((sum, it) => sum + (Number(it.quantity) || 1), 0);
-  const advBal = Number(customer?.walletBalance || 0);
+    : items.reduce((sum, it) => sum + (num(it.quantity) || 1), 0);
+  const advBal = num(customer?.walletBalance);
 
-  const dueD = new Date(order.dueDate || Date.now());
+  const dueD = parseDateInput(order.dueDate);
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dueDayName = dayNames[dueD.getDay()] || 'Wednesday';
-  const dueFormatted = `${formatDate(order.dueDate)} 6:00 PM / ${dueDayName}`;
+  const dueFormatted = dueD
+    ? `${formatDate(order.dueDate)} 6:00 PM / ${dayNames[dueD.getDay()]}`
+    : '—';
 
   y += 4;
   doc.setFont('helvetica', 'bold');
@@ -574,35 +622,44 @@ export function generateStandardInvoicePdf({
   if (isWeight) {
     y += 4;
     doc.setFont('helvetica', 'bold');
-    doc.text(`Weight Laundry - ${order.service}`, 10, y);
+    const weightKg = num(order.weightKg);
+    const serviceName = order.service || 'Laundry';
+    doc.text(`Weight Laundry - ${serviceName}`, 10, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${order.service} (SAC-99971)`, 65, y);
-    doc.text(`${order.weightKg} kg`, 120, y, { align: 'center' });
-    doc.text((order.weightKg > 0 ? grossAmount / order.weightKg : grossAmount).toFixed(0), 138, y, { align: 'right' });
+    doc.text(`${serviceName} (SAC-99971)`, 65, y);
+    doc.text(`${weightKg} kg`, 120, y, { align: 'center' });
+    doc.text((weightKg > 0 ? grossAmount / weightKg : grossAmount).toFixed(0), 138, y, { align: 'right' });
     doc.text(grossAmount.toFixed(2), 158, y, { align: 'right' });
     doc.text(discountAmount.toFixed(2), 178, y, { align: 'right' });
     doc.setFont('helvetica', 'bold');
-    doc.text((grossAmount - discountAmount).toFixed(2), 200, y, { align: 'right' });
+    doc.text(Math.max(0, grossAmount - discountAmount).toFixed(2), 200, y, { align: 'right' });
     y += 4;
   } else {
-    items.forEach((item) => {
+    // Line amounts include add-ons; the order-level discount is allocated proportionally
+    // so the per-line discounts sum exactly to order.discountAmount.
+    const lines = items.map((item) => {
+      const qty = num(item.quantity) || 1;
+      const addonExtra = (Array.isArray(item.addons) ? item.addons : []).reduce((sum, a) => sum + num(a?.price), 0);
+      const unitWithAddons = num(item.unitPrice) + addonExtra;
+      return { item, qty, unitWithAddons, amount: round2(qty * unitWithAddons) };
+    });
+    const lineDiscounts = allocateDiscount(lines.map((l) => l.amount), discountAmount);
+
+    lines.forEach(({ item, qty, unitWithAddons, amount: itemAmt }, idx) => {
       y += 4;
-      const qty = Number(item.quantity) || 1;
-      const unitPrice = Number(item.unitPrice) || 0;
-      const itemAmt = qty * unitPrice;
-      const itemDis = discountPercent > 0 ? Math.round((itemAmt * (discountPercent / 100)) * 100) / 100 : 0;
+      const itemDis = lineDiscounts[idx] || 0;
       const itemTot = Math.max(0, itemAmt - itemDis);
 
       const categoryPrefix = item.category ? `${item.category} - ` : '';
-      const nameUpper = `${categoryPrefix}${item.name.toUpperCase()}`;
+      const nameUpper = `${categoryPrefix}${String(item.name || 'Item').toUpperCase()}`;
 
       doc.setFont('helvetica', 'bold');
       doc.text(nameUpper.slice(0, 32), 10, y);
 
       doc.setFont('helvetica', 'normal');
-      doc.text(`${item.service || order.service} (SAC-99971)`.slice(0, 30), 65, y);
+      doc.text(`${item.service || order.service || 'Service'} (SAC-99971)`.slice(0, 30), 65, y);
       doc.text(String(qty), 120, y, { align: 'center' });
-      doc.text(unitPrice.toFixed(0), 138, y, { align: 'right' });
+      doc.text(Number.isInteger(unitWithAddons) ? unitWithAddons.toFixed(0) : unitWithAddons.toFixed(2), 138, y, { align: 'right' });
       doc.text(itemAmt.toFixed(2), 158, y, { align: 'right' });
       doc.text(itemDis.toFixed(2), 178, y, { align: 'right' });
 
@@ -613,7 +670,7 @@ export function generateStandardInvoicePdf({
       y += 3.2;
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(6.5);
-      doc.text(item.note || customer?.preference || 'Hanger', 65, y);
+      doc.text(String(item.note || customer?.preference || 'Hanger'), 65, y);
       doc.setFont('helvetica', 'normal');
       doc.text('0', 138, y, { align: 'right' });
       doc.text('0.00', 158, y, { align: 'right' });
@@ -631,7 +688,7 @@ export function generateStandardInvoicePdf({
   doc.setFontSize(7);
   let bookedByText = `Terms and Conditions   Booked By : ${cashierName}`;
   if (taxEnabled && taxAmount > 0) {
-    bookedByText += ` ( CGST: ${halfTax.toFixed(2)}, SGST: ${halfTax.toFixed(2)} = ${taxAmount.toFixed(2)} )`;
+    bookedByText += ` ( CGST: ${cgstAmount.toFixed(2)}, SGST: ${sgstAmount.toFixed(2)} = ${taxAmount.toFixed(2)} )`;
   }
   doc.text(bookedByText, 10, y);
 
@@ -655,10 +712,10 @@ export function generateStandardInvoicePdf({
   // Right column
   if (taxEnabled && taxAmount > 0) {
     doc.text(`CGST (${(taxPercent / 2).toFixed(0)}%)`, 175, y, { align: 'right' });
-    doc.text(halfTax.toFixed(2), 200, y, { align: 'right' });
+    doc.text(cgstAmount.toFixed(2), 200, y, { align: 'right' });
 
     doc.text(`SGST (${(taxPercent / 2).toFixed(0)}%)`, 175, y + 3.2, { align: 'right' });
-    doc.text(halfTax.toFixed(2), 200, y + 3.2, { align: 'right' });
+    doc.text(sgstAmount.toFixed(2), 200, y + 3.2, { align: 'right' });
     y += 6.4;
   }
 
@@ -770,9 +827,9 @@ export function getThermalReceiptBlob(options) {
 export function getReceiptShareText({ order, customer, settings, payments = [], billUrl }) {
   const storeName = settings?.storeName || 'Clean Clear Dry Cleaning';
   const phone = settings?.phone || '';
-  const total = Number(order.totalAmount || 0);
-  const paid = Number(order.paidAmount || 0);
-  const balance = Number(order.balanceAmount ?? (total - paid));
+  const total = num(order.totalAmount);
+  const paid = num(order.paidAmount);
+  const balance = num(order.balanceAmount ?? (total - paid));
 
   let text = `🧺 *${storeName.toUpperCase()} - ORDER RECEIPT*\n`;
   text += `--------------------------------\n`;
@@ -797,10 +854,11 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
   } else if (Array.isArray(order.items)) {
     text += `*ITEMS:*\n`;
     order.items.filter((item) => !item.isSurcharge && item.category !== 'Service Surcharge').forEach((item) => {
-      const addonExtra = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
-      const lineUnit = Number(item.unitPrice || 0) + addonExtra;
-      const lineTot = item.quantity * lineUnit;
-      text += `• ${item.quantity}x ${item.name} (${item.service || order.service}) - ₹${lineTot.toFixed(2)}\n`;
+      const addonExtra = (Array.isArray(item.addons) ? item.addons : []).reduce((sum, a) => sum + num(a?.price), 0);
+      const lineUnit = num(item.unitPrice) + addonExtra;
+      const qty = num(item.quantity) || 1;
+      const lineTot = qty * lineUnit;
+      text += `• ${qty}x ${item.name || 'Item'} (${item.service || order.service}) - ₹${lineTot.toFixed(2)}\n`;
       const tags = [item.brand ? `Brand: ${item.brand}` : '', item.color ? `Color: ${item.color}` : '', ...(item.defects || [])].filter(Boolean);
       if (tags.length > 0) {
         text += `   ↳ ${tags.join(' | ')}\n`;
@@ -812,12 +870,12 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
   }
 
   text += `--------------------------------\n`;
-  text += `Gross Amount: ₹${order.grossAmount?.toFixed(2) || '0.00'}\n`;
-  if (order.discountAmount > 0) {
-    text += `Discount (${order.discountName || `${order.discountPercent}%`}): -₹${order.discountAmount.toFixed(2)}\n`;
+  text += `Gross Amount: ₹${num(order.grossAmount).toFixed(2)}\n`;
+  if (num(order.discountAmount) > 0) {
+    text += `Discount (${order.discountName || `${num(order.discountPercent)}%`}): -₹${num(order.discountAmount).toFixed(2)}\n`;
   }
-  if (settings?.taxEnabled !== false && order.taxAmount > 0) {
-    text += `Tax (${settings?.taxLabel || 'GST'} ${settings?.taxPercent || 18}%): ₹${order.taxAmount.toFixed(2)}\n`;
+  if (settings?.taxEnabled !== false && num(order.taxAmount) > 0) {
+    text += `Tax (${settings?.taxLabel || 'GST'} ${settings?.taxPercent || 18}%): ₹${num(order.taxAmount).toFixed(2)}\n`;
   }
   text += `*NET TOTAL: ₹${total.toFixed(2)}*\n`;
   text += `Amount Paid: ₹${paid.toFixed(2)}\n`;

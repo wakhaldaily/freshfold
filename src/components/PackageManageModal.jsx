@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BadgePercent, Edit3, Gift, Infinity, PackagePlus, Plus, Sparkles, Tag, Trash2, Wallet, X } from 'lucide-react';
 import { services } from '../data.js';
 import CustomSelect from './CustomSelect.jsx';
+import { useEscapeKey } from '../lib/a11y.js';
 
 export default function PackageManageModal({
   isOpen,
@@ -31,6 +32,7 @@ export default function PackageManageModal({
     validity: '',
     accent: 'violet',
   });
+  useEscapeKey(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -159,11 +161,18 @@ export default function PackageManageModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '780px' }}>
+      <div
+        className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="package-manage-modal-title"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: '780px' }}
+      >
         <div className="modal-header">
           <div>
             <span className="caption-label">Package Catalog & Custom Rules</span>
-            <h3>Manage Laundry Packages & Offers</h3>
+            <h3 id="package-manage-modal-title">Manage Laundry Packages & Offers</h3>
           </div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Close">
             <X size={18} />
@@ -196,7 +205,7 @@ export default function PackageManageModal({
                 <strong style={{ fontSize: '14px', color: '#443db4' }}>
                   {editingId ? 'Edit Package & Offer Scope' : 'Create New Package / Custom Clothes Offer'}
                 </strong>
-                <button type="button" className="icon-button" onClick={resetForm} title="Cancel">
+                <button type="button" className="icon-button" onClick={resetForm} title="Cancel" aria-label="Cancel">
                   <X size={16} />
                 </button>
               </div>
@@ -540,6 +549,7 @@ export default function PackageManageModal({
                       onClick={() => handleDelete(pkg)}
                       style={{ color: '#c8474e' }}
                       title="Delete package"
+                      aria-label="Delete package"
                     >
                       <Trash2 size={16} />
                     </button>

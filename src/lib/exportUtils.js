@@ -176,13 +176,22 @@ export function getFilterPeriodLabel({
   return 'All Time';
 }
 
+const CSV_FORMULA_TRIGGERS = ['=', '+', '-', '@', '\t', '\r'];
+
 /**
- * Escapes values for standard CSV format (RFC 4180).
+ * Escapes values for standard CSV format (RFC 4180) and neutralises
+ * spreadsheet formula injection (OWASP): text values starting with
+ * =, +, -, @, tab or CR are prefixed with a single quote inside the quotes.
+ * Plain numeric strings such as "-12.50" are left untouched.
  */
-function escapeCsv(val) {
+export function escapeCsv(val) {
   if (val === null || val === undefined) return '';
-  const str = String(val).replace(/"/g, '""');
-  return `"${str}"`;
+  let str = String(val);
+  const isNumeric = str.trim() !== '' && Number.isFinite(Number(str));
+  if (!isNumeric && CSV_FORMULA_TRIGGERS.includes(str.charAt(0))) {
+    str = `'${str}`;
+  }
+  return `"${str.replace(/"/g, '""')}"`;
 }
 
 /**
@@ -262,7 +271,7 @@ export function exportOrdersToExcel({
       escapeCsv(timeStr),
       escapeCsv(dueStr),
       escapeCsv(cust.name || 'Valued Customer'),
-      escapeCsv(cust.mobile ? `'${cust.mobile}` : ''), // single quote preserves leading zeros in Excel
+      escapeCsv(cust.mobile || ''),
       escapeCsv(cust.email || ''),
       escapeCsv(o.type === 'weight' ? 'Weight Laundry' : 'Piece Item Intake'),
       escapeCsv(o.service || 'Laundry'),
@@ -286,10 +295,10 @@ export function exportOrdersToExcel({
   const storeName = settings?.storeName || 'Clean Clear Dry Cleaning';
   const generatedOn = new Date().toLocaleString('en-IN');
   const summaryHeader = [
-    `"${storeName} - Orders Export Report"`,
-    `"Filter Period: ${timeLabel || 'All Time'}"`,
-    `"Exported On: ${generatedOn}"`,
-    `"Total Orders: ${orders.length}"`,
+    escapeCsv(`${storeName} - Orders Export Report`),
+    escapeCsv(`Filter Period: ${timeLabel || 'All Time'}`),
+    escapeCsv(`Exported On: ${generatedOn}`),
+    escapeCsv(`Total Orders: ${orders.length}`),
     '', // blank separator line
   ].join('\r\n');
 

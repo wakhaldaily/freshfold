@@ -12,12 +12,34 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { verifyBillToken } from '../lib/billSecurity.js';
-import { downloadThermalReceiptPdf, formatDate, formatDateTime } from '../lib/pdfGenerator.js';
-import { formatMoney, loadStore, loadLocal } from '../lib/persistence.js';
+import { formatDate, formatDateTime } from '../lib/dateFormat.js';
+import { formatMoney, loadLocal } from '../lib/persistence.js';
 import CrystalClearBill from './CrystalClearBill.jsx';
 import { BillSkeleton } from './SkeletonLoader.jsx';
 
-export default function PublicBillView({ billParam, tokenParam, localData }) {
+/**
+ * Looks up a bill in this browser's demo data (only used when there is no API).
+ */
+async function findLocalBill(billParam, tokenParam) {
+  const store = loadLocal();
+  const cleanParam = String(billParam || '').trim().toLowerCase();
+  const order = (store.orders || []).find(
+    (o) => String(o.orderNo || '').trim().toLowerCase() === cleanParam ||
+           String(o.id || '').trim().toLowerCase() === cleanParam
+  );
+  if (!order) return null;
+  const customer = (store.customers || []).find((c) => c.id === order.customerId);
+  const isValid = await verifyBillToken(order.id, order.orderNo, order.createdAt, customer?.mobile, tokenParam);
+  if (!isValid) return null;
+  return {
+    order,
+    customer: customer || { name: 'Valued Customer', mobile: '' },
+    settings: store.settings,
+    payments: (store.payments || []).filter((p) => p.orderId === order.id),
+  };
+}
+
+export default function PublicBillView({ billParam, tokenParam }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [billData, setBillData] = useState(null);
@@ -29,67 +51,38 @@ export default function PublicBillView({ billParam, tokenParam, localData }) {
       setLoading(true);
       setError('');
 
-      // 1. First attempt to check localData or load from local/bootstrap store
-      let store = localData;
-      if (!store || !Array.isArray(store.orders) || store.orders.length === 0) {
-        try {
-          store = await loadStore();
-        } catch {
-          try {
-            store = loadLocal();
-          } catch {}
-        }
-      }
-
-      if (store && Array.isArray(store.orders)) {
-        const cleanParam = String(billParam || '').trim().toLowerCase();
-        const order = store.orders.find(
-          (o) => String(o.orderNo || '').trim().toLowerCase() === cleanParam ||
-                 String(o.id || '').trim().toLowerCase() === cleanParam
-        );
-        if (order) {
-          const customer = (store.customers || []).find((c) => c.id === order.customerId);
-          const isValid = await verifyBillToken(
-            order.id,
-            order.orderNo,
-            order.createdAt,
-            customer?.mobile,
-            tokenParam
-          );
-
-          if (isValid) {
-            const payments = (store.payments || []).filter((p) => p.orderId === order.id);
-            if (isMounted) {
-              setBillData({
-                order,
-                customer: customer || { name: 'Valued Customer', mobile: '' },
-                settings: store.settings,
-                payments,
-              });
-              setLoading(false);
-            }
-            return;
-          }
-        }
-      }
-
-      // 2. Fetch from backend API /api/public-bill/:billParam?token=:token
+      // The server is authoritative whenever the API answers with JSON (valid or not).
+      let serverAnswered = false;
       try {
-        const res = await fetch(`/api/public-bill/${encodeURIComponent(billParam)}?token=${encodeURIComponent(tokenParam)}`);
+        const res = await fetch(`/api/public-bill/${encodeURIComponent(billParam)}?token=${encodeURIComponent(tokenParam || '')}`);
         const contentType = res.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
+          serverAnswered = true;
           const data = await res.json();
-          if (!res.ok) {
-            throw new Error(data.error || 'Invoice could not be found or verified.');
-          }
-
+          if (!res.ok) throw new Error(data.error || 'Invoice could not be found or verified.');
           if (isMounted) {
             setBillData(data);
             setLoading(false);
           }
           return;
-        } else {
-          throw new Error('Digital invoice could not be verified on the server.');
+        }
+      } catch (err) {
+        if (serverAnswered) {
+          if (isMounted) {
+            setError(err.message || 'Unable to load invoice. Link may be invalid or expired.');
+            setLoading(false);
+          }
+          return;
+        }
+      }
+
+      // No API reachable: browser-only demo mode.
+      try {
+        const local = await findLocalBill(billParam, tokenParam);
+        if (!local) throw new Error('Invoice could not be found or verified.');
+        if (isMounted) {
+          setBillData(local);
+          setLoading(false);
         }
       } catch (err) {
         if (isMounted) {
@@ -109,7 +102,7 @@ export default function PublicBillView({ billParam, tokenParam, localData }) {
     return () => {
       isMounted = false;
     };
-  }, [billParam, tokenParam, localData]);
+  }, [billParam, tokenParam]);
 
   if (loading) {
     return <BillSkeleton />;
@@ -153,7 +146,9 @@ export default function PublicBillView({ billParam, tokenParam, localData }) {
   const balance = Number(order.balanceAmount ?? (total - paid));
   const isPaid = balance <= 0;
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
+    // jsPDF is loaded on demand to keep the initial bundle small.
+    const { downloadThermalReceiptPdf } = await import('../lib/pdfGenerator.js');
     downloadThermalReceiptPdf({
       order,
       customer,

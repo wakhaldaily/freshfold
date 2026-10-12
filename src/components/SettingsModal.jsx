@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { defaultSettings } from '../data.js';
 import CustomSelect from './CustomSelect.jsx';
+import { onActivateKey } from '../lib/a11y.js';
 
 export default function SettingsModal({
   isOpen,
@@ -63,7 +64,7 @@ export default function SettingsModal({
   const [admins, setAdmins] = useState([...adminsList]);
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffRole, setNewStaffRole] = useState('cashier');
-  const [newStaffPin, setNewStaffPin] = useState('0000');
+  const [newStaffPin, setNewStaffPin] = useState('');
   const [editingStaffId, setEditingStaffId] = useState(null);
   const [editingStaffPin, setEditingStaffPin] = useState('');
   const [testAmount, setTestAmount] = useState(1000);
@@ -82,19 +83,18 @@ export default function SettingsModal({
   const primaryAdmin = (admins && admins.length > 0)
     ? (admins.find((a) => a.id === adminUser?.id) || admins[0])
     : {
-        id: adminUser?.id || 'admin-1',
+        id: adminUser?.admin?.id || adminUser?.id || '',
         name: adminUser?.name || 'Store Administrator',
-        email: adminUser?.email || 'admin@freshfold.test',
-        password: adminUser?.password || 'admin123',
+        email: adminUser?.email || '',
         securityQuestion: 'What city is this store in?',
-        securityAnswer: 'gurugram',
       };
 
   const [adminName, setAdminName] = useState(primaryAdmin?.name || '');
   const [adminEmail, setAdminEmail] = useState(primaryAdmin?.email || '');
-  const [adminPassword, setAdminPassword] = useState(primaryAdmin?.password || '');
+  // Password and security answer are write-only: blank means "keep the current value".
+  const [adminPassword, setAdminPassword] = useState('');
   const [adminSecurityQuestion, setAdminSecurityQuestion] = useState(primaryAdmin?.securityQuestion || 'What city is this store in?');
-  const [adminSecurityAnswer, setAdminSecurityAnswer] = useState(primaryAdmin?.securityAnswer || '');
+  const [adminSecurityAnswer, setAdminSecurityAnswer] = useState('');
   const [showAdminPassword, setShowAdminPassword] = useState(false);
 
   useEffect(() => {
@@ -106,18 +106,16 @@ export default function SettingsModal({
       const currentAdm = currentAdmins.length > 0
         ? (currentAdmins.find((a) => a.id === adminUser?.id) || currentAdmins[0])
         : {
-            id: adminUser?.id || 'admin-1',
+            id: adminUser?.admin?.id || adminUser?.id || '',
             name: adminUser?.name || 'Store Administrator',
-            email: adminUser?.email || 'admin@freshfold.test',
-            password: adminUser?.password || 'admin123',
+            email: adminUser?.email || '',
             securityQuestion: 'What city is this store in?',
-            securityAnswer: 'gurugram',
           };
       setAdminName(currentAdm.name || '');
       setAdminEmail(currentAdm.email || '');
-      setAdminPassword(currentAdm.password || '');
+      setAdminPassword('');
       setAdminSecurityQuestion(currentAdm.securityQuestion || 'What city is this store in?');
-      setAdminSecurityAnswer(currentAdm.securityAnswer || '');
+      setAdminSecurityAnswer('');
     }
   }, [isOpen, settings, staffList, adminsList, adminUser]);
 
@@ -158,14 +156,12 @@ export default function SettingsModal({
           name: adminName.trim(),
           email: adminEmail.trim().toLowerCase(),
           securityQuestion: adminSecurityQuestion,
-          securityAnswer: adminSecurityAnswer.trim(),
+          ...(adminSecurityAnswer.trim() ? { securityAnswer: adminSecurityAnswer.trim() } : {}),
+          ...(cleanPass ? { password: cleanPass } : {}),
         };
-        if (cleanPass) {
-          updatePayload.password = cleanPass;
-        } else if (primaryAdmin?.password && primaryAdmin.password !== 'admin123') {
-          updatePayload.password = primaryAdmin.password;
-        }
         await onUpdateAdmin(primaryAdmin.id, updatePayload);
+        setAdminPassword('');
+        setAdminSecurityAnswer('');
       }
       onToast?.('Administrator profile & password updated successfully.');
     } catch (err) {
@@ -182,17 +178,16 @@ export default function SettingsModal({
         await onSaveStaff(staff);
       }
       if (onUpdateAdmin && (adminName.trim() || adminEmail.trim())) {
+        const cleanPass = adminPassword.trim();
+        if (cleanPass && cleanPass.length < 6) throw new Error('Password must be at least 6 characters.');
         const adminPayload = {
           name: adminName.trim() || primaryAdmin.name,
           email: adminEmail.trim().toLowerCase(),
           securityQuestion: adminSecurityQuestion,
-          securityAnswer: adminSecurityAnswer.trim(),
+          ...(adminSecurityAnswer.trim() ? { securityAnswer: adminSecurityAnswer.trim() } : {}),
+          ...(cleanPass ? { password: cleanPass } : {}),
         };
-        const passToUpdate = adminPassword.trim() || primaryAdmin.password;
-        if (passToUpdate && passToUpdate !== 'admin123') {
-          adminPayload.password = passToUpdate;
-        }
-        await onUpdateAdmin(primaryAdmin.id, adminPayload);
+        if (primaryAdmin?.id) await onUpdateAdmin(primaryAdmin.id, adminPayload);
       }
       onToast?.('Store, tax, and administrator settings saved successfully.');
       onClose();
@@ -215,7 +210,11 @@ export default function SettingsModal({
       onToast('Please enter a staff operator name.');
       return;
     }
-    const cleanPin = String(newStaffPin || '0000').trim().slice(0, 6) || '0000';
+    const cleanPin = String(newStaffPin || '').trim();
+    if (!/^\d{4,6}$/.test(cleanPin)) {
+      onToast('Set a 4 to 6 digit PIN for the new operator.');
+      return;
+    }
     const newMember = {
       id: `staff-${Date.now()}`,
       name: newStaffName.trim(),
@@ -224,7 +223,7 @@ export default function SettingsModal({
     };
     setStaff([...staff, newMember]);
     setNewStaffName('');
-    setNewStaffPin('0000');
+    setNewStaffPin('');
     onToast(`Added staff operator: ${newMember.name}`);
   };
 
@@ -266,9 +265,9 @@ export default function SettingsModal({
           const nextPrimary = updated[0];
           setAdminName(nextPrimary.name || '');
           setAdminEmail(nextPrimary.email || '');
-          setAdminPassword(nextPrimary.password || '');
+          setAdminPassword('');
           setAdminSecurityQuestion(nextPrimary.securityQuestion || 'What city is this store in?');
-          setAdminSecurityAnswer(nextPrimary.securityAnswer || '');
+          setAdminSecurityAnswer('');
         }
       } catch (err) {
         onToast?.(err.message || 'Failed to remove administrator.');
@@ -307,7 +306,8 @@ export default function SettingsModal({
       if (onCreateAdmin) {
         await onCreateAdmin(newAdm);
       }
-      setAdmins((prev) => [...prev, newAdm]);
+      const { password: _pw, securityAnswer: _ans, ...newAdmIdentity } = newAdm;
+      setAdmins((prev) => [...prev, newAdmIdentity]);
       setNewAdminName('');
       setNewAdminEmail('');
       setNewAdminPassword('');
@@ -322,6 +322,10 @@ export default function SettingsModal({
   };
 
   const handleUpdateStaffPin = (id, newPin) => {
+    if (!/^\d{4,6}$/.test(String(newPin || ''))) {
+      onToast('PIN must be 4 to 6 digits.');
+      return;
+    }
     setStaff(staff.map((s) => (s.id === id ? { ...s, pin: newPin } : s)));
     setEditingStaffId(null);
     onToast('Operator PIN updated.');
@@ -354,6 +358,9 @@ export default function SettingsModal({
     <div className="modal-backdrop settings-modal-backdrop" onClick={onClose}>
       <div
         className="modal-panel settings-modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -366,7 +373,7 @@ export default function SettingsModal({
               <span className="settings-header-eyebrow">
                 Store Administration
               </span>
-              <h3 className="settings-header-title">
+              <h3 id="settings-modal-title" className="settings-header-title">
                 Store & Personnel Settings
               </h3>
             </div>
@@ -1381,13 +1388,13 @@ export default function SettingsModal({
                               ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                    <KeyRound size={12} color="#8b80f9" /> PIN: <strong>{s.pin ? '••••' : '0000'}</strong>
+                                    <KeyRound size={12} color="#8b80f9" /> PIN: <strong>••••</strong>
                                   </span>
                                   <button
                                     type="button"
                                     onClick={() => {
                                       setEditingStaffId(s.id);
-                                      setEditingStaffPin(s.pin || '');
+                                      setEditingStaffPin('');
                                     }}
                                     style={{
                                       border: 'none',
@@ -1638,6 +1645,7 @@ export default function SettingsModal({
                             handleChange('expressOptions', next);
                           }}
                           title="Remove option"
+                          aria-label="Remove option"
                         >
                           <Trash2 size={14} color="#ef4444" />
                         </button>
@@ -1686,7 +1694,10 @@ export default function SettingsModal({
 
                   <div className="settings-whatsapp-mode-grid">
                     <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleChange('whatsappDispatchMode', 'app')}
+                      onKeyDown={onActivateKey(() => handleChange('whatsappDispatchMode', 'app'))}
                       style={{
                         padding: '14px',
                         borderRadius: '10px',
@@ -1712,7 +1723,10 @@ export default function SettingsModal({
                     </div>
 
                     <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleChange('whatsappDispatchMode', 'web')}
+                      onKeyDown={onActivateKey(() => handleChange('whatsappDispatchMode', 'web'))}
                       style={{
                         padding: '14px',
                         borderRadius: '10px',
@@ -2293,7 +2307,7 @@ export default function SettingsModal({
                             type="text"
                             value={adminSecurityAnswer}
                             onChange={(e) => setAdminSecurityAnswer(e.target.value)}
-                            placeholder="e.g. gurugram"
+                            placeholder="Leave blank to keep the current answer"
                             style={{ paddingLeft: '34px' }}
                           />
                           <KeyRound

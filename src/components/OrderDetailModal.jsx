@@ -20,8 +20,9 @@ import {
   Waves,
   X,
 } from 'lucide-react';
-import { formatDate, formatDateTime } from '../lib/pdfGenerator.js';
+import { formatDate, formatDateTime } from '../lib/dateFormat.js';
 import { formatMoney } from '../lib/persistence.js';
+import { useEscapeKey } from '../lib/a11y.js';
 
 const STATUS_STEPS = [
   { key: 'Received', label: '1. Received', icon: Package, desc: 'Intake recorded' },
@@ -41,6 +42,7 @@ export default function OrderDetailModal({
   onOpenReceipt,
   onToast,
 }) {
+  useEscapeKey(isOpen && Boolean(order), onClose);
   if (!isOpen || !order) return null;
 
   const isWeight = order.type === 'weight';
@@ -71,6 +73,9 @@ export default function OrderDetailModal({
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="order-detail-modal-title"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '740px',
@@ -142,7 +147,7 @@ export default function OrderDetailModal({
                   {order.status.toUpperCase()}
                 </span>
               </div>
-              <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a', fontWeight: 800 }}>
+              <h3 id="order-detail-modal-title" style={{ margin: 0, fontSize: '17px', color: '#0f172a', fontWeight: 800 }}>
                 {order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`} · {customer?.name || 'Customer'}
               </h3>
             </div>

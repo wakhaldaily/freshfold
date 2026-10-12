@@ -294,77 +294,77 @@ describe('Production & Testing Environment Authentication Guard', () => {
     assert.strictEqual(whitespaceAttempt.success, true);
   });
 
-  it('10. Multi-device & cross-browser sync: Empty localStorage device resolves remote admins for production login', async () => {
-    const { loadStore, isRemoteMode } = await import('../src/lib/persistence.js');
-    
+  it('10. Multi-device sync: a fresh device signs in through the server and never receives credentials', async () => {
+    const { detectBackend, loadStore, loginAdmin, isRemoteMode, getAuthToken, logoutSession, setRemoteMode } = await import('../src/lib/persistence.js');
+
     // Simulate a brand-new device or browser (Device B) with completely empty localStorage
     const storageMapB = new Map();
     global.localStorage = {
-      getItem: (key) => storageMapB.get(key) || null,
+      getItem: (key) => storageMapB.get(key) ?? null,
       setItem: (key, val) => storageMapB.set(key, String(val)),
       removeItem: (key) => storageMapB.delete(key),
       clear: () => storageMapB.clear(),
     };
 
-    // Mock fetch for /api/bootstrap returning database-backed admins created on Device A
+    const token = 'ab'.repeat(32);
+    const calls = [];
+    const jsonResponse = (status, body) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: () => 'application/json' },
+      json: async () => body,
+    });
     const originalFetch = global.fetch;
-    global.fetch = async (url) => {
-      if (String(url).includes('/api/bootstrap')) {
-        return {
-          ok: true,
-          json: async () => ({
-            customers: [],
-            orders: [],
-            customerPackages: [],
-            payments: [],
-            packageSales: [],
-            walletTransactions: [],
-            packages: [],
-            settings: { storeName: 'Clean Clear Galleria' },
-            staff: [{ id: 'staff-1', name: 'Cashier 1', role: 'cashier', pin: '5555' }],
-            admins: [
-              {
-                id: 'admin-device-a',
-                name: 'Device A Admin',
-                email: 'owner@galleriafreshfold.com',
-                password: 'MySecretPassword2026!',
-                securityQuestion: 'What city is this store in?',
-                securityAnswer: 'gurugram',
-              },
-            ],
-          }),
-        };
+    global.fetch = async (url, options = {}) => {
+      const path = String(url).replace('http://localhost', '');
+      calls.push({ path, auth: options.headers?.authorization || '' });
+      if (path === '/api/health') return jsonResponse(200, { database: true, demo: false, setupRequired: false });
+      if (path === '/api/auth/admin') {
+        const body = JSON.parse(options.body);
+        if (body.email === 'owner@galleriafreshfold.com' && body.password === 'MySecretPassword2026!') {
+          return jsonResponse(200, { token, user: { id: 'admin-device-a', name: 'Device A Admin', email: body.email, role: 'admin', type: 'admin', isAdmin: true } });
+        }
+        return jsonResponse(401, { error: 'Invalid admin credentials.' });
       }
-      return { ok: true, json: async () => ({}) };
+      if (path === '/api/bootstrap') {
+        if (options.headers?.authorization !== `Bearer ${token}`) return jsonResponse(401, { error: 'Sign in again.' });
+        return jsonResponse(200, {
+          me: { id: 'admin-device-a', name: 'Device A Admin', role: 'admin', type: 'admin', isAdmin: true },
+          customers: [], orders: [], customerPackages: [], payments: [], packageSales: [], walletTransactions: [], packages: [],
+          settings: { storeName: 'Clean Clear Galleria' },
+          staff: [{ id: 'staff-1', name: 'Cashier 1', role: 'cashier' }],
+          admins: [{ id: 'admin-device-a', name: 'Device A Admin', email: 'owner@galleriafreshfold.com', securityQuestion: 'What city is this store in?' }],
+        });
+      }
+      if (path === '/api/auth/logout') return jsonResponse(200, { success: true });
+      return jsonResponse(404, { error: 'Not found' });
     };
 
-    const prevEnv = process.env.VITE_ALLOW_DEMO_ACCOUNTS;
-    const prevProd = process.env.NODE_ENV;
-    process.env.VITE_ALLOW_DEMO_ACCOUNTS = 'false';
-    process.env.NODE_ENV = 'production';
-
     try {
-      // Device B loads store from remote database
-      const storeData = await loadStore();
+      const info = await detectBackend();
+      assert.strictEqual(info.database, true);
       assert.strictEqual(isRemoteMode(), true);
-      assert.ok(Array.isArray(storeData.admins));
-      assert.strictEqual(storeData.admins.length, 1);
-      assert.strictEqual(storeData.admins[0].email, 'owner@galleriafreshfold.com');
 
-      // Admin on Device B signs in in production mode with credentials created on Device A
-      const loginAttempt = verifyAdminCredentials(
-        'owner@galleriafreshfold.com',
-        'MySecretPassword2026!',
-        storeData.admins
-      );
-      assert.strictEqual(loginAttempt.success, true);
-      assert.strictEqual(loginAttempt.user.name, 'Device A Admin');
-      assert.strictEqual(loginAttempt.user.email, 'owner@galleriafreshfold.com');
+      // Without a session the store cannot be loaded.
+      await assert.rejects(() => loadStore());
+
+      await assert.rejects(() => loginAdmin('owner@galleriafreshfold.com', 'wrong', {}), /Invalid admin credentials/);
+      const user = await loginAdmin('owner@galleriafreshfold.com', 'MySecretPassword2026!', {});
+      assert.strictEqual(user.name, 'Device A Admin');
+      assert.strictEqual(getAuthToken(), token);
+
+      const storeData = await loadStore();
+      assert.strictEqual(storeData.me.id, 'admin-device-a');
+      assert.strictEqual(storeData.admins.length, 1);
+      assert.strictEqual(storeData.admins[0].password, undefined, 'credentials never reach the browser');
+      assert.strictEqual(storeData.staff[0].pin, undefined);
+      assert.ok(calls.some((c) => c.path === '/api/bootstrap' && c.auth === `Bearer ${token}`));
+      assert.strictEqual(storageMapB.get('freshfold-pos-v3'), undefined, 'remote data is not cached in browser storage');
+
+      await logoutSession();
+      assert.strictEqual(getAuthToken(), '');
     } finally {
-      process.env.VITE_ALLOW_DEMO_ACCOUNTS = prevEnv;
-      process.env.NODE_ENV = prevProd;
       global.fetch = originalFetch;
-      const { setRemoteMode } = await import('../src/lib/persistence.js');
       setRemoteMode(false);
       delete global.localStorage;
     }

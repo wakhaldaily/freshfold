@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Banknote, CreditCard, Smartphone, Wallet, X } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
+import { useEscapeKey } from '../lib/a11y.js';
 
 export default function PaymentModal({
   isOpen,
@@ -13,6 +14,7 @@ export default function PaymentModal({
   const [method, setMethod] = useState('cash');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  useEscapeKey(isOpen && Boolean(order), onClose);
 
   if (!isOpen || !order) return null;
 
@@ -56,11 +58,18 @@ export default function PaymentModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+      <div
+        className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="payment-modal-title"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: '440px' }}
+      >
         <div className="modal-header">
           <div>
             <span className="caption-label">Order Payment</span>
-            <h3>Collect Payment {order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`}</h3>
+            <h3 id="payment-modal-title">Collect Payment {order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`}</h3>
           </div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Close">
             <X size={18} />

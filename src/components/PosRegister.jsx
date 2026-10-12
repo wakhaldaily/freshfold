@@ -7,6 +7,7 @@ import {
 import { defaultSettings, garmentCatalog, services, weightServices } from '../data.js';
 import { formatMoney, formatOrderNo, getNextOrderNo } from '../lib/persistence.js';
 import { findBestPackageDiscount, isGarmentEligible } from '../lib/packageDiscountEngine.js';
+import { computeTotals, mergePackageTemplates, pickOrderDiscount, toPaise } from '../lib/orderPricing.js';
 import ItemTagModal from './ItemTagModal.jsx';
 import CustomSelect from './CustomSelect.jsx';
 
@@ -244,11 +245,12 @@ export default function PosRegister({
       const addonsCost = weightAddons.reduce((sum, a) => sum + Number(a.price || 0), 0);
       return Math.round((weightCost + addonsCost + Number.EPSILON) * 100) / 100;
     }
-    // Piece calculation: base price + sum(addons.price) for each item * qty
-    return cartItems.reduce((sum, item) => {
-      const addonExtra = (item.addons || []).reduce((aSum, a) => aSum + Number(a.price || 0), 0);
-      return sum + (item.unitPrice + addonExtra) * item.quantity;
+    // Piece calculation: base price + sum(addons.price) for each item * qty (in paise, like the server)
+    const paise = cartItems.reduce((sum, item) => {
+      const addonExtra = (item.addons || []).reduce((aSum, a) => aSum + toPaise(a.price), 0);
+      return sum + (toPaise(item.unitPrice) + addonExtra) * item.quantity;
     }, 0);
+    return paise / 100;
   }, [orderType, weightKg, currentWeightServiceObj, weightAddons, cartItems]);
 
   // Evaluate best package discount dynamically
@@ -261,51 +263,14 @@ export default function PosRegister({
   }), [orderType, activeService, cartItems, weightKg, grossAmount]);
 
   const { bestDiscount, allEvaluations } = useMemo(() => {
-    return findBestPackageDiscount(customerActivePackages, cartContext, packages);
+    return findBestPackageDiscount(customerActivePackages, cartContext, mergePackageTemplates(packages));
   }, [customerActivePackages, cartContext, packages]);
 
-  // Rate list tier discount or customer account discount
-  const tierDiscountPercent = useMemo(() => {
-    if (!currentCustomer) return 0;
-    const tier = currentCustomer.rateList;
-    if (tier === 'Student Discount') return 15;
-    if (tier === 'Corporate / B2B') return 10;
-    return 0;
-  }, [currentCustomer]);
-
-  const customerBaseDiscountPercent = useMemo(() => {
-    if (!currentCustomer) return 0;
-    const explicitPercent = Number(currentCustomer.discountPercent || 0);
-    return Math.max(explicitPercent, tierDiscountPercent);
-  }, [currentCustomer, tierDiscountPercent]);
-
-  // Compare package discount vs customer tier discount (take whichever benefits the customer most!)
-  const { discountPercent, discountAmount, discountName } = useMemo(() => {
-    const pkgAmt = bestDiscount ? Number(bestDiscount.discountAmount || 0) : 0;
-    const pkgPct = bestDiscount ? Number(bestDiscount.discountPercent || 0) : 0;
-    const pkgName = bestDiscount ? bestDiscount.discountName : '';
-
-    const custAmt = customerBaseDiscountPercent > 0
-      ? Math.round((grossAmount * (customerBaseDiscountPercent / 100) + Number.EPSILON) * 100) / 100
-      : 0;
-
-    if (pkgAmt >= custAmt && pkgAmt > 0) {
-      return { discountPercent: pkgPct, discountAmount: pkgAmt, discountName: pkgName };
-    }
-
-    if (custAmt > 0) {
-      const tierLabel = currentCustomer?.rateList && currentCustomer.rateList !== 'Default'
-        ? `${currentCustomer.rateList} Tier`
-        : 'Customer Profile';
-      return {
-        discountPercent: customerBaseDiscountPercent,
-        discountAmount: custAmt,
-        discountName: `${tierLabel} (${customerBaseDiscountPercent}%)`,
-      };
-    }
-
-    return { discountPercent: 0, discountAmount: 0, discountName: '' };
-  }, [bestDiscount, customerBaseDiscountPercent, grossAmount, currentCustomer]);
+  // Customer tier / profile discount vs best package discount: shared with the server.
+  const { discountPercent, discountAmount, discountName } = useMemo(
+    () => pickOrderDiscount({ bestDiscount, grossAmount, customer: currentCustomer }),
+    [bestDiscount, grossAmount, currentCustomer],
+  );
 
   const [selectedExpressId, setSelectedExpressId] = useState('standard');
   const [customExpressPercent, setCustomExpressPercent] = useState('');
@@ -323,17 +288,19 @@ export default function PosRegister({
     ? Math.max(0, Math.min(100, Number(customExpressPercent) || 0))
     : Number(activeExpressOption?.percent || 0);
 
-  const taxableSubtotalBeforeExpress = Math.max(0, grossAmount - discountAmount);
-  const expressAmount = expressPercent > 0
-    ? Math.round((taxableSubtotalBeforeExpress * (expressPercent / 100) + Number.EPSILON) * 100) / 100
-    : 0;
-
-  const taxableSubtotal = taxableSubtotalBeforeExpress + expressAmount;
-
   const taxEnabled = settings?.taxEnabled ?? true;
-  const taxPercent = taxEnabled ? Number(settings?.taxPercent ?? 18) : 0;
-  const taxAmount = taxEnabled ? Math.round((taxableSubtotal * (taxPercent / 100) + Number.EPSILON) * 100) / 100 : 0;
-  const grandTotal = Math.round((taxableSubtotal + taxAmount + Number.EPSILON) * 100) / 100;
+  const {
+    expressAmount,
+    taxPercent,
+    taxAmount,
+    totalAmount: grandTotal,
+  } = computeTotals({
+    grossAmount,
+    discountAmount,
+    expressPercent,
+    taxEnabled,
+    taxPercent: settings?.taxPercent ?? 18,
+  });
 
   const handleSelectExpress = (optId) => {
     setSelectedExpressId(optId);
@@ -371,6 +338,8 @@ export default function PosRegister({
     try {
       const payload = {
         orderNo: activeOrderNo,
+        // Lets the server move to the next free number if another terminal just used this one.
+        autoOrderNo: !hasManuallyEditedOrderNo,
         customerId: currentCustomer.id,
         customerCode: currentCustomer.customerCode || currentCustomer.code || '',
         customerGstin: currentCustomer.gstin || '',

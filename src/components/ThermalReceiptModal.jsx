@@ -16,7 +16,6 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
 import {
   downloadThermalReceiptPdf,
   formatDate,
@@ -25,9 +24,9 @@ import {
   shareReceiptViaWebShare,
   shareReceiptWhatsApp,
 } from '../lib/pdfGenerator.js';
-import { buildPublicBillUrl } from '../lib/billSecurity.js';
-import { formatMoney } from '../lib/persistence.js';
+import { formatMoney, getShareableBillUrl } from '../lib/persistence.js';
 import CrystalClearBill from './CrystalClearBill.jsx';
+import { useEscapeKey } from '../lib/a11y.js';
 
 export default function ThermalReceiptModal({
   isOpen,
@@ -50,17 +49,20 @@ export default function ThermalReceiptModal({
   useEffect(() => {
     let active = true;
     if (isOpen && order) {
-      buildPublicBillUrl(order, customer)
+      getShareableBillUrl(order, customer)
         .then((url) => {
           if (!active) return;
           setBillUrl(url);
         })
-        .catch(() => {});
+        .catch((err) => {
+          if (active) onToast?.(err.message || 'Could not create the digital bill link.');
+        });
     }
     return () => {
       active = false;
     };
   }, [isOpen, order?.id, order?.orderNo, order?.createdAt, customer?.mobile]);
+  useEscapeKey(isOpen && Boolean(order), onClose);
 
   if (!isOpen || !order) return null;
 
@@ -68,18 +70,21 @@ export default function ThermalReceiptModal({
   const items = rawItems.filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge');
   const gross = Number(order.grossAmount || 0);
   const discount = Number(order.discountAmount || 0);
-  const taxable = gross - discount;
+  const taxable = Math.max(0, gross - discount) + Number(order.expressAmount || 0);
   const tax = Number(order.taxAmount || 0);
-  const total = Number(order.totalAmount || (taxable + tax));
+  const total = Number(order.totalAmount ?? (taxable + tax));
   const paid = Number(order.paidAmount || 0);
   const balance = Number(order.balanceAmount ?? (total - paid));
 
   const cashierName = currentStaff?.name || 'Counter Cashier';
+  const isWeight = order.type === 'weight';
 
   const captureReceiptBlob = async () => {
     const el = document.getElementById('print-invoice');
     if (!el) return null;
     try {
+      // Loaded on demand; html2canvas is large and only needed for image sharing.
+      const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
@@ -200,6 +205,9 @@ export default function ThermalReceiptModal({
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal-panel invoice-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="thermal-receipt-modal-title"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: format === 'standard' ? '880px' : '480px',
@@ -245,7 +253,7 @@ export default function ThermalReceiptModal({
               <span className="caption-label">
                 {format === 'standard' ? 'Standard Tax Invoice · Crystal Clear' : 'Thermal Slip · 80mm Roll'}
               </span>
-              <h3 style={{ margin: 0, fontSize: '16px', color: '#0f172a', fontWeight: 800 }}>
+              <h3 id="thermal-receipt-modal-title" style={{ margin: 0, fontSize: '16px', color: '#0f172a', fontWeight: 800 }}>
                 Invoice {order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`}
               </h3>
             </div>
@@ -463,6 +471,7 @@ export default function ThermalReceiptModal({
               borderRadius: '8px',
             }}
             title="Print to printer"
+            aria-label="Print to printer"
           >
             <Printer size={14} />
           </button>
@@ -482,6 +491,7 @@ export default function ThermalReceiptModal({
               borderRadius: '8px',
             }}
             title="Copy plain receipt text"
+            aria-label="Copy plain receipt text"
           >
             {copied ? <Check size={14} color="#15803d" /> : <Copy size={14} />}
           </button>

@@ -227,6 +227,9 @@ export default function CustomerModal({
     >
       <div
         className="modal-panel customer-modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="customer-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
         {/* TOP HEADER */}
@@ -251,6 +254,7 @@ export default function CustomerModal({
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <h2
+                  id="customer-modal-title"
                   className="customer-modal-title"
                   style={{
                     margin: 0,
@@ -418,6 +422,7 @@ export default function CustomerModal({
                     placeItems: 'center',
                   }}
                   title="Clear search"
+                  aria-label="Clear search"
                 >
                   <X size={15} />
                 </button>

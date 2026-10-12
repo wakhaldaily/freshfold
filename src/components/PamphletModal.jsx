@@ -8,6 +8,7 @@ import {
 import QRCode from 'qrcode';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { useEscapeKey } from '../lib/a11y.js';
 
 export default function PamphletModal({
   isOpen,
@@ -79,6 +80,7 @@ export default function PamphletModal({
       active = false;
     };
   }, [isOpen, waUrl, theme]);
+  useEscapeKey(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -266,6 +268,9 @@ export default function PamphletModal({
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1200 }}>
       <div
         className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pamphlet-modal-title"
         onClick={(e) => e.stopPropagation()}
         style={{
           maxWidth: '1240px',
@@ -307,7 +312,7 @@ export default function PamphletModal({
             </div>
             <div>
               <span className="caption-label">Marketing & Customer Outreach</span>
-              <h2 style={{ margin: 0, fontSize: '18px', color: '#0f172a', fontWeight: 800 }}>
+              <h2 id="pamphlet-modal-title" style={{ margin: 0, fontSize: '18px', color: '#0f172a', fontWeight: 800 }}>
                 Store Pamphlet & Customer Contact Flyer
               </h2>
             </div>

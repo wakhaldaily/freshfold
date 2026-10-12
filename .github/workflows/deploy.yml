@@ -28,7 +28,9 @@ jobs:
       - name: Build frontend
         run: npm run build
         env:
-          VITE_ALLOW_DEMO_ACCOUNTS: 'true'
+          # Demo logins are enforced by the Worker (ALLOW_DEMO_ACCOUNTS in wrangler.jsonc);
+          # this flag only controls the demo hints shown in the browser.
+          VITE_ALLOW_DEMO_ACCOUNTS: 'false'
           VITE_APP_ENV: 'production'
 
       - name: Deploy to Cloudflare Workers

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   AlertCircle,
-  CheckCircle2,
   Delete,
   Eye,
   EyeOff,
@@ -9,35 +8,24 @@ import {
   Lock,
   Mail,
   Shield,
-  ShieldAlert,
-  ShieldCheck,
   Sparkles,
-  Store,
-  User,
-  UserCheck,
 } from 'lucide-react';
-import {
-  isDemoAllowed,
-  getAppEnvironment,
-  verifyStaffPin,
-  verifyAdminCredentials,
-  DEMO_ADMIN_EMAILS,
-  DEMO_STAFF_PINS,
-} from '../lib/authConfig.js';
+
 
 export default function AppLoginScreen({
   storeName = 'Clean Clear Dry Cleaning',
   tagline = 'Counter & Store Management System',
-  staff = [],
-  admins = [],
-  onLoginSuccess,
-  onCreateAdmin,
+  showDemoHints = false,
+  allowSignup = false,
+  setupRequired = false,
+  onPinLogin,
+  onAdminLogin,
+  onSetup,
   onToast,
 }) {
-  const isDemo = isDemoAllowed();
-  const envName = getAppEnvironment();
-  // Always default to Sign In page ('admin') on initial load as requested
-  const [authMode, setAuthMode] = useState('admin'); // 'admin' | 'pin' | 'signup'
+  // First visit to an unconfigured store goes straight to setup; otherwise admin sign in.
+  const [authMode, setAuthMode] = useState(setupRequired && allowSignup ? 'signup' : 'admin'); // 'admin' | 'pin' | 'signup'
+  const [submitting, setSubmitting] = useState(false);
 
   // Staff PIN State
   const [pin, setPin] = useState('');
@@ -63,6 +51,7 @@ export default function AppLoginScreen({
 
   // --- PIN PAD HANDLERS ---
   const handlePinDigit = (digit) => {
+    if (submitting) return;
     setPinError('');
     if (pin.length < 6) {
       const nextPin = pin + digit;
@@ -84,32 +73,35 @@ export default function AppLoginScreen({
     setPin('');
   };
 
-  const submitPin = (pinToSubmit = pin) => {
-    const res = verifyStaffPin(pinToSubmit, staff);
-    if (res.success) {
-      onToast?.(`Welcome back, ${res.user.name}!`);
-      onLoginSuccess(res.user);
-    } else {
-      setPinError(res.error);
+  const submitPin = async (pinToSubmit = pin) => {
+    setSubmitting(true);
+    try {
+      const user = await onPinLogin(pinToSubmit);
+      onToast?.(`Welcome back, ${user?.name || 'team member'}!`);
+    } catch (err) {
+      setPinError(err.message || 'Incorrect PIN. Please try again.');
       setPin('');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   // --- ADMIN LOGIN HANDLER ---
-  const handleAdminSubmit = (e) => {
+  const handleAdminSubmit = async (e) => {
     e.preventDefault();
     setAdminError('');
-
-    const res = verifyAdminCredentials(adminEmail, adminPassword, admins);
-    if (res.success) {
-      onToast?.(`Admin session authorized: Welcome, ${res.user.name}!`);
-      onLoginSuccess(res.user);
-    } else {
-      setAdminError(res.error);
+    setSubmitting(true);
+    try {
+      const user = await onAdminLogin(adminEmail.trim(), adminPassword);
+      onToast?.(`Admin session authorized: Welcome, ${user?.name || 'Administrator'}!`);
+    } catch (err) {
+      setAdminError(err.message || 'Invalid admin credentials. Please check your email or password.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  // --- SIGNUP HANDLER (FIRST PRODUCTION ADMIN SETUP & STORE CREATION) ---
+  // --- SIGNUP HANDLER (FIRST ADMIN SETUP & STORE CREATION) ---
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
     setSignupError('');
@@ -133,7 +125,6 @@ export default function AppLoginScreen({
 
     const cleanStoreName = signupStoreName.trim();
     const newAdmin = {
-      id: `admin-${Date.now()}`,
       name: signupName.trim(),
       email: signupEmail.trim().toLowerCase(),
       password: signupPassword,
@@ -141,21 +132,14 @@ export default function AppLoginScreen({
       securityAnswer: signupAnswer.trim().toLowerCase(),
     };
 
+    setSubmitting(true);
     try {
-      if (onCreateAdmin) {
-        await onCreateAdmin(newAdmin, cleanStoreName);
-      }
+      await onSetup(newAdmin, cleanStoreName);
       onToast?.(`Store "${cleanStoreName}" initialized! Welcome, ${newAdmin.name}!`);
-      onLoginSuccess({
-        id: newAdmin.id,
-        name: newAdmin.name,
-        email: newAdmin.email,
-        role: 'admin',
-        type: 'admin',
-        authenticatedAt: new Date().toISOString(),
-      });
     } catch (err) {
       setSignupError(err.message || 'Could not create administrator account.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -211,12 +195,12 @@ export default function AppLoginScreen({
                 letterSpacing: '0.6px',
                 padding: '3px 8px',
                 borderRadius: '999px',
-                background: isDemo ? 'rgba(234, 179, 8, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                color: isDemo ? '#fef08a' : '#86efac',
-                border: isDemo ? '1px solid rgba(234, 179, 8, 0.4)' : '1px solid rgba(34, 197, 94, 0.4)',
+                background: showDemoHints ? 'rgba(234, 179, 8, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                color: showDemoHints ? '#fef08a' : '#86efac',
+                border: showDemoHints ? '1px solid rgba(234, 179, 8, 0.4)' : '1px solid rgba(34, 197, 94, 0.4)',
               }}
             >
-              {isDemo ? '🧪 Testing Mode' : '🔒 Production Terminal'}
+              {showDemoHints ? '🧪 Testing Mode' : '🔒 Production Terminal'}
             </span>
           </div>
 
@@ -312,7 +296,9 @@ export default function AppLoginScreen({
                 </span>
 
                 {/* PIN Display Bubbles */}
+                <span className="sr-only" aria-live="polite">{`${pin.length} of 4 digits entered`}</span>
                 <div
+                  aria-hidden="true"
                   style={{
                     display: 'flex',
                     justifyContent: 'center',
@@ -340,7 +326,7 @@ export default function AppLoginScreen({
                 </div>
 
                 {pinError && (
-                  <div style={{ color: '#dc2626', fontSize: '12px', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                  <div role="alert" style={{ color: '#dc2626', fontSize: '12px', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                     <AlertCircle size={13} /> {pinError}
                   </div>
                 )}
@@ -447,6 +433,7 @@ export default function AppLoginScreen({
               </div>
 
               {/* Demo Accounts Quick-Fill (TESTING ENVIRONMENT ONLY) */}
+              {showDemoHints && (
               <div
                 style={{
                   marginTop: '20px',
@@ -459,14 +446,14 @@ export default function AppLoginScreen({
                 }}
               >
                 <div style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span>🔢 Counter Operator Quick PINs:</span>
+                  <span>🔢 Demo PINs (testing only):</span>
                 </div>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {(staff.length > 0 ? staff : [
+                  {[
                     { id: '1', name: 'Manager', pin: '1234' },
                     { id: '2', name: 'Cashier 1', pin: '0000' },
                     { id: '3', name: 'Cashier 2', pin: '2222' },
-                  ]).map((s) => (
+                  ].map((s) => (
                     <button
                       key={s.id}
                       type="button"
@@ -487,6 +474,7 @@ export default function AppLoginScreen({
                   ))}
                 </div>
               </div>
+              )}
             </div>
           )}
 
@@ -496,12 +484,14 @@ export default function AppLoginScreen({
           {authMode === 'admin' && (
             <form onSubmit={handleAdminSubmit}>
               <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                <label htmlFor="login-admin-email" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
                   Admin Email
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
                   <Mail size={16} color="#64748b" />
                   <input
+                    id="login-admin-email"
+                    autoComplete="username"
                     type="email"
                     placeholder="admin@yourstore.com"
                     value={adminEmail}
@@ -513,12 +503,14 @@ export default function AppLoginScreen({
               </div>
 
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                <label htmlFor="login-admin-password" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
                   Admin Password
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px', background: '#fff' }}>
                   <Lock size={16} color="#64748b" />
                   <input
+                    id="login-admin-password"
+                    autoComplete="current-password"
                     type={showAdminPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={adminPassword}
@@ -547,7 +539,7 @@ export default function AppLoginScreen({
               </div>
 
               {adminError && (
-                <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', fontSize: '12px', marginBottom: '14px', lineHeight: 1.4 }}>
+                <div role="alert" style={{ padding: '10px 12px', borderRadius: '8px', background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', fontSize: '12px', marginBottom: '14px', lineHeight: 1.4 }}>
                   <AlertCircle size={14} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
                   {adminError}
                 </div>
@@ -555,6 +547,7 @@ export default function AppLoginScreen({
 
               <button
                 type="submit"
+                disabled={submitting}
                 style={{
                   width: '100%',
                   padding: '12px',
@@ -571,29 +564,31 @@ export default function AppLoginScreen({
                 Sign In as Administrator
               </button>
 
-              {/* Administrator Quick-Fill & Directory */}
-              <div
-                style={{
-                  marginTop: '16px',
-                  padding: '12px 14px',
-                  background: 'rgba(37, 99, 235, 0.06)',
-                  border: '1px solid rgba(37, 99, 235, 0.2)',
-                  borderRadius: '10px',
-                  fontSize: '11px',
-                  color: '#1e40af',
-                }}
-              >
-                <div style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>🔑 Quick-Fill Administrator:</span>
+              {allowSignup && (
+                <div style={{ marginTop: '14px', textAlign: 'center' }}>
                   <button
                     type="button"
                     onClick={() => setAuthMode('signup')}
-                    style={{ background: 'transparent', border: 'none', color: '#2563eb', fontSize: '11px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                    style={{ background: 'transparent', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
                   >
-                    + Register New
+                    {setupRequired ? 'Set up this store (first administrator)' : '+ Register a new store administrator'}
                   </button>
                 </div>
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+              )}
+
+              {showDemoHints && (
+                <div
+                  style={{
+                    marginTop: '16px',
+                    padding: '12px 14px',
+                    background: 'rgba(37, 99, 235, 0.06)',
+                    border: '1px solid rgba(37, 99, 235, 0.2)',
+                    borderRadius: '10px',
+                    fontSize: '11px',
+                    color: '#1e40af',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, marginBottom: '6px' }}>🔑 Demo administrator (testing only):</div>
                   <button
                     type="button"
                     onClick={() => {
@@ -610,45 +605,18 @@ export default function AppLoginScreen({
                       color: '#1e3a8a',
                       cursor: 'pointer',
                     }}
-                    title="Default Admin (admin@freshfold.test / admin123)"
                   >
-                    Default Admin (admin123)
+                    Fill demo admin (admin@freshfold.test)
                   </button>
-                  {admins.filter((a) => a.email && a.email.toLowerCase() !== 'admin@freshfold.test').map((adm) => (
-                    <button
-                      key={adm.id || adm.email}
-                      type="button"
-                      onClick={() => {
-                        setAdminEmail(adm.email);
-                        setAdminPassword(adm.password || '');
-                      }}
-                      style={{
-                        padding: '5px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #bfdbfe',
-                        background: '#fff',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#1e3a8a',
-                        cursor: 'pointer',
-                      }}
-                      title={`Fill ${adm.email}`}
-                    >
-                      {adm.name || adm.email}
-                    </button>
-                  ))}
                 </div>
-                <div style={{ fontSize: '10px', color: '#64748b' }}>
-                  Click a badge above to auto-fill credentials, or type your email & password above.
-                </div>
-              </div>
+              )}
             </form>
           )}
 
           {/* ========================================================= */}
           {/* MODE 3: FIRST-TIME / NEW ADMIN SIGNUP & STORE SETUP      */}
           {/* ========================================================= */}
-          {authMode === 'signup' && (
+          {authMode === 'signup' && allowSignup && (
             <form onSubmit={handleSignupSubmit}>
               <div style={{ marginBottom: '14px', background: '#eff6ff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #bfdbfe' }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#1e3a8a', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
@@ -758,13 +726,14 @@ export default function AppLoginScreen({
               </div>
 
               {signupError && (
-                <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#fee2e2', color: '#b91c1c', fontSize: '12px', marginBottom: '12px' }}>
+                <div role="alert" style={{ padding: '8px 12px', borderRadius: '8px', background: '#fee2e2', color: '#b91c1c', fontSize: '12px', marginBottom: '12px' }}>
                   {signupError}
                 </div>
               )}
 
               <button
                 type="submit"
+                disabled={submitting}
                 style={{
                   width: '100%',
                   padding: '12px',

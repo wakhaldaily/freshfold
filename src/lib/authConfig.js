@@ -13,15 +13,17 @@ export const DEMO_ADMIN_EMAILS = ['admin@freshfold.test'];
 export const DEMO_STAFF_PINS = ['1234', '0000', '2222'];
 
 /**
- * Checks whether demo accounts are allowed in the current environment.
+ * Checks whether demo accounts are allowed in the browser-only (local storage) mode.
  * Default is FALSE in production builds unless VITE_ALLOW_DEMO_ACCOUNTS === 'true'.
+ * When the Worker API is connected, the server decides (ALLOW_DEMO_ACCOUNTS) and
+ * these checks only affect which hints the login screen shows.
  */
 export function isDemoAllowed() {
   if (typeof import.meta !== 'undefined' && import.meta.env) {
     // Explicit override takes highest precedence
     if (import.meta.env.VITE_ALLOW_DEMO_ACCOUNTS === 'false') return false;
     if (import.meta.env.VITE_ALLOW_DEMO_ACCOUNTS === 'true') return true;
-    return true;
+    return !import.meta.env.PROD;
   }
 
   if (typeof process !== 'undefined' && process.env) {
@@ -126,10 +128,11 @@ export function verifyAdminCredentials(email, password, adminList = []) {
     };
   }
 
+  // The built-in demo admin only exists when demo accounts are allowed.
   const hasRootAdmin = (adminList || []).some((a) => a.email?.trim().toLowerCase() === 'admin@freshfold.test');
   const list = [
     ...(Array.isArray(adminList) ? adminList : []),
-    ...(!hasRootAdmin ? [{ id: 'admin-1', name: 'Store Administrator', email: 'admin@freshfold.test', password: 'admin123' }] : []),
+    ...(!hasRootAdmin && isDemoAllowed() ? [{ id: 'admin-1', name: 'Store Administrator', email: 'admin@freshfold.test', password: 'admin123' }] : []),
   ];
 
   const matched = list.find(

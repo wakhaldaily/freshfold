@@ -2,95 +2,82 @@ import {
   createInitialData, defaultSettings, defaultStaff, initialAdmins,
   initialPackageCatalog, initialAddons, initialBrands, initialColors, initialDefects,
 } from '../data.js';
+import { getNextOrderNo, formatOrderNo } from './orderNumbers.js';
+import { computeTotals } from './orderPricing.js';
+import { buildPublicBillUrl } from './billSecurity.js';
+import { verifyAdminCredentials, verifyStaffPin } from './authConfig.js';
+
+export { getNextOrderNo, formatOrderNo };
 
 const STORAGE_KEY = 'freshfold-pos-v3';
 const SESSION_STAFF_KEY = 'freshfold-current-staff';
 const SESSION_ADMIN_KEY = 'freshfold-admin-session';
+const AUTH_TOKEN_KEY = 'freshfold-auth-token';
+export const UNAUTHORIZED_EVENT = 'freshfold:unauthorized';
+
+// `remoteMode` is true when the Worker API reports a configured database.
+// In remote mode the server is the source of truth: nothing silently falls back to
+// browser storage, and every request carries the signed-in session's bearer token.
 let remoteMode = false;
+let backendInfo = null;
 
 function number(value) {
   return Number(value || 0);
 }
 
-/**
- * Calculates the next auto-incremented order number based on the latest order number.
- * Supports arbitrary prefixes (e.g. "#w123" -> "#w124", "w123" -> "w124", "B6163" -> "B6164", "ORD-009" -> "ORD-010").
- */
-export function getNextOrderNo(currentOrderNo) {
-  if (!currentOrderNo || typeof currentOrderNo !== 'string') return 'B6164';
-  const trimmed = currentOrderNo.trim();
-  if (!trimmed) return 'B6164';
-
-  const match = trimmed.match(/^(.*?)(\d+)$/);
-  if (match) {
-    const prefix = match[1];
-    const numStr = match[2];
-    const nextNum = parseInt(numStr, 10) + 1;
-    const nextNumStr = String(nextNum).padStart(numStr.length, '0');
-    return `${prefix}${nextNumStr}`;
+function readStoredData() {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
   }
-
-  return `${trimmed}1`;
 }
 
-/**
- * Formats order number consistently for display (e.g. ensures single '#' prefix without doubling).
- */
-export function formatOrderNo(orderNo) {
-  if (!orderNo) return '';
-  const str = String(orderNo).trim();
-  return str.startsWith('#') ? str : `#${str}`;
-}
-
-function normalize(data) {
+function normalize(data, { remote = false } = {}) {
   const currentOrders = Array.isArray(data.orders) ? data.orders : [];
   const latestOrderNo = currentOrders[0]?.orderNo;
   const initialNextOrderNo = data.settings?.nextOrderNo || (latestOrderNo ? getNextOrderNo(latestOrderNo) : 'B6164');
 
-  // Preserve stored admins if incoming payload from API bootstrap does not include an admins table
-  let existingAdmins = [];
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('freshfold-pos-v3');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed.admins) && parsed.admins.length > 0) {
-          existingAdmins = parsed.admins;
+  let resolvedAdmins;
+  if (remote) {
+    // Server-provided directory only (never contains credentials).
+    resolvedAdmins = Array.isArray(data.admins) ? data.admins : [];
+  } else {
+    const storedAdmins = readStoredData()?.admins;
+    const existingAdmins = Array.isArray(storedAdmins) ? storedAdmins : [];
+    const dataAdmins = Array.isArray(data.admins) && data.admins.length > 0
+      ? data.admins
+      : (Array.isArray(data.settings?.admins) ? data.settings.admins : []);
+    if (dataAdmins.length > 0) {
+      resolvedAdmins = [...dataAdmins];
+      for (const localAdm of existingAdmins) {
+        if (localAdm.email && !resolvedAdmins.some((a) => a.email?.toLowerCase() === localAdm.email?.toLowerCase())) {
+          resolvedAdmins.push(localAdm);
         }
       }
+    } else if (existingAdmins.length > 0) {
+      resolvedAdmins = existingAdmins;
+    } else {
+      resolvedAdmins = [...initialAdmins];
     }
-  } catch {}
-
-  const dbAdmins = Array.isArray(data.admins) && data.admins.length > 0
-    ? data.admins
-    : (data.settings?.admins && Array.isArray(data.settings.admins) && data.settings.admins.length > 0)
-      ? data.settings.admins
-      : [];
-
-  let resolvedAdmins = [];
-  if (dbAdmins.length > 0) {
-    resolvedAdmins = [...dbAdmins];
-    for (const localAdm of existingAdmins) {
-      if (localAdm.email && !resolvedAdmins.some((a) => a.email?.toLowerCase() === localAdm.email?.toLowerCase())) {
-        resolvedAdmins.push(localAdm);
-      }
-    }
-  } else if (existingAdmins.length > 0) {
-    resolvedAdmins = existingAdmins;
-  } else {
-    resolvedAdmins = [...initialAdmins];
   }
 
+  const { admins: _settingsAdmins, ...settingsWithoutAdmins } = data.settings || {};
+  const settings = {
+    ...defaultSettings,
+    nextOrderNo: initialNextOrderNo,
+    ...(remote ? settingsWithoutAdmins : (data.settings || {})),
+    expressOptions: Array.isArray(data.settings?.expressOptions) && data.settings.expressOptions.length > 0
+      ? data.settings.expressOptions
+      : defaultSettings.expressOptions,
+  };
+
   return {
-    settings: {
-      ...defaultSettings,
-      nextOrderNo: initialNextOrderNo,
-      ...(data.settings || {}),
-      expressOptions: Array.isArray(data.settings?.expressOptions) && data.settings.expressOptions.length > 0
-        ? data.settings.expressOptions
-        : defaultSettings.expressOptions,
-    },
-    staff: Array.isArray(data.staff) && data.staff.length ? data.staff : [...defaultStaff],
+    ...(remote && data.me ? { me: data.me } : {}),
+    settings,
+    staff: Array.isArray(data.staff) && data.staff.length ? data.staff : (remote ? [] : [...defaultStaff]),
     admins: resolvedAdmins,
     packages: (Array.isArray(data.packages) && data.packages.length > 0 ? data.packages : [...initialPackageCatalog]).map((pkg) => {
       const defaultMatch = initialPackageCatalog.find((d) => d.id === pkg.id);
@@ -102,13 +89,14 @@ function normalize(data) {
       };
     }),
     customers: (data.customers || []).map((row) => ({ ...row, walletBalance: number(row.walletBalance) })),
-    orders: (data.orders || []).map((row) => ({
+    orders: currentOrders.map((row) => ({
       ...row,
       items: Array.isArray(row.items) ? row.items : [],
       weightKg: number(row.weightKg),
       grossAmount: number(row.grossAmount),
       discountAmount: number(row.discountAmount),
       discountPercent: number(row.discountPercent),
+      expressAmount: number(row.expressAmount),
       taxAmount: number(row.taxAmount),
       taxPercent: number(row.taxPercent ?? (row.taxAmount > 0 ? 18 : 0)),
       totalAmount: number(row.totalAmount),
@@ -120,11 +108,11 @@ function normalize(data) {
       walletCredit: number(row.walletCredit),
       discountPercent: number(row.discountPercent),
       paidAmount: number(row.paidAmount),
-      expiresAt: row.expiresAt || null, // No validity constraint
+      expiresAt: row.expiresAt || null,
     })),
-    payments: data.payments || [],
-    packageSales: data.packageSales || [],
-    walletTransactions: data.walletTransactions || [],
+    payments: (data.payments || []).map((p) => ({ ...p, amount: number(p.amount) })),
+    packageSales: (data.packageSales || []).map((s) => ({ ...s, amount: number(s.amount) })),
+    walletTransactions: (data.walletTransactions || []).map((t) => ({ ...t, amount: number(t.amount) })),
     addons: Array.isArray(data.addons) && data.addons.length ? data.addons : [...initialAddons],
     brands: Array.isArray(data.brands) && data.brands.length ? data.brands : [...initialBrands],
     colors: Array.isArray(data.colors) && data.colors.length ? data.colors : [...initialColors],
@@ -134,15 +122,12 @@ function normalize(data) {
 
 export function loadLocal() {
   try {
-    if (typeof localStorage !== 'undefined') {
-      const value = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('freshfold-pos-v3');
-      if (value) {
-        const parsed = JSON.parse(value);
-        if (!Array.isArray(parsed.packages) || parsed.packages.length < 6) {
-          parsed.packages = [...initialPackageCatalog];
-        }
-        return normalize(parsed);
+    const parsed = readStoredData();
+    if (parsed) {
+      if (!Array.isArray(parsed.packages) || parsed.packages.length < 6) {
+        parsed.packages = [...initialPackageCatalog];
       }
+      return normalize(parsed);
     }
   } catch (error) {
     console.warn('Could not read saved demo data.', error);
@@ -162,47 +147,96 @@ function saveLocal(data) {
   return normalized;
 }
 
+// --- AUTH TOKEN (remote mode) ---
+export function getAuthToken() {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(AUTH_TOKEN_KEY) || '' : '';
+  } catch {
+    return '';
+  }
+}
+
+function setAuthToken(token) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+      else localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+  } catch {}
+}
+
+export function clearAuthToken() {
+  setAuthToken('');
+}
+
+export class AuthRequiredError extends Error {
+  constructor(message = 'Your session has ended. Sign in again.') {
+    super(message);
+    this.name = 'AuthRequiredError';
+  }
+}
+
 async function api(path, options = {}) {
   const url = (typeof window === 'undefined' && path.startsWith('/'))
     ? `http://localhost${path}`
     : path;
+  const token = getAuthToken();
   const response = await fetch(url, {
     ...options,
-    headers: { 'content-type': 'application/json', ...(options.headers || {}) },
+    headers: {
+      'content-type': 'application/json',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
   });
   const result = await response.json().catch(() => ({}));
+  if (response.status === 401 && token) {
+    clearAuthToken();
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+    throw new AuthRequiredError(result.error);
+  }
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
   return result;
 }
 
-export async function loadStore() {
-  try {
-    const data = await api('/api/bootstrap');
-    if (!Array.isArray(data.customers) || !Array.isArray(data.orders)) {
-      throw new Error('No database API response.');
-    }
-    remoteMode = true;
-    const normalized = normalize(data);
-    saveLocal(normalized);
+const post = (path, body) => api(path, { method: 'POST', body: JSON.stringify(body || {}) });
 
-    // If remote DB currently has no admins but local storage has a custom admin, auto-sync it to remote Neon DB
-    if ((!data.admins || data.admins.length === 0) && (!data.settings?.admins || data.settings.admins.length === 0)) {
-      const customAdmins = (normalized.admins || []).filter(
-        (a) => a.email && a.email.toLowerCase() !== 'admin@freshfold.test'
-      );
-      for (const adm of customAdmins) {
-        api('/api/admins', {
-          method: 'POST',
-          body: JSON.stringify(adm),
-        }).catch(() => {});
+/**
+ * Detects whether the Worker API with a database is reachable.
+ * Returns `{ database, demo, setupRequired, storeName, tagline }`.
+ */
+export async function detectBackend() {
+  try {
+    const response = await fetch(typeof window === 'undefined' ? 'http://localhost/api/health' : '/api/health', {
+      headers: { accept: 'application/json' },
+    });
+    const type = response.headers.get('content-type') || '';
+    if (response.ok && type.includes('application/json')) {
+      const info = await response.json();
+      if (info?.database) {
+        remoteMode = true;
+        backendInfo = info;
+        return info;
       }
     }
-
-    return normalized;
   } catch {
-    remoteMode = false;
-    return loadLocal();
+    // No API (static hosting or `vite` without `wrangler dev`): use browser storage.
   }
+  remoteMode = false;
+  backendInfo = { database: false };
+  return backendInfo;
+}
+
+export function getBackendInfo() {
+  return backendInfo;
+}
+
+/** Loads the full store. Remote mode requires a signed-in session. */
+export async function loadStore() {
+  if (!backendInfo) await detectBackend();
+  if (!remoteMode) return loadLocal();
+  const data = await api('/api/bootstrap');
+  return normalize(data, { remote: true });
 }
 
 export function isRemoteMode() {
@@ -211,17 +245,127 @@ export function isRemoteMode() {
 
 export function setRemoteMode(mode) {
   remoteMode = Boolean(mode);
+  backendInfo = { database: remoteMode };
 }
 
 async function finishRemoteMutation(path, method, body) {
-  try {
-    await api(path, { method, body: body ? JSON.stringify(body) : undefined });
-    return loadStore();
-  } catch (err) {
-    console.warn(`Remote mutation ${path} failed, falling back to local:`, err.message);
-    remoteMode = false;
-    return loadLocal();
+  await api(path, { method, body: body ? JSON.stringify(body) : undefined });
+  return loadStore();
+}
+
+// --- SIGN IN / SIGN OUT ---
+/** Signs in with a staff PIN. Returns the session user. */
+export async function loginStaff(pin, current) {
+  if (remoteMode) {
+    const { token, user } = await post('/api/auth/pin', { pin });
+    setAuthToken(token);
+    return user;
   }
+  const res = verifyStaffPin(pin, current?.staff || []);
+  if (!res.success) throw new Error(res.error);
+  return res.user;
+}
+
+/** Signs in with an administrator email and password. Returns the session user. */
+export async function loginAdmin(email, password, current) {
+  if (remoteMode) {
+    const { token, user } = await post('/api/auth/admin', { email, password });
+    setAuthToken(token);
+    return user;
+  }
+  const res = verifyAdminCredentials(email, password, current?.admins || []);
+  if (!res.success) throw new Error(res.error);
+  return res.user;
+}
+
+/**
+ * First-run setup (remote: only allowed while the store has no administrator).
+ * Returns `{ user, data }`; `data` is only set in local mode.
+ */
+export async function setupStore(adminData, storeName, current) {
+  if (remoteMode) {
+    const { token, user } = await post('/api/auth/setup', { ...adminData, storeName });
+    setAuthToken(token);
+    return { user, data: null };
+  }
+  let next = await createAdmin(adminData, current);
+  if (storeName) {
+    next = await saveSettings({ ...next.settings, storeName, storeNameCreated: true }, next);
+  }
+  const admin = next.admins.find((a) => a.email === adminData.email) || adminData;
+  return {
+    user: { id: admin.id, name: admin.name, email: admin.email, role: 'admin', type: 'admin', isAdmin: true, authenticatedAt: new Date().toISOString() },
+    data: next,
+  };
+}
+
+/** Unlocks admin mode for the current session. Returns the admin identity. */
+export async function elevateToAdmin(email, password, current) {
+  if (remoteMode) {
+    const { user } = await post('/api/auth/elevate', { email, password });
+    return user.admin || user;
+  }
+  const res = verifyAdminCredentials(email, password, current?.admins || []);
+  if (!res.success) throw new Error(res.error);
+  return res.user;
+}
+
+export async function dropAdminMode() {
+  if (remoteMode) {
+    try {
+      await post('/api/auth/drop-admin');
+    } catch {}
+  }
+}
+
+export async function logoutSession() {
+  const token = getAuthToken();
+  // Forget the token locally first so a locked terminal can't reuse it, then revoke it server-side.
+  clearAuthToken();
+  if (remoteMode && token) {
+    try {
+      await fetch(typeof window === 'undefined' ? 'http://localhost/api/auth/logout' : '/api/auth/logout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: '{}',
+      });
+    } catch {}
+  }
+}
+
+export async function getRecoveryQuestion(email, current) {
+  if (remoteMode) {
+    const { securityQuestion } = await post('/api/auth/recover', { email });
+    return securityQuestion;
+  }
+  const clean = String(email || '').trim().toLowerCase();
+  const match = (current?.admins || []).find((a) => a.email?.toLowerCase() === clean);
+  if (!match) throw new Error('No admin account found with that email.');
+  return match.securityQuestion || 'What city is this store in?';
+}
+
+/**
+ * Resets an admin password using the security answer.
+ * Remote: verified by the server, which also signs the admin in.
+ * Returns `{ user, data }`; `data` is only set in local mode.
+ */
+export async function resetPasswordWithAnswer(email, securityAnswer, newPassword, current) {
+  if (remoteMode) {
+    const { token, user } = await post('/api/auth/reset', { email, securityAnswer, newPassword });
+    setAuthToken(token);
+    return { user, data: null };
+  }
+  const clean = String(email || '').trim().toLowerCase();
+  const match = (current?.admins || []).find((a) => a.email?.toLowerCase() === clean);
+  if (!match || String(securityAnswer || '').trim().toLowerCase() !== String(match.securityAnswer || '').toLowerCase()) {
+    throw new Error('The email or security answer is incorrect.');
+  }
+  if (String(newPassword || '').trim().length < 6) throw new Error('New password must be at least 6 characters.');
+  const data = await resetAdminPassword(match.id, newPassword, current);
+  return {
+    user: { id: match.id, name: match.name, email: match.email, role: 'admin', type: 'admin', isAdmin: true, authenticatedAt: new Date().toISOString() },
+    data,
+  };
 }
 
 // --- STAFF & SESSION AUTH ---
@@ -245,7 +389,9 @@ export function setCurrentStaff(staffMember) {
 
 export async function saveStaff(newStaffList, current) {
   if (remoteMode) {
-    return finishRemoteMutation('/api/staff', 'PUT', { staff: newStaffList });
+    // Only send a PIN when it was set or changed; the server keeps existing PIN hashes.
+    const staff = newStaffList.map(({ id, name, role, pin }) => ({ id, name, role, ...(pin ? { pin: String(pin) } : {}) }));
+    return finishRemoteMutation('/api/staff', 'PUT', { staff });
   }
   return saveLocal({ ...current, staff: newStaffList });
 }
@@ -261,7 +407,9 @@ export function getAdminSession() {
 
 export function setAdminSession(admin) {
   try {
-    localStorage.setItem(SESSION_ADMIN_KEY, JSON.stringify(admin));
+    // Never persist credentials, even in local mode.
+    const { password, securityAnswer, ...safe } = admin || {};
+    localStorage.setItem(SESSION_ADMIN_KEY, JSON.stringify(safe));
   } catch {}
 }
 
@@ -272,30 +420,21 @@ export function clearAdminSession() {
 }
 
 export async function createAdmin(adminData, current) {
+  if (remoteMode) {
+    const { id, ...fields } = adminData;
+    return finishRemoteMutation('/api/admins', 'POST', fields);
+  }
+
   const newAdmin = {
     ...adminData,
     id: adminData.id || `admin-${crypto.randomUUID()}`,
   };
-
   const nextAdmins = [
     ...(current?.admins || []).filter(
       (a) => a.id !== newAdmin.id && a.email?.toLowerCase() !== newAdmin.email?.toLowerCase()
     ),
     newAdmin,
   ];
-
-  if (remoteMode) {
-    try {
-      await api('/api/admins', {
-        method: 'POST',
-        body: JSON.stringify(newAdmin),
-      });
-      return loadStore();
-    } catch (err) {
-      console.warn('Could not save admin remotely, saving locally:', err);
-    }
-  }
-
   return saveLocal({
     ...current,
     admins: nextAdmins,
@@ -308,22 +447,12 @@ export async function createAdmin(adminData, current) {
 
 export async function resetAdminPassword(adminId, newPassword, current) {
   const cleanPassword = String(newPassword || '').trim();
+  if (remoteMode) {
+    return finishRemoteMutation(`/api/admins/${encodeURIComponent(adminId)}`, 'PATCH', { password: cleanPassword });
+  }
   const nextAdmins = (current?.admins || initialAdmins).map((a) =>
     a.id === adminId ? { ...a, password: cleanPassword } : a
   );
-
-  if (remoteMode) {
-    try {
-      await api('/api/admins/reset-password', {
-        method: 'POST',
-        body: JSON.stringify({ adminId, newPassword: cleanPassword }),
-      });
-      return loadStore();
-    } catch (err) {
-      console.warn('Could not reset password remotely, saving locally:', err);
-    }
-  }
-
   return saveLocal({
     ...current,
     admins: nextAdmins,
@@ -335,27 +464,16 @@ export async function resetAdminPassword(adminId, newPassword, current) {
 }
 
 export async function deleteAdmin(adminId, current) {
+  if (remoteMode) {
+    return finishRemoteMutation(`/api/admins/${encodeURIComponent(adminId)}`, 'DELETE');
+  }
   const currentAdmins = Array.isArray(current?.admins) && current.admins.length > 0
     ? current.admins
     : [...initialAdmins];
-
   if (currentAdmins.length <= 1) {
     throw new Error('Cannot remove the last administrator. The shop must have at least one active administrator.');
   }
-
   const nextAdmins = currentAdmins.filter((a) => a.id !== adminId);
-
-  if (remoteMode) {
-    try {
-      await api(`/api/admins/${encodeURIComponent(adminId)}`, {
-        method: 'DELETE',
-      });
-      return loadStore();
-    } catch (err) {
-      console.warn('Could not delete admin remotely, saving locally:', err);
-    }
-  }
-
   return saveLocal({
     ...current,
     admins: nextAdmins,
@@ -368,96 +486,56 @@ export async function deleteAdmin(adminId, current) {
 
 /**
  * Updates an administrator's profile (name, email, password, recovery question/answer).
- * Persists immediately to local storage and updates active session if needed.
+ * Blank password / answer fields keep the current values.
  */
 export async function updateAdminProfile(adminId, updates, current) {
-  const currentAdmins = Array.isArray(current?.admins) && current.admins.length > 0
-    ? current.admins
-    : [...initialAdmins];
-
   const cleanName = updates.name ? String(updates.name).trim() : undefined;
   const cleanEmail = updates.email ? String(updates.email).trim().toLowerCase() : undefined;
-  // CRITICAL: only set cleanPassword if updates.password is provided and non-empty!
   const cleanPassword = updates.password && String(updates.password).trim() ? String(updates.password).trim() : undefined;
   const cleanAnswer = updates.securityAnswer && String(updates.securityAnswer).trim() ? String(updates.securityAnswer).trim().toLowerCase() : undefined;
 
-  let found = false;
-  const nextAdmins = currentAdmins.map((admin) => {
-    if (admin.id === adminId || (!adminId && currentAdmins.length === 1)) {
-      found = true;
-      return {
-        ...admin,
-        ...(cleanName ? { name: cleanName } : {}),
-        ...(cleanEmail ? { email: cleanEmail } : {}),
-        ...(cleanPassword ? { password: cleanPassword } : {}),
-        ...(updates.securityQuestion ? { securityQuestion: updates.securityQuestion } : {}),
-        ...(cleanAnswer ? { securityAnswer: cleanAnswer } : {}),
-      };
-    }
-    return admin;
-  });
+  const patchPayload = {
+    ...(cleanName ? { name: cleanName } : {}),
+    ...(cleanEmail ? { email: cleanEmail } : {}),
+    ...(cleanPassword ? { password: cleanPassword } : {}),
+    ...(updates.securityQuestion ? { securityQuestion: updates.securityQuestion } : {}),
+    ...(cleanAnswer ? { securityAnswer: cleanAnswer } : {}),
+  };
 
-  if (!found && (cleanName || cleanEmail)) {
-    nextAdmins.push({
-      id: adminId || `admin-${Date.now()}`,
-      name: cleanName || 'Store Administrator',
-      email: cleanEmail || 'admin@freshfold.test',
-      password: cleanPassword || 'admin123',
-      securityQuestion: updates.securityQuestion || 'What city is this store in?',
-      securityAnswer: cleanAnswer || 'gurugram',
-    });
-  }
-
-  // Update localStorage session if currently logged in
+  // Keep the cached display identity in sync (never stores credentials).
   try {
     if (typeof localStorage !== 'undefined') {
-      const activeRaw = localStorage.getItem('freshfold_active_session_v1');
-      if (activeRaw) {
-        const active = JSON.parse(activeRaw);
-        if (active.id === adminId || active.role === 'admin' || active.type === 'admin') {
-          const updatedActive = {
-            ...active,
+      for (const key of ['freshfold_active_session_v1', SESSION_ADMIN_KEY]) {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const session = JSON.parse(raw);
+        if (session.id === adminId || session.admin?.id === adminId) {
+          localStorage.setItem(key, JSON.stringify({
+            ...session,
             ...(cleanName ? { name: cleanName } : {}),
             ...(cleanEmail ? { email: cleanEmail } : {}),
-          };
-          localStorage.setItem('freshfold_active_session_v1', JSON.stringify(updatedActive));
-        }
-      }
-
-      const adminRaw = localStorage.getItem(SESSION_ADMIN_KEY);
-      if (adminRaw) {
-        const adminSession = JSON.parse(adminRaw);
-        if (adminSession.id === adminId || currentAdmins.length === 1) {
-          const updatedAdminSession = {
-            ...adminSession,
-            ...(cleanName ? { name: cleanName } : {}),
-            ...(cleanEmail ? { email: cleanEmail } : {}),
-          };
-          localStorage.setItem(SESSION_ADMIN_KEY, JSON.stringify(updatedAdminSession));
+          }));
         }
       }
     }
   } catch {}
 
-  // If remoteMode, sync admins into remote database and store settings
   if (remoteMode) {
-    try {
-      const patchPayload = {
-        ...(cleanName ? { name: cleanName } : {}),
-        ...(cleanEmail ? { email: cleanEmail } : {}),
-        ...(cleanPassword ? { password: cleanPassword } : {}),
-        ...(updates.securityQuestion ? { securityQuestion: updates.securityQuestion } : {}),
-        ...(cleanAnswer ? { securityAnswer: cleanAnswer } : {}),
-      };
-      await api(`/api/admins/${encodeURIComponent(adminId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify(patchPayload),
-      });
-      return loadStore();
-    } catch (err) {
-      console.warn('Could not update admin remotely, saving locally:', err);
-    }
+    return finishRemoteMutation(`/api/admins/${encodeURIComponent(adminId)}`, 'PATCH', patchPayload);
   }
+
+  const currentAdmins = Array.isArray(current?.admins) && current.admins.length > 0
+    ? current.admins
+    : [...initialAdmins];
+  let found = false;
+  const nextAdmins = currentAdmins.map((admin) => {
+    if (admin.id === adminId || (!adminId && currentAdmins.length === 1)) {
+      found = true;
+      return { ...admin, ...patchPayload };
+    }
+    return admin;
+  });
+  if (!found) throw new Error('Administrator not found.');
 
   return saveLocal({
     ...current,
@@ -471,6 +549,10 @@ export async function updateAdminProfile(adminId, updates, current) {
 
 // --- SETTINGS (TAX & STORE) ---
 export async function saveSettings(newSettings, current) {
+  if (remoteMode) {
+    const { admins, ...settings } = newSettings || {};
+    return finishRemoteMutation('/api/settings', 'PATCH', settings);
+  }
   const mergedSettings = {
     ...(current?.settings || {}),
     ...newSettings,
@@ -478,11 +560,22 @@ export async function saveSettings(newSettings, current) {
       ? current.admins
       : (newSettings?.admins || current?.settings?.admins),
   };
-
-  if (remoteMode) {
-    return finishRemoteMutation('/api/settings', 'PATCH', mergedSettings);
-  }
   return saveLocal({ ...current, settings: mergedSettings });
+}
+
+// --- DIGITAL BILL LINKS ---
+/**
+ * Returns a shareable public bill URL. Remote: the server issues an unguessable
+ * per-order token. Local demo mode: a browser-only hash link.
+ */
+export async function getShareableBillUrl(order, customer) {
+  if (!order) return '';
+  if (remoteMode) {
+    const { orderNo, token } = await post(`/api/orders/${encodeURIComponent(order.id)}/share-link`);
+    const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+    return `${origin}/?bill=${encodeURIComponent(orderNo || order.orderNo)}&token=${token}`;
+  }
+  return buildPublicBillUrl(order, customer);
 }
 
 // --- CUSTOMERS ---
@@ -655,27 +748,32 @@ export async function createOrder(order, current) {
   const id = `ord-${crypto.randomUUID()}`;
   const itemLines = (order.items || []).map((item, index) => ({
     ...item,
+    garmentId: item.garmentId || item.id,
     id: `line-${crypto.randomUUID()}-${index}`,
     barcode: `${orderNo}-${index + 1}`,
     status: 'Received',
   }));
 
-  const gross = Number(order.grossAmount || 0);
-  const discount = Number(order.discountAmount || 0);
-  const subtotalBeforeExpress = Math.max(0, gross - discount);
-
-  const expressPercent = Number(order.expressPercent || 0);
-  const expressAmount = expressPercent > 0
-    ? Math.round((subtotalBeforeExpress * (expressPercent / 100) + Number.EPSILON) * 100) / 100
-    : Number(order.expressAmount || 0);
-  const expressLabel = order.expressLabel || (expressPercent > 0 ? `Early Delivery (+${expressPercent}%)` : '');
-
-  const subtotal = subtotalBeforeExpress + expressAmount;
+  // Browser-only demo mode trusts the POS figures; the Worker re-prices everything server-side.
   const settings = current.settings || defaultSettings;
   const isTaxEnabled = order.taxEnabled !== undefined ? Boolean(order.taxEnabled) : Boolean(settings.taxEnabled);
-  const taxPercent = isTaxEnabled ? Number(settings.taxPercent || 0) : 0;
-  const taxAmount = isTaxEnabled ? Math.round((subtotal * (taxPercent / 100) + Number.EPSILON) * 100) / 100 : 0;
-  const totalAmount = Math.round((subtotal + taxAmount + Number.EPSILON) * 100) / 100;
+  const {
+    grossAmount: gross,
+    discountAmount: discount,
+    expressPercent,
+    expressAmount,
+    taxPercent,
+    taxAmount,
+    totalAmount,
+  } = computeTotals({
+    grossAmount: order.grossAmount,
+    discountAmount: order.discountAmount,
+    expressPercent: order.expressPercent,
+    expressAmount: order.expressAmount,
+    taxEnabled: isTaxEnabled,
+    taxPercent: settings.taxPercent || 0,
+  });
+  const expressLabel = order.expressLabel || (expressPercent > 0 ? `Early Delivery (+${expressPercent}%)` : '');
 
   // Auto-deduct from customer's package wallet credits if available
   const customer = (current.customers || []).find((c) => c.id === order.customerId);
@@ -811,7 +909,18 @@ export function formatMoney(amount) {
 }
 
 // --- ADDONS & TAGS PERSISTENCE (CREATE ON THE FLY) ---
+// In remote mode these are stored in the server catalog so prices are enforced
+// server-side and tags are shared across terminals.
+async function saveRemoteCatalogEntry(kind, name, price, current) {
+  const catalog = await post('/api/catalog', { kind, name, ...(price !== undefined ? { price } : {}) });
+  return { ...current, addons: catalog.addons, brands: catalog.brands, colors: catalog.colors, defects: catalog.defects };
+}
+
 export async function saveCustomAddon(newAddon, current) {
+  if (remoteMode) {
+    if (!String(newAddon?.name || '').trim()) return current;
+    return saveRemoteCatalogEntry('addon', newAddon.name, Number(newAddon.price || 0), current);
+  }
   const existingList = current.addons || [];
   const trimmedName = String(newAddon.name || '').trim();
   if (!trimmedName) return current;
@@ -833,6 +942,7 @@ export async function saveCustomAddon(newAddon, current) {
 export async function saveCustomBrand(brandName, current) {
   const trimmed = String(brandName || '').trim();
   if (!trimmed) return current;
+  if (remoteMode) return saveRemoteCatalogEntry('brand', trimmed, undefined, current);
   const existingList = current.brands || [];
   if (existingList.some((b) => b.toLowerCase() === trimmed.toLowerCase())) return current;
   return saveLocal({ ...current, brands: [...existingList, trimmed] });
@@ -841,6 +951,7 @@ export async function saveCustomBrand(brandName, current) {
 export async function saveCustomColor(colorName, current) {
   const trimmed = String(colorName || '').trim();
   if (!trimmed) return current;
+  if (remoteMode) return saveRemoteCatalogEntry('color', trimmed, undefined, current);
   const existingList = current.colors || [];
   if (existingList.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return current;
   return saveLocal({ ...current, colors: [...existingList, trimmed] });
@@ -849,6 +960,7 @@ export async function saveCustomColor(colorName, current) {
 export async function saveCustomDefect(defectName, current) {
   const trimmed = String(defectName || '').trim();
   if (!trimmed) return current;
+  if (remoteMode) return saveRemoteCatalogEntry('defect', trimmed, undefined, current);
   const existingList = current.defects || [];
   if (existingList.some((d) => d.toLowerCase() === trimmed.toLowerCase())) return current;
   return saveLocal({ ...current, defects: [...existingList, trimmed] });

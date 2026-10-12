@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Check, Plus, Sparkles, Tag, X } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
+import { useEscapeKey } from '../lib/a11y.js';
 
 export default function ItemTagModal({
   isOpen,
@@ -17,6 +18,7 @@ export default function ItemTagModal({
   onUpdateItem,
   onToast,
 }) {
+  useEscapeKey(isOpen && Boolean(item), onClose);
   if (!isOpen || !item) return null;
 
   // Local state for editing the item's tags
@@ -163,6 +165,9 @@ export default function ItemTagModal({
     >
       <div
         className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="item-tag-modal-title"
         style={{
           width: '600px',
           maxWidth: '96vw',
@@ -184,7 +189,7 @@ export default function ItemTagModal({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Tag size={18} color="#2563eb" />
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#1e293b' }}>
+              <h3 id="item-tag-modal-title" style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#1e293b' }}>
                 Add-ons & Garment Tags
               </h3>
             </div>
@@ -201,6 +206,7 @@ export default function ItemTagModal({
             type="button"
             className="icon-button"
             onClick={onClose}
+            aria-label="Close"
             style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#fff', border: '1px solid #e2e8f0' }}
           >
             <X size={16} />

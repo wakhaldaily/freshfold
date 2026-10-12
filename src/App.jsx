@@ -1,48 +1,54 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  BadgePercent, Calendar, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, CreditCard,
-  Download, Edit, FileSpreadsheet, Files, FileText, Filter, House, KeyRound, LayoutDashboard, Lock, LogOut, Mail,
-  Megaphone, Menu, Minus, Package, PackagePlus, PanelLeft, PanelLeftClose, Pencil, Phone, Plus, Printer, ReceiptText,
-  Scale, Search, Settings, ShieldCheck, Shirt, ShoppingBag, Smartphone, Sparkles, Store,
-  Trash2, UserPlus, UserRound, Users, Wallet, Waves, Wind, X,
-} from 'lucide-react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, Store } from 'lucide-react';
 
 import {
   assignPackage, clearAdminSession, createAdmin, createCustomer, createOrder,
-  createPackage, deleteAdmin, deleteCustomer, deletePackage, formatMoney, getAdminSession, isRemoteMode,
-  loadStore, recordPayment, resetAdminPassword, saveSettings, saveStaff, setAdminSession,
+  createPackage, deleteAdmin, deleteCustomer, deletePackage, getAdminSession, isRemoteMode,
+  loadLocal, loadStore, recordPayment, saveSettings, saveStaff, setAdminSession,
   updateAdminProfile, updateCustomer, updateOrderStatus, updatePackage,
   saveCustomAddon, saveCustomBrand, saveCustomColor, saveCustomDefect,
+  AuthRequiredError, UNAUTHORIZED_EVENT, detectBackend, dropAdminMode, elevateToAdmin, getAuthToken,
+  getRecoveryQuestion, loginAdmin, loginStaff, logoutSession, resetPasswordWithAnswer, setupStore,
 } from './lib/persistence.js';
-import { downloadBatchInvoicesPdf, formatDate, formatDateTime } from './lib/pdfGenerator.js';
 import {
   exportOrdersToExcel,
   filterOrdersByDate,
   getAvailableYears,
   getFilterPeriodLabel,
-  MONTH_NAMES,
 } from './lib/exportUtils.js';
 
 // Modals & Subcomponents
 import AdminAuthModal from './components/AdminAuthModal.jsx';
-import SettingsModal from './components/SettingsModal.jsx';
 import PackageManageModal from './components/PackageManageModal.jsx';
 import PackageSaleModal from './components/PackageSaleModal.jsx';
 import OrderDetailModal from './components/OrderDetailModal.jsx';
 import PaymentModal from './components/PaymentModal.jsx';
-import ThermalReceiptModal from './components/ThermalReceiptModal.jsx';
 import CustomerModal from './components/CustomerModal.jsx';
 import PosRegister from './components/PosRegister.jsx';
 import PublicBillView from './components/PublicBillView.jsx';
 import AppLoginScreen from './components/AppLoginScreen.jsx';
-import PamphletModal from './components/PamphletModal.jsx';
-import { AppSkeleton, TableSkeleton } from './components/SkeletonLoader.jsx';
+import { AppSkeleton } from './components/SkeletonLoader.jsx';
+import AppSidebar from './components/AppSidebar.jsx';
+import AppTopbar from './components/AppTopbar.jsx';
 import {
   isDemoAllowed,
   getActiveSession,
   setActiveSession,
   clearActiveSession,
 } from './lib/authConfig.js';
+
+// Page views (rendered by the `view` state)
+import DashboardView from './views/DashboardView.jsx';
+import OrdersView from './views/OrdersView.jsx';
+import CustomersView from './views/CustomersView.jsx';
+import CustomerDetailView from './views/CustomerDetailView.jsx';
+import PackagesView from './views/PackagesView.jsx';
+
+// jsPDF, html2canvas and qrcode are only needed for receipts, pamphlets and PDFs,
+// so those screens load on demand instead of in the initial bundle.
+const ThermalReceiptModal = lazy(() => import('./components/ThermalReceiptModal.jsx'));
+const PamphletModal = lazy(() => import('./components/PamphletModal.jsx'));
+const SettingsModal = lazy(() => import('./components/SettingsModal.jsx'));
 
 export default function App() {
   const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -65,7 +71,9 @@ export default function App() {
   const [toast, setToast] = useState('');
   const [busy, setBusy] = useState(false);
   const [adminUser, setAdminUserState] = useState(null);
-  const [authSession, setAuthSession] = useState(() => getActiveSession());
+  // In remote mode the session comes from the server (bootstrap `me`), never from localStorage alone.
+  const [authSession, setAuthSession] = useState(null);
+  const [backend, setBackend] = useState(null); // { database, demo, setupRequired, storeName, tagline }
 
   const [modal, setModal] = useState(null);
 
@@ -94,29 +102,67 @@ export default function App() {
     setMobileMenuOpen(false);
   };
 
+  // Applies a freshly loaded remote store, including the signed-in identity.
+  const applyLoadedStore = (loaded) => {
+    setData(loaded);
+    if (loaded?.me) {
+      setAuthSession(loaded.me);
+      setActiveSession(loaded.me);
+      setAdminUserState(loaded.me.isAdmin ? (loaded.me.admin || loaded.me) : null);
+    }
+    setSelectedCustomerId((prev) => prev || loaded?.customers?.[0]?.id || '');
+  };
+
   useEffect(() => {
-    loadStore()
-      .then((loaded) => {
-        setData(loaded);
-        const savedAdmin = getAdminSession();
-        if (savedAdmin) {
-          setAdminUserState(savedAdmin);
-        }
+    if (billParam) return undefined;
+    let cancelled = false;
+    (async () => {
+      const info = await detectBackend();
+      if (cancelled) return;
+      setBackend(info);
+
+      if (!info.database) {
+        // Browser-only demo mode: data and sign-in live in this browser.
+        const local = loadLocal();
+        setData(local);
+        setAuthSession(getActiveSession());
         const savedSession = getActiveSession();
-        if (savedSession && (savedSession.role === 'admin' || savedSession.type === 'admin')) {
-          setAdminUserState(savedSession);
-        }
-        if (loaded?.customers?.length > 0) {
-          setSelectedCustomerId(loaded.customers[0].id);
-        }
-      })
-      .catch((err) => {
-        console.error('Store load error, falling back to local storage:', err);
-        try {
-          const local = loadLocal();
-          setData(local);
-        } catch {}
-      });
+        const savedAdmin = getAdminSession();
+        if (savedSession && (savedSession.role === 'admin' || savedSession.type === 'admin')) setAdminUserState(savedSession);
+        else if (savedAdmin) setAdminUserState(savedAdmin);
+        if (local?.customers?.length > 0) setSelectedCustomerId(local.customers[0].id);
+        return;
+      }
+
+      if (!getAuthToken()) return;
+      try {
+        const loaded = await loadStore();
+        if (!cancelled) applyLoadedStore(loaded);
+      } catch (err) {
+        if (cancelled) return;
+        clearActiveSession();
+        clearAdminSession();
+        if (!(err instanceof AuthRequiredError)) showToast(err.message || 'Could not reach the store server.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The API signals an expired or revoked session: drop all in-memory data and show sign-in.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      clearActiveSession();
+      clearAdminSession();
+      setAuthSession(null);
+      setAdminUserState(null);
+      setModal(null);
+      setData(null);
+      setToast('Your session has ended. Please sign in again.');
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
 
   useEffect(() => {
@@ -150,29 +196,62 @@ export default function App() {
   }, [authSession, data]);
 
   // Terminal Lock / Auth Helpers
-  const handleLockTerminal = () => {
+  const handleLockTerminal = (message = 'Terminal locked. Sign in to continue.') => {
+    logoutSession();
     clearActiveSession();
     clearAdminSession();
     setAuthSession(null);
     setAdminUserState(null);
-    showToast('Terminal locked. Sign in to continue.');
+    setModal(null);
+    // Remote data stays on the server; don't keep customer records in memory on a locked terminal.
+    if (isRemoteMode()) setData(null);
+    showToast(message);
   };
 
-  const handleAdminLogin = (admin) => {
+  // Called after any successful sign-in (PIN, admin login, setup, password reset).
+  const handleAuthenticated = async (user, localData = null) => {
+    if (isRemoteMode()) {
+      const loaded = await loadStore();
+      applyLoadedStore(loaded);
+      return;
+    }
+    if (localData) setData(localData);
+    setAuthSession(user);
+    setActiveSession(user);
+    if (user.role === 'admin' || user.type === 'admin') {
+      setAdminUserState(user);
+      setAdminSession(user);
+    }
+  };
+
+  const handleAdminLogin = async (admin) => {
     setAdminUserState(admin);
     setAdminSession(admin);
+    // Admin-only data (e.g. the administrator directory) is only sent to admin sessions.
+    if (isRemoteMode()) {
+      try {
+        applyLoadedStore(await loadStore());
+      } catch (err) {
+        showToast(err.message);
+      }
+    }
   };
 
-  const handleAdminLogout = () => {
+  const handleAdminLogout = async () => {
+    const inherentlyAdmin = authSession?.type === 'admin' || (authSession?.staffRole ?? authSession?.role) === 'admin';
+    if (inherentlyAdmin) {
+      handleLockTerminal('Admin session ended. Terminal locked.');
+      return;
+    }
+    await dropAdminMode();
     setAdminUserState(null);
     clearAdminSession();
-    if (authSession?.role === 'admin' || authSession?.type === 'admin') {
-      clearActiveSession();
-      setAuthSession(null);
-      showToast('Admin session ended. Terminal locked.');
-    } else {
-      showToast('Logged out of Admin mode. Staff session remains active.');
+    if (isRemoteMode()) {
+      try {
+        applyLoadedStore(await loadStore());
+      } catch {}
     }
+    showToast('Logged out of Admin mode. Staff session remains active.');
   };
 
   const requireAdmin = (callback) => {
@@ -332,8 +411,9 @@ export default function App() {
       return;
     }
     showToast(`Generating PDF for ${filteredOrders.length} invoices...`);
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
+        const { downloadBatchInvoicesPdf } = await import('./lib/pdfGenerator.js');
         const res = downloadBatchInvoicesPdf({
           orders: filteredOrders,
           customers: data.customers,
@@ -353,245 +433,70 @@ export default function App() {
     }, 50);
   };
 
+  // Public digital bills never load the store or require a session.
   if (billParam) {
-    if (!data) return <AppSkeleton />;
-    return <PublicBillView billParam={billParam} tokenParam={tokenParam} localData={data} />;
+    return <PublicBillView billParam={billParam} tokenParam={tokenParam} />;
   }
 
-  if (!data) {
+  if (!backend || (!backend.database && !data)) {
     return <AppSkeleton />;
   }
+
+  const remote = Boolean(backend.database);
+  const demoMode = remote ? Boolean(backend.demo) : isDemoAllowed();
 
   if (!authSession) {
     return (
       <AppLoginScreen
-        storeName={data.settings?.storeName || 'Clean Clear Dry Cleaning'}
-        tagline={data.settings?.tagline || 'Counter & Store Management System'}
-        staff={data.staff || []}
-        admins={data.admins || []}
-        onLoginSuccess={(user) => {
-          setAuthSession(user);
-          setActiveSession(user);
-          if (user.role === 'admin' || user.type === 'admin') {
-            setAdminUserState(user);
-            setAdminSession(user);
-          }
+        storeName={data?.settings?.storeName || backend.storeName || 'Clean Clear Dry Cleaning'}
+        tagline={data?.settings?.tagline || backend.tagline || 'Counter & Store Management System'}
+        showDemoHints={demoMode}
+        setupRequired={remote && Boolean(backend.setupRequired)}
+        // Remote: anyone may only create the *first* administrator; later admins are added in Settings.
+        allowSignup={remote ? Boolean(backend.setupRequired) : true}
+        onPinLogin={async (pin) => {
+          const user = await loginStaff(pin, data);
+          await handleAuthenticated(user);
+          return user;
         }}
-        onCreateAdmin={async (newAdmin, customStoreName) => {
-          await runMutation(async (cur) => {
-            let next = await createAdmin(newAdmin, cur);
-            if (customStoreName && customStoreName.trim()) {
-              next = await saveSettings({
-                ...next.settings,
-                storeName: customStoreName.trim(),
-                storeNameCreated: true,
-              }, next);
-            }
-            return next;
-          }, `Store "${customStoreName || 'Clean Clear Dry Cleaning'}" and administrator registered.`);
+        onAdminLogin={async (email, password) => {
+          const user = await loginAdmin(email, password, data);
+          await handleAuthenticated(user);
+          return user;
+        }}
+        onSetup={async (newAdmin, storeName) => {
+          const { user, data: next } = await setupStore(newAdmin, storeName, data);
+          setBackend((prev) => ({ ...prev, setupRequired: false }));
+          await handleAuthenticated(user, next);
+          return user;
         }}
         onToast={showToast}
       />
     );
   }
 
+  if (!data) {
+    return <AppSkeleton />;
+  }
+
   return (
     <div className="app-shell">
       {/* 1. DARK SIDEBAR NAVIGATION (COLLAPSIBLE) */}
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
-        {/* Brand Lockup */}
-        <div className="brand-lockup">
-          <div
-            className="brand-mark"
-            onClick={sidebarCollapsed ? toggleSidebar : undefined}
-            style={{ cursor: sidebarCollapsed ? 'pointer' : 'default' }}
-            title={sidebarCollapsed ? 'Expand Sidebar' : 'Clean Clear Dry Cleaning'}
-          >
-            <Sparkles size={18} />
-          </div>
-          <div>
-            <strong>Clean Clear</strong>
-            <span>DRY CLEANING</span>
-          </div>
-          <button
-            type="button"
-            className="sidebar-collapse-btn"
-            onClick={toggleSidebar}
-            title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-            aria-label={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          >
-            {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
-          </button>
-          <button
-            type="button"
-            className="icon-button nav-close"
-            onClick={() => setMobileMenuOpen(false)}
-            aria-label="Close Navigation"
-            style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#cbd5e1' }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Store Switcher */}
-        <div className="store-switcher" title={data.settings?.storeName || 'Clean Clear Dry Cleaning'}>
-          <span className="store-dot" />
-          <div>
-            <span>STORE LOCATION</span>
-            <strong>{data.settings?.storeName || 'Clean Clear Dry Cleaning'}</strong>
-          </div>
-        </div>
-
-        {/* Primary Navigation */}
-        <div className="nav-caption">MAIN MENU</div>
-        <nav className="primary-nav">
-          <button
-            type="button"
-            className={`nav-item ${view === 'dashboard' ? 'active' : ''}`}
-            onClick={() => handleNavigate('dashboard')}
-            data-tooltip="Dashboard"
-          >
-            <LayoutDashboard size={18} />
-            <span>Dashboard</span>
-          </button>
-
-          <button
-            type="button"
-            className={`nav-item ${view === 'new-order' ? 'active' : ''}`}
-            onClick={() => handleNavigate('new-order')}
-            data-tooltip="New Order"
-          >
-            <Shirt size={18} />
-            <span>New Order</span>
-          </button>
-
-          <button
-            type="button"
-            className={`nav-item ${view === 'orders' ? 'active' : ''}`}
-            onClick={() => handleNavigate('orders')}
-            data-tooltip={`Order History (${data.orders.length})`}
-          >
-            <ShoppingBag size={18} />
-            <span>Order History</span>
-            <span className="nav-count">{data.orders.length}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`nav-item ${view === 'customers' || view === 'customer-detail' ? 'active' : ''}`}
-            onClick={() => handleNavigate('customers')}
-            data-tooltip={`Customer Book (${data.customers.length})`}
-          >
-            <Users size={18} />
-            <span>Customer Book</span>
-            <span className="nav-count">{data.customers.length}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`nav-item ${view === 'packages' ? 'active' : ''}`}
-            onClick={() => handleNavigate('packages')}
-            data-tooltip={`Package Plans (${data.packages.length})`}
-          >
-            <Package size={18} />
-            <span>Package Plans</span>
-            <span className="nav-count">{data.packages.length}</span>
-          </button>
-
-          <button
-            type="button"
-            className="nav-item"
-            onClick={() => {
-              setMobileMenuOpen(false);
-              setModal({ type: 'pamphlet' });
-            }}
-            data-tooltip="Store Pamphlet & Customer Flyer"
-          >
-            <Megaphone size={18} />
-            <span>Store Pamphlet</span>
-          </button>
-
-          <button
-            type="button"
-            className="nav-item"
-            onClick={() => {
-              setMobileMenuOpen(false);
-              requireAdmin(() => setModal({ type: 'settings' }));
-            }}
-            data-tooltip="Store & Tax Settings"
-          >
-            <Settings size={18} />
-            <span>Store & Tax Settings</span>
-          </button>
-        </nav>
-
-        {/* Sidebar Bottom Status */}
-        <div className="sidebar-bottom">
-          <div
-            className="shift-card"
-            data-tooltip={`Shift: ${authSession?.name || 'Counter Staff'}`}
-            title={`Logged in: ${authSession?.name || 'Staff'} (${authSession?.role || 'cashier'})`}
-          >
-            <div className="shift-icon">
-              <Clock3 size={16} />
-            </div>
-            <div>
-              <span>COUNTER SHIFT</span>
-              <strong>{authSession ? `${authSession.name} (${authSession.role})` : 'Active · Counter'}</strong>
-            </div>
-            <span className="live-dot" />
-          </div>
-
-          {/* Admin Status / Login Chip */}
-          {adminUser ? (
-            <div
-              className="staff-chip"
-              style={{ cursor: 'pointer' }}
-              onClick={handleAdminLogout}
-              data-tooltip="Admin Active (Click to Logout)"
-              title="Click to Log Out of Admin Mode"
-            >
-              <div className="staff-avatar" style={{ background: '#2563eb', color: '#fff' }}>
-                {(adminUser?.name || 'Admin')[0]?.toUpperCase()}
-              </div>
-              <div>
-                <strong>{adminUser?.name || 'Administrator'}</strong>
-                <span style={{ color: '#53cc9b' }}>Admin Active (Log Out)</span>
-              </div>
-              <ShieldCheck size={16} color="#53cc9b" />
-            </div>
-          ) : (
-            <div
-              className="staff-chip"
-              style={{ cursor: 'pointer' }}
-              onClick={() => setModal({ type: 'admin-auth' })}
-              data-tooltip="Counter Staff (Click for Admin)"
-              title="Click to sign in as Administrator"
-            >
-              <div className="staff-avatar">
-                <UserRound size={16} />
-              </div>
-              <div>
-                <strong>Counter Staff</strong>
-                <span>Click for Admin Login</span>
-              </div>
-              <KeyRound size={15} color="#9696ad" />
-            </div>
-          )}
-
-          {/* Lock Terminal Quick Button */}
-          <button
-            type="button"
-            className="button button-quiet sidebar-lock-btn"
-            onClick={handleLockTerminal}
-            data-tooltip="Lock POS Terminal"
-            title="Lock POS Terminal Screen"
-          >
-            <Lock size={14} />
-            <span className="sidebar-lock-text">Lock Terminal</span>
-          </button>
-        </div>
-      </aside>
+      <AppSidebar
+        data={data}
+        view={view}
+        setModal={setModal}
+        requireAdmin={requireAdmin}
+        sidebarCollapsed={sidebarCollapsed}
+        mobileMenuOpen={mobileMenuOpen}
+        toggleSidebar={toggleSidebar}
+        setMobileMenuOpen={setMobileMenuOpen}
+        handleNavigate={handleNavigate}
+        authSession={authSession}
+        adminUser={adminUser}
+        handleAdminLogout={handleAdminLogout}
+        handleLockTerminal={handleLockTerminal}
+      />
 
       {/* Backdrop for mobile drawer */}
       {mobileMenuOpen && (
@@ -608,128 +513,23 @@ export default function App() {
         {busy && <div className="top-shimmer-progress" />}
 
         {/* Topbar */}
-        <header className="topbar">
-          <div className="topbar-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Mobile Hamburger Menu Button */}
-            <button
-              type="button"
-              className="icon-button menu-toggle"
-              onClick={() => setMobileMenuOpen(true)}
-              style={{ width: '34px', height: '34px', borderRadius: '8px' }}
-              title="Open Navigation Menu"
-              aria-label="Open Navigation Menu"
-            >
-              <Menu size={18} />
-            </button>
-
-            {/* Desktop Sidebar Collapse Button */}
-            <button
-              type="button"
-              className="icon-button desktop-only"
-              onClick={toggleSidebar}
-              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-              title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-              aria-label={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-            >
-              {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-            </button>
-            <div className="breadcrumb desktop-only">
-              <span>Clean Clear Dry Cleaning</span>
-              <ChevronRight size={14} />
-              <strong>
-                {view === 'dashboard' && 'Counter Dashboard'}
-                {view === 'new-order' && 'Add New Laundry Order'}
-                {view === 'orders' && 'Order History'}
-                {view === 'customers' && 'Customer Book'}
-                {view === 'customer-detail' && (currentDetailCustomer?.name || 'Customer Workspace')}
-                {view === 'packages' && 'Lifetime Packages'}
-              </strong>
-            </div>
-          </div>
-
-          <div className="topbar-actions">
-            {/* Global Search Bar */}
-            <div className="customer-search-wrap">
-              <Search size={16} />
-              <input
-                type="search"
-                placeholder="Search by customer name, mobile phone number, or ID..."
-                value={globalSearch}
-                onChange={(e) => setGlobalSearch(e.target.value)}
-              />
-              {globalSearch ? (
-                <button
-                  type="button"
-                  onClick={() => setGlobalSearch('')}
-                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', padding: '2px', display: 'flex' }}
-                  aria-label="Clear search"
-                >
-                  <X size={14} />
-                </button>
-              ) : (
-                <kbd>⌘K</kbd>
-              )}
-              {searchResults.length > 0 && (
-                <div className="search-results">
-                  {searchResults.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCustomerId(c.id);
-                        setView('customer-detail');
-                        setGlobalSearch('');
-                      }}
-                    >
-                      <div className="customer-avatar" style={{ width: '28px', height: '28px', fontSize: '11px' }}>
-                        {c.name.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <strong>{c.name}</strong>
-                        <small>+91 {c.mobile} · Wallet: {formatMoney(c.walletBalance)}</small>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className={`sync-state desktop-only ${isRemoteMode() ? 'sync-online' : ''}`}>
-              <span className="sync-dot" />
-              <span>{isRemoteMode() ? 'Neon DB Active' : 'Local Storage Ready'}</span>
-            </div>
-
-            {adminUser ? (
-              <button
-                type="button"
-                className="button button-quiet desktop-only"
-                style={{ minHeight: '36px', fontSize: '11px' }}
-                onClick={handleAdminLogout}
-              >
-                Admin: {adminUser?.name || 'Administrator'} (Log Out)
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="button button-quiet desktop-only"
-                style={{ minHeight: '36px', fontSize: '11px' }}
-                onClick={() => setModal({ type: 'admin-auth' })}
-              >
-                <Lock size={13} /> Admin Login
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="button button-quiet desktop-only"
-              style={{ minHeight: '36px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px' }}
-              onClick={handleLockTerminal}
-              title={`Active: ${authSession?.name || 'Staff'}. Click to lock POS terminal.`}
-            >
-              <LogOut size={13} /> Lock Terminal
-            </button>
-          </div>
-        </header>
+        <AppTopbar
+          view={view}
+          setView={setView}
+          setModal={setModal}
+          sidebarCollapsed={sidebarCollapsed}
+          toggleSidebar={toggleSidebar}
+          setMobileMenuOpen={setMobileMenuOpen}
+          authSession={authSession}
+          adminUser={adminUser}
+          handleAdminLogout={handleAdminLogout}
+          handleLockTerminal={handleLockTerminal}
+          currentDetailCustomer={currentDetailCustomer}
+          globalSearch={globalSearch}
+          setGlobalSearch={setGlobalSearch}
+          searchResults={searchResults}
+          setSelectedCustomerId={setSelectedCustomerId}
+        />
 
         {/* Page Content Body */}
         <main className="page-content" style={{ flex: 1, width: '100%', maxWidth: '100%' }}>
@@ -737,261 +537,13 @@ export default function App() {
           {/* PAGE 1: HOME POS COUNTER DASHBOARD                        */}
           {/* ========================================================= */}
           {view === 'dashboard' && (
-            <div className="dashboard-layout">
-              {/* Executive Welcome & Action Banner */}
-              <div className="dashboard-welcome-banner">
-                <div>
-                  <span className="caption-label">Counter Home</span>
-                  <h1>
-                    Welcome to {data.settings?.storeName || 'Clean Clear Dry Cleaning'}
-                  </h1>
-                  <p>
-                    Frictionless laundry intake, piece and weight orders, and instant thermal receipts.
-                  </p>
-                </div>
-
-                <div className="dashboard-welcome-actions">
-                  <button
-                    type="button"
-                    className="button button-primary"
-                    style={{ minHeight: '44px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    onClick={() => setView('new-order')}
-                  >
-                    <Plus size={16} /> New Order (Register)
-                  </button>
-
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    style={{ minHeight: '44px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    onClick={() => setModal({ type: 'pamphlet' })}
-                    title="Generate printable store pamphlet & flyer for customer outreach"
-                  >
-                    <Megaphone size={15} color="#2563eb" /> Store Pamphlet
-                  </button>
-
-                  <button
-                    type="button"
-                    className="button button-quiet"
-                    style={{ minHeight: '44px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    onClick={() => setModal({ type: 'customer-new' })}
-                  >
-                    <UserPlus size={15} /> Add Customer
-                  </button>
-                </div>
-              </div>
-
-              {/* 4 Counter Summary Metrics */}
-              <div className="metric-grid dashboard-metrics-grid">
-                <div className="metric-card" onClick={() => setView('orders')}>
-                  <div className="metric-top">
-                    <span>Total Orders Intake</span>
-                    <div className="metric-icon lavender">
-                      <ShoppingBag size={16} />
-                    </div>
-                  </div>
-                  <strong className="metric-value">{dashboardStats.totalOrders}</strong>
-                  <small>Recorded store laundry orders</small>
-                </div>
-
-                <div className="metric-card" onClick={() => { setView('orders'); setOrderStatusFilter('Processing'); }}>
-                  <div className="metric-top">
-                    <span>In Processing</span>
-                    <div className="metric-icon blue">
-                      <Shirt size={16} />
-                    </div>
-                  </div>
-                  <strong className="metric-value">{dashboardStats.inProcessing}</strong>
-                  <small>Garments in dry clean / wash</small>
-                </div>
-
-                <div className="metric-card" onClick={() => { setView('orders'); setOrderStatusFilter('Ready'); }}>
-                  <div className="metric-top">
-                    <span>Ready for Pickup</span>
-                    <div className="metric-icon mint">
-                      <Sparkles size={16} />
-                    </div>
-                  </div>
-                  <strong className="metric-value" style={{ color: '#16a34a' }}>{dashboardStats.ready}</strong>
-                  <small>Awaiting customer collection</small>
-                </div>
-
-                <div className="metric-card" onClick={() => setView('orders')}>
-                  <div className="metric-top">
-                    <span>Outstanding Due</span>
-                    <div className="metric-icon peach">
-                      <ReceiptText size={16} />
-                    </div>
-                  </div>
-                  <strong className="metric-value" style={{ color: dashboardStats.totalDue > 0 ? '#c8474e' : '#16a34a' }}>
-                    {formatMoney(dashboardStats.totalDue)}
-                  </strong>
-                  <small>Pending bill collections</small>
-                </div>
-              </div>
-
-              {/* Active Counter Queue Section */}
-              <div className="dashboard-queue-card">
-                <div className="dashboard-queue-header">
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '16px', color: '#1e293b' }}>Active Counter Queue</h3>
-                    <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#64748b' }}>Recent orders currently in progress or ready for pickup</p>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => setView('orders')}
-                  >
-                    View All Orders & Order History →
-                  </button>
-                </div>
-
-                {/* Desktop View Table (> 768px) */}
-                <div className="desktop-only orders-table-wrap">
-                  <table className="orders-table">
-                    <thead>
-                      <tr>
-                        <th>Order #</th>
-                        <th>Customer</th>
-                        <th>Service</th>
-                        <th>Promised Ready</th>
-                        <th>Total Bill</th>
-                        <th>Balance Due</th>
-                        <th>Status</th>
-                        <th style={{ textAlign: 'right' }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.orders.slice(0, 6).map((o) => {
-                        const cust = data.customers.find((c) => c.id === o.customerId);
-                        return (
-                          <tr key={o.id}>
-                            <td>
-                              <button
-                                type="button"
-                                className="order-number"
-                                onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
-                              >
-                                {o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`}
-                              </button>
-                            </td>
-                            <td>
-                              <strong>{cust?.name || 'Customer'}</strong>
-                              <small>+91 {cust?.mobile}</small>
-                            </td>
-                            <td>{o.service} ({o.type})</td>
-                            <td>{formatDate(o.dueDate)}</td>
-                            <td><strong>{formatMoney(o.totalAmount)}</strong></td>
-                            <td className={o.balanceAmount > 0 ? 'balance-due' : 'balance-clear'}>
-                              {formatMoney(o.balanceAmount)}
-                            </td>
-                            <td>
-                              <span className={`status-pill status-${o.status.toLowerCase()}`}>
-                                <i />
-                                {o.status}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'right' }}>
-                              <div style={{ display: 'inline-flex', gap: '6px' }}>
-                                <button
-                                  type="button"
-                                  className="button button-quiet"
-                                  style={{ minHeight: '30px', padding: '0 8px', fontSize: '10px' }}
-                                  onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
-                                >
-                                  Manage
-                                </button>
-                                <button
-                                  type="button"
-                                  className="icon-button"
-                                  style={{ width: '30px', height: '30px' }}
-                                  onClick={() => setModal({ type: 'thermal-receipt', orderId: o.id })}
-                                  title="Thermal Receipt PDF"
-                                >
-                                  <ReceiptText size={14} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile View Card List (<= 768px) */}
-                <div className="mobile-only mobile-queue-list">
-                  {data.orders.slice(0, 6).map((o) => {
-                    const cust = data.customers.find((c) => c.id === o.customerId);
-                    return (
-                      <div key={o.id} className="mobile-queue-item">
-                        <div className="mobile-queue-item-top">
-                          <button
-                            type="button"
-                            className="order-number"
-                            style={{ fontSize: '13px', fontWeight: 700 }}
-                            onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
-                          >
-                            {o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`}
-                          </button>
-                          <span className={`status-pill status-${o.status.toLowerCase()}`}>
-                            <i />
-                            {o.status}
-                          </span>
-                        </div>
-
-                        <div className="mobile-queue-item-customer">
-                          <strong>{cust?.name || 'Customer'}</strong>
-                          <small>+91 {cust?.mobile}</small>
-                        </div>
-
-                        <div className="mobile-queue-item-details">
-                          <div className="mobile-queue-detail-row">
-                            <span className="mobile-queue-detail-label">Service</span>
-                            <span className="mobile-queue-detail-val">{o.service}</span>
-                          </div>
-                          <div className="mobile-queue-detail-row">
-                            <span className="mobile-queue-detail-label">Promised</span>
-                            <span className="mobile-queue-detail-val">{formatDate(o.dueDate)}</span>
-                          </div>
-                          <div className="mobile-queue-detail-row">
-                            <span className="mobile-queue-detail-label">Total Bill</span>
-                            <span className="mobile-queue-detail-val">{formatMoney(o.totalAmount)}</span>
-                          </div>
-                          <div className="mobile-queue-detail-row">
-                            <span className="mobile-queue-detail-label">Balance Due</span>
-                            <span className={`mobile-queue-detail-val ${o.balanceAmount > 0 ? 'balance-due' : 'balance-clear'}`} style={{ color: o.balanceAmount > 0 ? '#dc2626' : '#16a34a' }}>
-                              {formatMoney(o.balanceAmount)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="mobile-queue-item-actions">
-                          <button
-                            type="button"
-                            className="button button-quiet"
-                            style={{ minHeight: '34px', padding: '0 12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                            onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
-                          >
-                            Manage Order
-                          </button>
-                          <button
-                            type="button"
-                            className="button button-secondary"
-                            style={{ minHeight: '34px', padding: '0 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                            onClick={() => setModal({ type: 'thermal-receipt', orderId: o.id })}
-                            title="Thermal Receipt PDF"
-                          >
-                            <ReceiptText size={13} /> Receipt
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+            <DashboardView
+              data={data}
+              setView={setView}
+              setModal={setModal}
+              setOrderStatusFilter={setOrderStatusFilter}
+              dashboardStats={dashboardStats}
+            />
           )}
 
           {/* ========================================================= */}
@@ -1038,824 +590,69 @@ export default function App() {
           {/* PAGE 3: DEDICATED ORDER HISTORY / ALL ORDERS PAGE         */}
           {/* ========================================================= */}
           {view === 'orders' && (
-            <div className="responsive-page-card">
-              
-              {/* Header Title & Batch Export / Invoices Actions */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <h2 style={{ margin: 0, fontSize: '22px', color: '#1e293b' }}>
-                      Order History ({data.orders.length})
-                    </h2>
-                    <span style={{ fontSize: '12px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '3px 10px', borderRadius: '12px', fontWeight: 600 }}>
-                      {periodLabel}
-                    </span>
-                  </div>
-                  <p className="muted-copy" style={{ margin: '4px 0 0' }}>
-                    Filter by week, month, or year. Export Excel reports or download all customer invoices at once.
-                  </p>
-                </div>
-
-                {/* Batch Actions: Export to Excel & Get All Invoices */}
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  {/* Export to Excel */}
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={handleExportExcel}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '7px',
-                      background: '#107c41',
-                      color: '#ffffff',
-                      border: 'none',
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      fontWeight: 700,
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 6px rgba(16, 124, 65, 0.25)',
-                    }}
-                    title="Export filtered orders into an Excel-compatible report"
-                  >
-                    <FileSpreadsheet size={15} /> Export to Excel ({filteredOrders.length})
-                  </button>
-
-                  {/* Get All Invoices at Once (PDF) */}
-                  <button
-                    type="button"
-                    className="button button-primary"
-                    onClick={handleDownloadAllInvoices}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '7px',
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      fontWeight: 700,
-                      fontSize: '12px',
-                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.2)',
-                    }}
-                    title="Download all filtered invoices together in a single multi-page PDF"
-                  >
-                    <Files size={15} /> Get All Invoices ({filteredOrders.length})
-                  </button>
-                </div>
-              </div>
-
-              {/* Comprehensive Filter Controls Card */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
-                {/* Row 1: Period Presets (This Week, This Month, All Time) & Date Range Picker */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
-                  
-                  {/* Quick Time Presets */}
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.5px', marginRight: '4px' }}>
-                      Filter:
-                    </span>
-                    {[
-                      { id: 'all', label: 'All Time' },
-                      { id: 'this-week', label: 'This Week' },
-                      { id: 'this-month', label: 'This Month' },
-                    ].map((p) => {
-                      const isActive =
-                        (p.id === 'all' && orderTimeFilter === 'all' && !orderStartDate && !orderEndDate) ||
-                        (p.id === orderTimeFilter && !orderStartDate && !orderEndDate);
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            setOrderTimeFilter(p.id);
-                            setOrderStartDate('');
-                            setOrderEndDate('');
-                          }}
-                          style={{
-                            fontSize: '12px',
-                            padding: '6px 14px',
-                            borderRadius: '7px',
-                            border: isActive ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                            background: isActive ? '#2563eb' : '#fff',
-                            color: isActive ? '#fff' : '#334155',
-                            fontWeight: isActive ? 700 : 500,
-                            cursor: 'pointer',
-                            boxShadow: isActive ? '0 1px 3px rgba(37,99,235,0.2)' : 'none',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          {p.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Date Range Picker */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: (orderStartDate || orderEndDate || orderTimeFilter === 'range') ? '#eff6ff' : '#fff',
-                      border: (orderStartDate || orderEndDate || orderTimeFilter === 'range') ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
-                      borderRadius: '8px',
-                      padding: '5px 12px',
-                      flexWrap: 'wrap',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: (orderStartDate || orderEndDate || orderTimeFilter === 'range') ? '#1d4ed8' : '#64748b' }}>
-                      <CalendarDays size={15} />
-                      <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Date Range:
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>From</span>
-                      <input
-                        type="date"
-                        value={orderStartDate}
-                        onChange={(e) => {
-                          setOrderStartDate(e.target.value);
-                          setOrderTimeFilter('range');
-                        }}
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid #cbd5e1',
-                          fontSize: '12px',
-                          background: '#fff',
-                          color: '#0f172a',
-                          fontWeight: 500,
-                          outline: 'none',
-                          cursor: 'pointer',
-                        }}
-                        title="Filter from date (inclusive)"
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>To</span>
-                      <input
-                        type="date"
-                        value={orderEndDate}
-                        onChange={(e) => {
-                          setOrderEndDate(e.target.value);
-                          setOrderTimeFilter('range');
-                        }}
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid #cbd5e1',
-                          fontSize: '12px',
-                          background: '#fff',
-                          color: '#0f172a',
-                          fontWeight: 500,
-                          outline: 'none',
-                          cursor: 'pointer',
-                        }}
-                        title="Filter until date (inclusive)"
-                      />
-                    </div>
-
-                    {(orderStartDate || orderEndDate) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOrderStartDate('');
-                          setOrderEndDate('');
-                          setOrderTimeFilter('all');
-                        }}
-                        title="Clear date range filter"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          fontSize: '11px',
-                          padding: '4px 8px',
-                          borderRadius: '5px',
-                          border: 'none',
-                          background: '#fee2e2',
-                          color: '#b91c1c',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <X size={12} /> Clear
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Row 2: Search Query & Status Tabs */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                  {/* Search box */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '8px 14px', borderRadius: '8px', border: '1.5px solid #cbd5e1', width: '380px', minWidth: '260px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
-                    <Search size={15} color="#94a3b8" />
-                    <input
-                      type="text"
-                      placeholder="Search Order # (e.g. B6163) or Customer Mobile..."
-                      value={orderSearchQuery}
-                      onChange={(e) => setOrderSearchQuery(e.target.value)}
-                      style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', width: '100%', color: '#1e293b' }}
-                    />
-                    {orderSearchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setOrderSearchQuery('')}
-                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', padding: '2px', display: 'flex' }}
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Status buttons */}
-                  <div style={{ display: 'flex', gap: '5px' }}>
-                    {['All', 'Received', 'Processing', 'Ready', 'Delivered', 'Cancelled'].map((st) => (
-                      <button
-                        key={st}
-                        type="button"
-                        className={`tab-button ${orderStatusFilter === st ? 'active' : ''}`}
-                        onClick={() => setOrderStatusFilter(st)}
-                        style={{ fontSize: '11px', padding: '6px 12px' }}
-                      >
-                        {st}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Filtered Financial Metrics Summary Strip */}
-              <div style={{ display: 'flex', gap: '16px', background: '#f1f5f9', padding: '10px 16px', borderRadius: '8px', marginBottom: '16px', fontSize: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ color: '#475569' }}>
-                  Filtered Orders: <strong style={{ color: '#0f172a' }}>{filteredMetrics.count}</strong>
-                </span>
-                <span style={{ color: '#94a3b8' }}>•</span>
-                <span style={{ color: '#475569' }}>
-                  Total Billed: <strong style={{ color: '#0f172a' }}>{formatMoney(filteredMetrics.totalAmount)}</strong>
-                </span>
-                <span style={{ color: '#94a3b8' }}>•</span>
-                <span style={{ color: '#475569' }}>
-                  Paid Collected: <strong style={{ color: '#16a34a' }}>{formatMoney(filteredMetrics.totalPaid)}</strong>
-                </span>
-                <span style={{ color: '#94a3b8' }}>•</span>
-                <span style={{ color: '#475569' }}>
-                  Balance Due: <strong style={{ color: filteredMetrics.totalBalance > 0 ? '#d97706' : '#16a34a' }}>{formatMoney(filteredMetrics.totalBalance)}</strong>
-                </span>
-              </div>
-
-              {/* Natural scrolling table */}
-              <div className="orders-table-wrap" style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
-                {filteredOrders.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '48px 20px', background: '#fafafa', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '32px', marginBottom: '10px' }}>🔍</div>
-                    <h3 style={{ margin: '0 0 6px', color: '#1e293b', fontSize: '16px' }}>No orders found for this period</h3>
-                    <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 16px' }}>
-                      No orders match your filter criteria ({periodLabel}, Status: {orderStatusFilter}). Try choosing "All Time" or picking a different month/year.
-                    </p>
-                    <button
-                      type="button"
-                      className="button button-quiet"
-                      onClick={() => {
-                        setOrderTimeFilter('all');
-                        setOrderFilterYear('all');
-                        setOrderFilterMonth('all');
-                        setOrderStatusFilter('All');
-                        setOrderSearchQuery('');
-                      }}
-                      style={{ fontSize: '12px' }}
-                    >
-                      Reset All Filters
-                    </button>
-                  </div>
-                ) : (
-                  <table className="orders-table">
-                    <thead>
-                      <tr>
-                        <th>Order No</th>
-                        <th>Customer Name</th>
-                        <th>Service & Type</th>
-                        <th>Intake Date</th>
-                        <th>Promised Due</th>
-                        <th>Total Bill</th>
-                        <th>Balance Due</th>
-                        <th>Current Status</th>
-                        <th style={{ textAlign: 'right' }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredOrders.map((o) => {
-                        const cust = data.customers.find((c) => c.id === o.customerId);
-                        return (
-                          <tr key={o.id}>
-                            <td>
-                              <button
-                                type="button"
-                                className="order-number"
-                                onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
-                              >
-                                {o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`}
-                              </button>
-                            </td>
-                            <td>
-                              <strong>{cust?.name || 'Customer'}</strong>
-                              <small>+91 {cust?.mobile}</small>
-                            </td>
-                            <td>{o.service} ({o.type === 'weight' ? 'Weight' : 'Pieces'})</td>
-                            <td>{formatDate(o.createdAt)}</td>
-                            <td>{formatDate(o.dueDate)}</td>
-                            <td><strong>{formatMoney(o.totalAmount)}</strong></td>
-                            <td className={o.balanceAmount > 0 ? 'balance-due' : 'balance-clear'}>
-                              {formatMoney(o.balanceAmount)}
-                            </td>
-                            <td>
-                              <span className={`status-pill status-${o.status.toLowerCase()}`}>
-                                <i />
-                                {o.status}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'right' }}>
-                              <div style={{ display: 'inline-flex', gap: '6px' }}>
-                                <button
-                                  type="button"
-                                  className="button button-quiet"
-                                  style={{ minHeight: '32px', padding: '0 8px', fontSize: '10px' }}
-                                  onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
-                                >
-                                  Manage
-                                </button>
-                                <button
-                                  type="button"
-                                  className="icon-button"
-                                  style={{ width: '32px', height: '32px' }}
-                                  onClick={() => setModal({ type: 'thermal-receipt', orderId: o.id })}
-                                  title="Thermal Receipt PDF"
-                                >
-                                  <ReceiptText size={15} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
+            <OrdersView
+              data={data}
+              setModal={setModal}
+              setOrderStatusFilter={setOrderStatusFilter}
+              periodLabel={periodLabel}
+              handleExportExcel={handleExportExcel}
+              handleDownloadAllInvoices={handleDownloadAllInvoices}
+              filteredOrders={filteredOrders}
+              filteredMetrics={filteredMetrics}
+              orderTimeFilter={orderTimeFilter}
+              setOrderTimeFilter={setOrderTimeFilter}
+              orderStartDate={orderStartDate}
+              setOrderStartDate={setOrderStartDate}
+              orderEndDate={orderEndDate}
+              setOrderEndDate={setOrderEndDate}
+              orderSearchQuery={orderSearchQuery}
+              setOrderSearchQuery={setOrderSearchQuery}
+              orderStatusFilter={orderStatusFilter}
+              setOrderFilterYear={setOrderFilterYear}
+              setOrderFilterMonth={setOrderFilterMonth}
+            />
           )}
 
           {/* ========================================================= */}
           {/* PAGE 4: DEDICATED CUSTOMER BOOK DIRECTORY                 */}
           {/* ========================================================= */}
           {view === 'customers' && (
-            <div className="responsive-page-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: '22px', color: '#1e293b' }}>Customer Directory ({data.customers.length})</h2>
-                  <p className="muted-copy" style={{ margin: '4px 0 0' }}>All registered laundry accounts and contact records</p>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', width: '100%', maxWidth: '640px', justifyContent: 'flex-end' }}>
-                  <div className="customer-directory-search">
-                    <Search size={15} color="#94a3b8" />
-                    <input
-                      type="text"
-                      placeholder="Search customers by full name, phone number, or notes..."
-                      value={customerSearchQuery}
-                      onChange={(e) => setCustomerSearchQuery(e.target.value)}
-                      style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', width: '100%', color: '#1e293b' }}
-                    />
-                    {customerSearchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setCustomerSearchQuery('')}
-                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', padding: '2px', display: 'flex' }}
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    className="button button-primary"
-                    onClick={() => setModal({ type: 'customer-new' })}
-                  >
-                    <UserPlus size={15} /> Add New Customer
-                  </button>
-                </div>
-              </div>
-
-              {/* Customer Directory Table */}
-              <div className="orders-table-wrap" style={{ maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
-                <table className="orders-table">
-                  <thead>
-                    <tr>
-                      <th>Customer Name</th>
-                      <th>Mobile Number</th>
-                      <th>Address</th>
-                      <th>Wallet Balance</th>
-                      <th>Outstanding Balance</th>
-                      <th>Orders Count</th>
-                      <th style={{ textAlign: 'right' }}>Workspace</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.customers
-                      .filter((c) => {
-                        if (!customerSearchQuery.trim()) return true;
-                        const q = customerSearchQuery.trim().toLowerCase();
-                        return c.name.toLowerCase().includes(q) || c.mobile.includes(q);
-                      })
-                      .map((c) => {
-                        const custOrders = data.orders.filter((o) => o.customerId === c.id);
-                        const due = custOrders.reduce((sum, o) => sum + (Number(o.balanceAmount) || 0), 0);
-                        return (
-                          <tr key={c.id}>
-                            <td>
-                              <strong style={{ fontSize: '13px', color: '#2563eb', cursor: 'pointer' }} onClick={() => { setSelectedCustomerId(c.id); setView('customer-detail'); }}>
-                                {c.name}
-                              </strong>
-                              {c.notes && <small style={{ display: 'block', color: '#64748b' }}>Note: {c.notes}</small>}
-                            </td>
-                            <td>+91 {c.mobile}</td>
-                            <td>{c.address || '—'}</td>
-                            <td><strong>{formatMoney(c.walletBalance)}</strong></td>
-                            <td className={due > 0 ? 'balance-due' : 'balance-clear'}>
-                              {formatMoney(due)}
-                            </td>
-                            <td>{custOrders.length} orders</td>
-                            <td style={{ textAlign: 'right' }}>
-                              <button
-                                type="button"
-                                className="button button-quiet"
-                                style={{ minHeight: '30px', padding: '0 10px', fontSize: '11px' }}
-                                onClick={() => {
-                                  setSelectedCustomerId(c.id);
-                                  setView('customer-detail');
-                                }}
-                              >
-                                Open Profile →
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <CustomersView
+              data={data}
+              setView={setView}
+              setModal={setModal}
+              customerSearchQuery={customerSearchQuery}
+              setCustomerSearchQuery={setCustomerSearchQuery}
+              setSelectedCustomerId={setSelectedCustomerId}
+            />
           )}
 
           {/* ========================================================= */}
           {/* PAGE 5: DEDICATED INDIVIDUAL CUSTOMER WORKSPACE PAGE      */}
           {/* ========================================================= */}
           {view === 'customer-detail' && currentDetailCustomer && (
-            <div style={{ display: 'grid', gap: '22px' }}>
-              {/* Back button row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <button
-                  type="button"
-                  className="button button-quiet"
-                  style={{ minHeight: '36px', padding: '0 12px', fontSize: '11px' }}
-                  onClick={() => setView('customers')}
-                >
-                  ← Back to Customer Directory
-                </button>
-              </div>
-
-              {/* Customer Title Row */}
-              <div className="customer-title-row">
-                <div className="customer-identity">
-                  <div className="customer-avatar large-avatar">
-                    {currentDetailCustomer.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="eyebrow">
-                      CUSTOMER ACCOUNT <span className="customer-id">· #{currentDetailCustomer.customerCode || currentDetailCustomer.id.slice(0, 8)}</span>
-                    </div>
-                    <h1>{currentDetailCustomer.name}</h1>
-                    <div className="customer-contact">
-                      <span>📞 +91 {currentDetailCustomer.mobile}</span>
-                      {currentDetailCustomer.email && <span>✉️ {currentDetailCustomer.email}</span>}
-                      {currentDetailCustomer.address && (
-                        <span>📍 {currentDetailCustomer.address}{currentDetailCustomer.areaLocation ? `, ${currentDetailCustomer.areaLocation}` : ''}{currentDetailCustomer.state ? ` (${currentDetailCustomer.state})` : ''}</span>
-                      )}
-                      {currentDetailCustomer.preference && currentDetailCustomer.preference !== 'NA' && (
-                        <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          🏷️ {currentDetailCustomer.preference}
-                        </span>
-                      )}
-                      {currentDetailCustomer.commPreference && (
-                        <span style={{ background: '#f1f5f9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          📢 {currentDetailCustomer.commPreference}
-                        </span>
-                      )}
-                      {currentDetailCustomer.gstin && (
-                        <span style={{ background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          GSTIN: {currentDetailCustomer.gstin}
-                        </span>
-                      )}
-                      {Number(currentDetailCustomer.discountPercent) > 0 && (
-                        <span style={{ background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          Special Discount: {currentDetailCustomer.discountPercent}%
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="identity-actions" style={{ gap: '10px' }}>
-                  <button
-                    type="button"
-                    className="button button-primary"
-                    onClick={() => setView('new-order')}
-                  >
-                    <Plus size={15} /> Place Order for Customer
-                  </button>
-                  <button
-                    type="button"
-                    className="button button-quiet"
-                    onClick={() => setModal({ type: 'customer-edit', customer: currentDetailCustomer })}
-                  >
-                    <Pencil size={14} /> Edit Info
-                  </button>
-                </div>
-              </div>
-
-              {/* 3 Metrics Cards */}
-              <div className="metric-grid">
-                <div className="metric-card">
-                  <div className="metric-top">
-                    <span>Prepaid Wallet Balance</span>
-                    <div className="metric-icon mint">
-                      <Wallet size={16} />
-                    </div>
-                  </div>
-                  <strong className="metric-value">{formatMoney(currentDetailCustomer.walletBalance)}</strong>
-                  <small>Available credit for laundry checkout</small>
-                </div>
-
-                <div className="metric-card">
-                  <div className="metric-top">
-                    <span>Outstanding Due Balance</span>
-                    <div className="metric-icon peach">
-                      <ReceiptText size={16} />
-                    </div>
-                  </div>
-                  <strong className="metric-value" style={{ color: customerDue > 0 ? '#c8474e' : '#16a34a' }}>
-                    {formatMoney(customerDue)}
-                  </strong>
-                  <small>{customerOrders.filter((o) => o.balanceAmount > 0).length} pending payments</small>
-                </div>
-
-                <div className="metric-card">
-                  <div className="metric-top">
-                    <span>Lifetime Benefits</span>
-                    <div className="metric-icon lavender">
-                      <Package size={16} />
-                    </div>
-                  </div>
-                  <strong className="metric-value">{customerPackages.length} Plans</strong>
-                  <small>No validity expiration (Lifetime)</small>
-                </div>
-              </div>
-
-              {/* Segmented Tabs: Order History / Lifetime Packages / Wallet Ledger */}
-              <div className="tabs-row">
-                <div className="segmented-tabs">
-                  <button
-                    type="button"
-                    className={customerDetailTab === 'overview' ? 'selected' : ''}
-                    onClick={() => setCustomerDetailTab('overview')}
-                  >
-                    <span>Order History</span>
-                    <span className="tab-count">{customerOrders.length}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className={customerDetailTab === 'packages' ? 'selected' : ''}
-                    onClick={() => setCustomerDetailTab('packages')}
-                  >
-                    <span>Lifetime Packages</span>
-                    <span className="tab-count">{customerPackages.length}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className={customerDetailTab === 'ledger' ? 'selected' : ''}
-                    onClick={() => setCustomerDetailTab('ledger')}
-                  >
-                    <span>Wallet Ledger</span>
-                    <span className="tab-count">{customerWalletTx.length}</span>
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  className="button button-quiet"
-                  style={{ minHeight: '34px', fontSize: '11px' }}
-                  onClick={() => setModal({ type: 'package-sale' })}
-                >
-                  <PackagePlus size={14} /> Sell Package Plan
-                </button>
-              </div>
-
-              {/* TAB 1: ORDER HISTORY */}
-              {customerDetailTab === 'overview' && (
-                <div className="orders-table-wrap">
-                  {customerOrders.length === 0 ? (
-                    <div className="empty-state">
-                      <strong>No orders placed by this customer yet.</strong>
-                      <p className="muted-copy">Click "Place Order for Customer" above to start billing.</p>
-                    </div>
-                  ) : (
-                    <table className="orders-table">
-                      <thead>
-                        <tr>
-                          <th>Order No</th>
-                          <th>Service & Type</th>
-                          <th>Intake Date</th>
-                          <th>Promised Ready</th>
-                          <th>Total Bill</th>
-                          <th>Balance Due</th>
-                          <th>Status</th>
-                          <th style={{ textAlign: 'right' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {customerOrders.map((o) => (
-                          <tr key={o.id}>
-                            <td>
-                              <button
-                                type="button"
-                                className="order-number"
-                                onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
-                              >
-                                {o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`}
-                              </button>
-                            </td>
-                            <td>{o.service} ({o.type === 'weight' ? 'Weight' : 'Pieces'})</td>
-                            <td>{formatDate(o.createdAt)}</td>
-                            <td>{formatDate(o.dueDate)}</td>
-                            <td><strong>{formatMoney(o.totalAmount)}</strong></td>
-                            <td className={o.balanceAmount > 0 ? 'balance-due' : 'balance-clear'}>
-                              {formatMoney(o.balanceAmount)}
-                            </td>
-                            <td>
-                              <span className={`status-pill status-${o.status.toLowerCase()}`}>
-                                <i />
-                                {o.status}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'right' }}>
-                              <div style={{ display: 'inline-flex', gap: '6px' }}>
-                                <button
-                                  type="button"
-                                  className="button button-quiet"
-                                  style={{ minHeight: '30px', padding: '0 8px', fontSize: '10px' }}
-                                  onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
-                                >
-                                  Manage
-                                </button>
-                                <button
-                                  type="button"
-                                  className="icon-button"
-                                  style={{ width: '30px', height: '30px' }}
-                                  onClick={() => setModal({ type: 'thermal-receipt', orderId: o.id })}
-                                  title="Thermal Receipt PDF"
-                                >
-                                  <ReceiptText size={15} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 2: PACKAGES */}
-              {customerDetailTab === 'packages' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
-                  {customerPackages.length === 0 ? (
-                    <div className="empty-state" style={{ gridColumn: '1/-1' }}>
-                      <strong>No packages enrolled.</strong>
-                      <p className="muted-copy">Enroll in an Everyday Wallet or discount plan.</p>
-                    </div>
-                  ) : (
-                    customerPackages.map((cp) => (
-                      <div key={cp.id} className="detail-card">
-                        <div className="card-heading">
-                          <div>
-                            <h3>{cp.name}</h3>
-                            <p>Enrolled: {formatDate(cp.startsAt)}</p>
-                          </div>
-                          <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#eff6ff', color: '#1d4ed8' }}>
-                            Lifetime · No Expiry
-                          </span>
-                        </div>
-                        <div style={{ marginTop: '12px', fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
-                          {cp.kind === 'wallet'
-                            ? `Prepaid Credit: ${formatMoney(cp.walletCredit)}`
-                            : (cp.kind === 'buy_x_get_y'
-                              ? `Pay for ${cp.buyQty || 5}, Get ${cp.freeQty || 1} Free`
-                              : `${cp.discountPercent}% Off Eligible Orders`)}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* TAB 3: WALLET LEDGER */}
-              {customerDetailTab === 'ledger' && (
-                <div style={{ background: '#fff', border: '1px solid #e8e8e6', borderRadius: '10px', overflow: 'hidden' }}>
-                  {customerWalletTx.length === 0 ? (
-                    <div className="empty-state">
-                      <strong>No transactions recorded in wallet ledger.</strong>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'grid' }}>
-                      {customerWalletTx.map((tx) => (
-                        <div
-                          key={tx.id}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '12px 18px',
-                            borderBottom: '1px solid #f0f0ef',
-                            fontSize: '12px',
-                          }}
-                        >
-                          <div>
-                            <strong>{tx.description}</strong>
-                            <small style={{ display: 'block', color: '#888' }}>{formatDateTime(tx.createdAt)}</small>
-                          </div>
-                          <strong style={{ fontSize: '14px', color: tx.kind === 'credit' ? '#28845f' : '#c8474e' }}>
-                            {tx.kind === 'credit' ? `+${formatMoney(tx.amount)}` : `-${formatMoney(tx.amount)}`}
-                          </strong>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <CustomerDetailView
+              setView={setView}
+              setModal={setModal}
+              currentDetailCustomer={currentDetailCustomer}
+              customerDue={customerDue}
+              customerOrders={customerOrders}
+              customerPackages={customerPackages}
+              customerWalletTx={customerWalletTx}
+              customerDetailTab={customerDetailTab}
+              setCustomerDetailTab={setCustomerDetailTab}
+            />
           )}
 
           {/* ========================================================= */}
           {/* PAGE 6: PACKAGE PLANS CATALOG PAGE                        */}
           {/* ========================================================= */}
           {view === 'packages' && (
-            <div className="responsive-page-card">
-              <div className="packages-page-header">
-                <div>
-                  <h2 className="packages-page-title">Laundry Benefit Packages ({data.packages.length})</h2>
-                  <p className="muted-copy" style={{ margin: '4px 0 0' }}>All packages are lifetime plans with no expiration date</p>
-                </div>
-
-                <button
-                  type="button"
-                  className="button button-primary packages-manage-btn"
-                  onClick={() => requireAdmin(() => setModal({ type: 'manage-packages' }))}
-                >
-                  <PackagePlus size={16} /> Manage Packages (Create/Edit/Delete)
-                </button>
-              </div>
-
-              <div className="packages-catalog-grid">
-                {data.packages.map((pkg) => (
-                  <div key={pkg.id} className="detail-card" style={{ padding: '20px' }}>
-                    <div className="card-heading">
-                      <h3>{pkg.name}</h3>
-                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#eff6ff', color: '#1d4ed8' }}>
-                        {pkg.validity || 'Active Benefit'}
-                      </span>
-                    </div>
-                    <p className="note-copy" style={{ margin: '8px 0 14px' }}>{pkg.description}</p>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #eee' }}>
-                      <strong style={{ fontSize: '16px', color: '#0f172a' }}>{formatMoney(pkg.price)}</strong>
-                      <span style={{ fontSize: '12px', color: '#2563eb', fontWeight: 700 }}>
-                        {pkg.kind === 'wallet'
-                          ? `+${formatMoney(pkg.walletCredit)} credit`
-                          : (pkg.kind === 'buy_x_get_y'
-                            ? `Pay for ${pkg.buyQty || 5}, Get ${pkg.freeQty || 1} Free`
-                            : `${pkg.discountPercent}% Off`)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <PackagesView
+              data={data}
+              setModal={setModal}
+              requireAdmin={requireAdmin}
+            />
           )}
         </main>
       </div>
@@ -1866,64 +663,75 @@ export default function App() {
       <AdminAuthModal
         isOpen={modal?.type === 'admin-auth'}
         onClose={() => setModal(null)}
-        admins={data.admins}
-        onLoginSuccess={(admin) => {
-          handleAdminLogin(admin);
-          if (modal?.onSuccess) modal.onSuccess();
+        allowSignup={!remote}
+        showDemoHint={demoMode}
+        onAuthenticate={(email, password) => elevateToAdmin(email, password, data)}
+        onRecoverQuestion={(email) => getRecoveryQuestion(email, data)}
+        onResetPassword={async (email, answer, newPassword) => {
+          const { user, data: next } = await resetPasswordWithAnswer(email, answer, newPassword, data);
+          if (remote) await handleAuthenticated(user);
+          else if (next) setData(next);
+          return user.admin || user;
+        }}
+        onLoginSuccess={async (admin) => {
+          const onSuccess = modal?.onSuccess;
+          await handleAdminLogin(admin);
+          if (onSuccess) onSuccess();
         }}
         onCreateAdmin={async (newAdmin) => {
           await runMutation((cur) => createAdmin(newAdmin, cur), 'Admin account created.');
-        }}
-        onResetPassword={async (adminId, newPassword) => {
-          await runMutation((cur) => resetAdminPassword(adminId, newPassword, cur), 'Password reset successful.');
         }}
         onToast={showToast}
       />
 
       {/* 2. STORE & TAX SETTINGS MODAL */}
-      <SettingsModal
-        isOpen={modal?.type === 'settings'}
-        onClose={() => setModal(null)}
-        settings={data.settings}
-        staffList={data.staff}
-        adminUser={adminUser || authSession}
-        adminsList={data.admins || []}
-        onOpenPamphlet={() => setModal({ type: 'pamphlet' })}
-        onSaveSettings={async (newSettings) => {
-          await runMutation((cur) => saveSettings(newSettings, cur), 'Settings saved.');
-        }}
-        onSaveStaff={async (newStaff) => {
-          await runMutation((cur) => saveStaff(newStaff, cur), 'Staff updated.');
-        }}
-        onUpdateAdmin={async (adminId, updatedFields) => {
-          await runMutation(async (cur) => {
-            const next = await updateAdminProfile(adminId, updatedFields, cur);
-            const updatedUser = (next.admins || []).find((a) => a.id === adminId) || {
-              id: adminId,
-              name: updatedFields.name,
-              email: updatedFields.email,
-              role: 'admin',
-              type: 'admin',
-            };
-            setAdminUserState((prev) => (prev ? { ...prev, ...updatedUser } : prev));
-            setAuthSession((prev) => (prev?.role === 'admin' || prev?.type === 'admin' ? { ...prev, ...updatedUser } : prev));
-            return next;
-          }, 'Administrator profile and credentials updated.');
-        }}
-        onDeleteAdmin={async (adminId) => {
-          await runMutation(async (cur) => {
-            const next = await deleteAdmin(adminId, cur);
-            if (authSession?.id === adminId) {
-              handleLockTerminal();
-            }
-            return next;
-          }, 'Administrator removed from shop.');
-        }}
-        onCreateAdmin={async (newAdmin) => {
-          await runMutation((cur) => createAdmin(newAdmin, cur), 'Administrator registered.');
-        }}
-        onToast={showToast}
-      />
+      {modal?.type === 'settings' && (
+        <Suspense fallback={null}>
+          <SettingsModal
+            isOpen
+            onClose={() => setModal(null)}
+            settings={data.settings}
+            staffList={data.staff}
+            adminUser={adminUser || authSession}
+            adminsList={data.admins || []}
+            onOpenPamphlet={() => setModal({ type: 'pamphlet' })}
+            onSaveSettings={async (newSettings) => {
+              await runMutation((cur) => saveSettings(newSettings, cur), 'Settings saved.');
+            }}
+            onSaveStaff={async (newStaff) => {
+              await runMutation((cur) => saveStaff(newStaff, cur), 'Staff updated.');
+            }}
+            onUpdateAdmin={async (adminId, updatedFields) => {
+              await runMutation(async (cur) => {
+                const next = await updateAdminProfile(adminId, updatedFields, cur);
+                const updatedUser = (next.admins || []).find((a) => a.id === adminId) || {
+                  id: adminId,
+                  name: updatedFields.name,
+                  email: updatedFields.email,
+                  role: 'admin',
+                  type: 'admin',
+                };
+                setAdminUserState((prev) => (prev ? { ...prev, ...updatedUser } : prev));
+                setAuthSession((prev) => (prev?.role === 'admin' || prev?.type === 'admin' ? { ...prev, ...updatedUser } : prev));
+                return next;
+              }, 'Administrator profile and credentials updated.');
+            }}
+            onDeleteAdmin={async (adminId) => {
+              await runMutation(async (cur) => {
+                const next = await deleteAdmin(adminId, cur);
+                if (authSession?.id === adminId) {
+                  handleLockTerminal();
+                }
+                return next;
+              }, 'Administrator removed from shop.');
+            }}
+            onCreateAdmin={async (newAdmin) => {
+              await runMutation((cur) => createAdmin(newAdmin, cur), 'Administrator registered.');
+            }}
+            onToast={showToast}
+          />
+        </Suspense>
+      )}
 
       {/* 3. PACKAGE MANAGEMENT MODAL (CREATE, EDIT, DELETE - NO VALIDITY) */}
       <PackageManageModal
@@ -1982,16 +790,20 @@ export default function App() {
       />
 
       {/* 7. THERMAL RECEIPT MODAL (80mm PDF, WHATSAPP, WEB SHARE, PRINT) */}
-      <ThermalReceiptModal
-        isOpen={modal?.type === 'thermal-receipt'}
-        onClose={() => setModal(null)}
-        order={activeOrder}
-        customer={activeOrderCustomer}
-        settings={data.settings}
-        payments={activeOrderPayments}
-        currentStaff={adminUser || { name: 'Counter Cashier' }}
-        onToast={showToast}
-      />
+      {modal?.type === 'thermal-receipt' && (
+        <Suspense fallback={null}>
+          <ThermalReceiptModal
+            isOpen
+            onClose={() => setModal(null)}
+            order={activeOrder}
+            customer={activeOrderCustomer}
+            settings={data.settings}
+            payments={activeOrderPayments}
+            currentStaff={adminUser || authSession || { name: 'Counter Cashier' }}
+            onToast={showToast}
+          />
+        </Suspense>
+      )}
 
       {/* 8. CUSTOMER CREATE / EDIT / DELETE MODAL */}
       <CustomerModal
@@ -2019,17 +831,21 @@ export default function App() {
       />
 
       {/* 9. STORE PAMPHLET & CUSTOMER CONTACT FLYER MODAL */}
-      <PamphletModal
-        isOpen={modal?.type === 'pamphlet'}
-        onClose={() => setModal(null)}
-        settings={data.settings}
-        packages={data.packages}
-        services={data.services}
-        onToast={showToast}
-      />
+      {modal?.type === 'pamphlet' && (
+        <Suspense fallback={null}>
+          <PamphletModal
+            isOpen
+            onClose={() => setModal(null)}
+            settings={data.settings}
+            packages={data.packages}
+            services={data.services}
+            onToast={showToast}
+          />
+        </Suspense>
+      )}
 
       {/* 10. FIRST-TIME STORE NAME ONBOARDING (PRODUCTION MANDATORY) */}
-      {!isDemoAllowed() && !data.settings?.storeNameCreated && (
+      {!demoMode && adminUser && !data.settings?.storeNameCreated && (
         <div
           className="modal-backdrop"
           style={{
