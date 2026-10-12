@@ -415,47 +415,51 @@ export default function PosRegister({
   };
 
   return (
-    <div className="pos-register-container" style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px', minHeight: '100%' }}>
+    <div className="pos-register-container">
       {/* Top Header & Customer Selector Bar */}
-      <div className="pos-register-header-bar" style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          {onBack && (
-            <button
-              type="button"
-              className="button button-quiet"
-              style={{ minHeight: '36px', padding: '0 12px', fontSize: '11px' }}
-              onClick={onBack}
-            >
-              ← Back
-            </button>
-          )}
-          <div>
-            <span className="caption-label">Clean Clear Register</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0, fontSize: '20px', color: '#1e293b' }}>
-                {orderType === 'weight' ? 'Order by Weight (Bundle Intake)' : 'New Laundry Intake (Piece by Piece)'}
-              </h2>
-              <span
-                style={{
-                  fontSize: '12px',
-                  fontWeight: 800,
-                  color: isDuplicateOrderNo ? '#b91c1c' : '#2563eb',
-                  background: isDuplicateOrderNo ? '#fee2e2' : '#eff6ff',
-                  border: isDuplicateOrderNo ? '1px solid #fca5a5' : '1px solid #bfdbfe',
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  fontFamily: 'monospace',
-                  letterSpacing: '0.4px',
-                }}
+      <div className="pos-register-header-bar">
+        <div className="pos-header-top-row">
+          <div className="pos-header-title-group">
+            {onBack && (
+              <button
+                type="button"
+                className="button button-quiet pos-back-btn"
+                onClick={onBack}
               >
-                {formatOrderNo(customOrderNo || defaultNextOrderNo)}
-              </span>
+                ← Back
+              </button>
+            )}
+            <div>
+              <span className="caption-label pos-desktop-only">Clean Clear Register</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h2 className="pos-page-title">
+                  {orderType === 'weight' ? 'Order by Weight (Bundle)' : 'New Laundry Intake'}
+                </h2>
+                <span
+                  className="pos-order-badge"
+                  style={{
+                    color: isDuplicateOrderNo ? '#b91c1c' : '#2563eb',
+                    background: isDuplicateOrderNo ? '#fee2e2' : '#eff6ff',
+                    borderColor: isDuplicateOrderNo ? '#fca5a5' : '#bfdbfe',
+                  }}
+                >
+                  {formatOrderNo(customOrderNo || defaultNextOrderNo)}
+                </span>
+              </div>
             </div>
           </div>
+
+          <button
+            type="button"
+            className="button button-quiet pos-new-customer-btn"
+            onClick={onOpenNewCustomerModal}
+          >
+            <UserPlus size={14} /> <span>New Customer</span>
+          </button>
         </div>
 
-        {/* Customer Selection Control with Styled CustomSelect */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        {/* Customer Selection Control */}
+        <div className="pos-header-customer-row">
           <CustomSelect
             value={selectedCustomerId}
             onChange={(val) => setSelectedCustomerId(val)}
@@ -466,36 +470,16 @@ export default function PosRegister({
               badge: c.walletBalance > 0 ? `₹${c.walletBalance}` : undefined,
             }))}
             icon={Users}
-            width="320px"
+            width="100%"
             searchable={true}
             searchPlaceholder="Search customer by name or phone..."
             placeholder="Select Customer..."
           />
-
-          <button
-            type="button"
-            className="button button-quiet"
-            style={{ minHeight: '36px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px' }}
-            onClick={onOpenNewCustomerModal}
-          >
-            <UserPlus size={14} /> New Customer
-          </button>
         </div>
 
         {/* Customer Profile Tiers & Logistics Badge Strip */}
         {currentCustomer && (
-          <div
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              flexWrap: 'wrap',
-              paddingTop: '8px',
-              borderTop: '1px solid #f1f5f9',
-              fontSize: '11px',
-            }}
-          >
+          <div className="pos-header-customer-badges">
             <span
               style={{
                 background: '#f8fafc',
@@ -504,6 +488,7 @@ export default function PosRegister({
                 padding: '2px 8px',
                 borderRadius: '6px',
                 fontWeight: 700,
+                flexShrink: 0,
               }}
             >
               #{currentCustomer.customerCode || currentCustomer.code || currentCustomer.id.slice(0, 6)}
@@ -518,6 +503,7 @@ export default function PosRegister({
                   padding: '2px 8px',
                   borderRadius: '6px',
                   fontWeight: 600,
+                  flexShrink: 0,
                 }}
               >
                 Tier: {currentCustomer.rateList}
@@ -533,6 +519,7 @@ export default function PosRegister({
                   padding: '2px 8px',
                   borderRadius: '6px',
                   fontWeight: 600,
+                  flexShrink: 0,
                 }}
               >
                 {currentCustomer.discountPercent}% Off Account Discount
@@ -548,6 +535,7 @@ export default function PosRegister({
                   padding: '2px 8px',
                   borderRadius: '6px',
                   fontWeight: 600,
+                  flexShrink: 0,
                 }}
               >
                 Wash: {currentCustomer.preference}
@@ -563,6 +551,7 @@ export default function PosRegister({
                   padding: '2px 8px',
                   borderRadius: '6px',
                   fontFamily: 'monospace',
+                  flexShrink: 0,
                 }}
               >
                 GSTIN: {currentCustomer.gstin}
@@ -579,6 +568,7 @@ export default function PosRegister({
                   borderRadius: '6px',
                   fontWeight: 700,
                   marginLeft: 'auto',
+                  flexShrink: 0,
                 }}
               >
                 Wallet Balance: ₹{currentCustomer.walletBalance}
@@ -595,16 +585,16 @@ export default function PosRegister({
           className={mobilePosTab === 'catalog' ? 'active' : ''}
           onClick={() => setMobilePosTab('catalog')}
         >
-          <Shirt size={14} /> Catalog & Clothes
+          <Shirt size={15} /> <span>Clothes & Services</span>
         </button>
         <button
           type="button"
           className={mobilePosTab === 'ticket' ? 'active' : ''}
           onClick={() => setMobilePosTab('ticket')}
         >
-          <ReceiptText size={14} /> Ticket & Checkout
+          <ReceiptText size={15} /> <span>Ticket & Checkout</span>
           {((orderType === 'pieces' && cartItems.length > 0) || (orderType === 'weight' && Number(weightKg) > 0)) && (
-            <span style={{ background: '#2563eb', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>
+            <span className="pos-tab-badge">
               {orderType === 'pieces' ? cartItems.reduce((s, it) => s + it.quantity, 0) : '1'}
             </span>
           )}
@@ -616,99 +606,68 @@ export default function PosRegister({
         {/* LEFT COLUMN: Garment Catalog or Weight Entry */}
         <div
           className={`pos-column-catalog ${mobilePosTab === 'ticket' ? 'hidden-mobile' : ''}`}
-          style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px', display: 'grid', gap: '16px', minWidth: 0, width: '100%', boxSizing: 'border-box' }}
         >
           {/* Order Type & Service Switcher */}
-          <div style={{ display: 'grid', gap: '10px', paddingBottom: '14px', borderBottom: '1px solid #f1f5f9' }}>
+          <div className="pos-service-bar">
             {/* Row 1: Mode Switcher (Pieces vs Weight) + Active Info */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-              <div style={{ display: 'flex', gap: '6px' }}>
+            <div className="pos-mode-row">
+              <div className="pos-mode-tabs">
                 <button
                   type="button"
-                  className={`tab-button ${orderType === 'pieces' ? 'active' : ''}`}
+                  className={`pos-mode-btn ${orderType === 'pieces' ? 'active' : ''}`}
                   onClick={() => setOrderType('pieces')}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
-                  <Shirt size={15} /> Piece by Piece
+                  <Shirt size={14} /> Piece by Piece
                 </button>
                 <button
                   type="button"
-                  className={`tab-button ${orderType === 'weight' ? 'active' : ''}`}
+                  className={`pos-mode-btn ${orderType === 'weight' ? 'active' : ''}`}
                   onClick={() => setOrderType('weight')}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
-                  <Scale size={15} /> Order by Weight (kg)
+                  <Scale size={14} /> By Weight (kg)
                 </button>
               </div>
 
-              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+              <span className="pos-active-service-badge">
                 {orderType === 'pieces'
-                  ? `Active Service: ${selectedPieceService}`
-                  : `Active Rate: ₹${weightServices.find((w) => w.label === selectedWeightService)?.ratePerKg || 0}/kg`}
+                  ? selectedPieceService
+                  : `₹${weightServices.find((w) => w.label === selectedWeightService)?.ratePerKg || 0}/kg`}
               </span>
             </div>
 
-            {/* Row 2: Service Selector Tiers */}
+            {/* Row 2: Service Selector Tiers - Sleek Horizontal Strip */}
             {orderType === 'pieces' ? (
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ display: 'flex', gap: '4px', background: '#f8fafc', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
-                  {services.filter((s) => s.tier !== 'club-fresh').map((s) => {
-                    const isSelected = selectedPieceService === s.label;
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => setSelectedPieceService(s.label)}
-                        style={{
-                          padding: '6px 11px',
-                          borderRadius: '6px',
-                          border: isSelected ? '1px solid #2563eb' : '1px solid transparent',
-                          background: isSelected ? '#2563eb' : 'transparent',
-                          color: isSelected ? '#ffffff' : '#475569',
-                          fontSize: '11px',
-                          fontWeight: isSelected ? 700 : 500,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        {s.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div style={{ display: 'flex', gap: '4px', background: '#f0fdf4', padding: '3px', borderRadius: '8px', border: '1px solid #bbf7d0', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#15803d', padding: '0 5px', letterSpacing: '0.04em' }}>
-                    CLUB FRESH:
-                  </span>
-                  {services.filter((s) => s.tier === 'club-fresh').map((s) => {
-                    const isSelected = selectedPieceService === s.label;
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => setSelectedPieceService(s.label)}
-                        style={{
-                          padding: '6px 11px',
-                          borderRadius: '6px',
-                          border: isSelected ? '1px solid #16a34a' : '1px solid transparent',
-                          background: isSelected ? '#16a34a' : '#fff',
-                          color: isSelected ? '#fff' : '#166534',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          boxShadow: isSelected ? '0 1px 3px rgba(22, 163, 74, 0.25)' : 'none',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        ⭐ {s.label}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="pos-service-scroll-strip" role="tablist">
+                {services.filter((s) => s.tier !== 'club-fresh').map((s) => {
+                  const isSelected = selectedPieceService === s.label;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSelectedPieceService(s.label)}
+                      className={`pos-service-pill ${isSelected ? 'active' : ''}`}
+                    >
+                      {s.label}
+                    </button>
+                  );
+                })}
+                <div className="pos-service-strip-divider" />
+                {services.filter((s) => s.tier === 'club-fresh').map((s) => {
+                  const isSelected = selectedPieceService === s.label;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSelectedPieceService(s.label)}
+                      className={`pos-service-pill club-fresh ${isSelected ? 'active' : ''}`}
+                    >
+                      ⭐ {s.label}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              <div className="pos-service-scroll-strip" role="tablist">
                 {weightServices.map((ws) => {
                   const isSelected = selectedWeightService === ws.label;
                   return (
@@ -716,24 +675,10 @@ export default function PosRegister({
                       key={ws.id}
                       type="button"
                       onClick={() => setSelectedWeightService(ws.label)}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        border: isSelected ? '1px solid #2563eb' : '1px solid #e2e8f0',
-                        background: isSelected ? '#eff6ff' : '#f8fafc',
-                        color: isSelected ? '#1e40af' : '#475569',
-                        fontSize: '11px',
-                        fontWeight: isSelected ? 700 : 500,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                      }}
+                      className={`pos-service-pill ${isSelected ? 'active' : ''}`}
                     >
                       <strong>{ws.label}</strong>
-                      <span style={{ fontSize: '10px', color: isSelected ? '#6d28d9' : '#64748b' }}>
-                        (₹{ws.ratePerKg}/kg)
-                      </span>
+                      <span className="pos-pill-rate">(₹{ws.ratePerKg}/kg)</span>
                     </button>
                   );
                 })}
@@ -745,69 +690,48 @@ export default function PosRegister({
           {/* 1. PIECE MODE VIEW                                       */}
           {/* ========================================================= */}
           {orderType === 'pieces' ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                {/* Category selector */}
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {categories.map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setSelectedCategory(cat)}
-                      style={{
-                        padding: '5px 12px',
-                        borderRadius: '6px',
-                        border: selectedCategory === cat ? '1px solid #2563eb' : '1px solid #e2e8f0',
-                        background: selectedCategory === cat ? '#2563eb' : '#fff',
-                        color: selectedCategory === cat ? '#fff' : '#475569',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Garment Quick Search (Increased Length) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '8px 14px', borderRadius: '8px', border: '1.5px solid #cbd5e1', width: '340px', minWidth: '240px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
-                  <Search size={15} color="#64748b" />
+            <div className="pos-piece-catalog-wrap">
+              <div className="pos-filter-search-row">
+                {/* Garment Quick Search */}
+                <div className="pos-garment-search-box">
+                  <Search size={15} color="#64748b" style={{ flexShrink: 0 }} />
                   <input
                     type="text"
-                    placeholder="Search clothes by name (e.g. Shirt, Saree, Coat)..."
+                    placeholder="Search clothes (e.g. Shirt, Saree, Coat)..."
                     value={garmentSearch}
                     onChange={(e) => setGarmentSearch(e.target.value)}
-                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', width: '100%', color: '#1e293b' }}
                   />
                   {garmentSearch && (
                     <button
                       type="button"
                       onClick={() => setGarmentSearch('')}
-                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', padding: '2px', display: 'flex' }}
+                      className="pos-search-clear-btn"
+                      aria-label="Clear search"
                     >
                       <X size={14} />
                     </button>
                   )}
                 </div>
+
+                {/* Category selector strip */}
+                <div className="pos-category-scroll-strip" role="tablist">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`pos-category-pill ${selectedCategory === cat ? 'active' : ''}`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Garment Cards Grid */}
-              <div
-                className="pos-garment-grid"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-                  gridAutoRows: '115px',
-                  alignContent: 'start',
-                  alignItems: 'start',
-                  gap: '10px',
-                  paddingRight: '6px',
-                  paddingBottom: '10px',
-                }}
-              >
+              <div className="pos-garment-grid">
                 {filteredPieceGarments.length === 0 && (
-                  <div style={{ gridColumn: '1 / -1', padding: '36px 20px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
+                  <div className="pos-empty-catalog">
                     <Shirt size={28} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
                     <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#475569' }}>
                       No garments found matching "{garmentSearch}"
@@ -830,68 +754,36 @@ export default function PosRegister({
                       type="button"
                       disabled={!isAvailable}
                       onClick={() => handleAddGarmentPiece(g)}
-                      style={{
-                        padding: '12px 10px',
-                        background: !isAvailable ? '#f8fafc' : inCartCount > 0 ? '#eff6ff' : '#fff',
-                        border: !isAvailable ? '1px dashed #cbd5e1' : inCartCount > 0 ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        textAlign: 'left',
-                        cursor: !isAvailable ? 'not-allowed' : 'pointer',
-                        opacity: !isAvailable ? 0.6 : 1,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        height: '115px',
-                        maxHeight: '115px',
-                        boxSizing: 'border-box',
-                        position: 'relative',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                        transition: 'all 0.15s ease',
-                      }}
+                      className={`pos-garment-card ${!isAvailable ? 'disabled' : ''} ${inCartCount > 0 ? 'in-cart' : ''}`}
                       title={!isAvailable ? `Not available for ${selectedPieceService}` : undefined}
                     >
                       {inCartCount > 0 && (
-                        <span
-                          style={{
-                            position: 'absolute',
-                            top: '8px',
-                            right: '8px',
-                            background: '#2563eb',
-                            color: '#fff',
-                            fontSize: '10px',
-                            fontWeight: 700,
-                            borderRadius: '50%',
-                            width: '20px',
-                            height: '20px',
-                            display: 'grid',
-                            placeItems: 'center',
-                          }}
-                        >
+                        <span className="pos-garment-count-badge">
                           {inCartCount}
                         </span>
                       )}
-                      <div>
-                        <strong style={{ fontSize: '13px', color: '#1e293b', display: 'block', lineHeight: 1.25, wordBreak: 'break-word' }}>
+                      <div className="pos-garment-info">
+                        <strong className="pos-garment-name">
                           {g.name}
                         </strong>
-                        <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginTop: '2px' }}>
+                        <span className="pos-garment-category">
                           {g.category}
                         </span>
                       </div>
-                      <div style={{ marginTop: '8px', paddingTop: '4px', borderTop: '1px dashed #f1f5f9' }}>
+                      <div className="pos-garment-price-row">
                         {isAvailable ? (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <strong style={{ fontSize: '14px', color: selectedPieceService.startsWith('Club Fresh') ? '#16a34a' : '#2563eb' }}>
+                          <div className="pos-garment-price-wrap">
+                            <strong className={`pos-garment-price ${selectedPieceService.startsWith('Club Fresh') ? 'club' : ''}`}>
                               ₹{servicePrice}
                             </strong>
                             {selectedPieceService.startsWith('Club Fresh') && (
-                              <span style={{ fontSize: '9px', fontWeight: 700, color: '#15803d', background: '#dcfce7', padding: '1px 5px', borderRadius: '4px' }}>
+                              <span className="pos-garment-club-tag">
                                 CLUB
                               </span>
                             )}
                           </div>
                         ) : (
-                          <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>NA</span>
+                          <span className="pos-garment-na">NA</span>
                         )}
                       </div>
                     </button>
@@ -1266,7 +1158,6 @@ export default function PosRegister({
         <div
           id="pos-ticket-panel"
           className={`pos-column-ticket ${mobilePosTab === 'catalog' ? 'hidden-mobile' : ''}`}
-          style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px 16px', display: 'grid', gap: '14px', position: 'sticky', top: '20px', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', overflow: 'hidden' }}
         >
           {/* Mobile Back Button to Catalog */}
           {mobilePosTab === 'ticket' && (

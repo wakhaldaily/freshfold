@@ -222,56 +222,21 @@ export default function CustomerModal({
 
   return (
     <div
-      className="modal-backdrop"
+      className="modal-backdrop customer-modal-backdrop"
       onClick={onClose}
-      style={{
-        zIndex: 1100,
-        background: 'rgba(15, 23, 42, 0.55)',
-        backdropFilter: 'blur(4px)',
-        padding: '20px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch',
-        overscrollBehavior: 'contain',
-      }}
     >
       <div
-        className="modal-panel"
+        className="modal-panel customer-modal-panel"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: '840px',
-          width: '100%',
-          maxHeight: '92vh',
-          minHeight: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          background: '#ffffff',
-          color: '#0f172a',
-          boxShadow: '0 25px 60px -15px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.08)',
-          animation: 'rise-in 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-        }}
       >
         {/* TOP HEADER */}
-        <div
-          style={{
-            padding: '16px 24px',
-            borderBottom: '1px solid #f1f5f9',
-            background: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '16px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div className="customer-modal-header">
+          <div className="customer-modal-header-left" style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
             <div
+              className="customer-modal-header-avatar"
               style={{
-                width: '42px',
-                height: '42px',
+                width: '38px',
+                height: '38px',
                 borderRadius: '10px',
                 background: '#eff6ff',
                 color: '#2563eb',
@@ -281,14 +246,15 @@ export default function CustomerModal({
                 flexShrink: 0,
               }}
             >
-              {activeCustomer ? <UserCheck size={22} /> : <UserPlus size={22} />}
+              {activeCustomer ? <UserCheck size={20} /> : <UserPlus size={20} />}
             </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <h2
+                  className="customer-modal-title"
                   style={{
                     margin: 0,
-                    fontSize: '17px',
+                    fontSize: '16px',
                     fontWeight: 700,
                     color: '#0f172a',
                     letterSpacing: '-0.02em',
@@ -329,7 +295,7 @@ export default function CustomerModal({
                   </span>
                 )}
               </div>
-              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
+              <p className="customer-modal-subtitle" style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
                 {activeCustomer
                   ? `Editing account details and preferences for ${activeCustomer.name}`
                   : 'Fast POS customer intake for billing, pickup & delivery details'}
@@ -337,10 +303,11 @@ export default function CustomerModal({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             {activeCustomer && (
               <button
                 type="button"
+                className="desktop-only"
                 onClick={handleResetToNew}
                 style={{
                   background: '#f8fafc',
@@ -375,12 +342,12 @@ export default function CustomerModal({
               onClick={onClose}
               aria-label="Close modal"
               style={{
-                width: '32px',
-                height: '32px',
+                width: '36px',
+                height: '36px',
                 borderRadius: '8px',
-                border: '1px solid #e2e8f0',
-                background: '#ffffff',
-                color: '#64748b',
+                border: '1px solid #cbd5e1',
+                background: '#f8fafc',
+                color: '#334155',
                 display: 'grid',
                 placeItems: 'center',
                 cursor: 'pointer',
@@ -391,30 +358,17 @@ export default function CustomerModal({
                 e.currentTarget.style.color = '#0f172a';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#ffffff';
-                e.currentTarget.style.color = '#64748b';
+                e.currentTarget.style.background = '#f8fafc';
+                e.currentTarget.style.color = '#334155';
               }}
             >
-              <X size={16} />
+              <X size={18} />
             </button>
           </div>
         </div>
 
         {/* MODAL BODY */}
-        <div
-          style={{
-            padding: '20px 24px',
-            overflowY: 'auto',
-            WebkitOverflowScrolling: 'touch',
-            overscrollBehavior: 'contain',
-            flex: 1,
-            minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '18px',
-            background: '#fafafa',
-          }}
-        >
+        <div className="customer-modal-body">
           {/* TOP SEARCH SPOTLIGHT BAR */}
           <div ref={searchContainerRef} style={{ position: 'relative' }}>
             <div
@@ -569,17 +523,7 @@ export default function CustomerModal({
           {/* FORM */}
           <form id="customer-form" onSubmit={handleSubmit} style={{ display: 'grid', gap: '16px' }}>
             {/* SECTION 1: IDENTITY & CONTACT */}
-            <div
-              style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '16px 18px',
-                display: 'grid',
-                gap: '14px',
-                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.02)',
-              }}
-            >
+            <div className="customer-form-section">
               <div
                 style={{
                   display: 'flex',
@@ -611,13 +555,7 @@ export default function CustomerModal({
               </div>
 
               {/* ROW 1: CUSTOMER CODE + SALUTATION & NAME */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(160px, 200px) 1fr',
-                  gap: '12px',
-                }}
-              >
+              <div className="customer-form-row-code-name">
                 {/* CUSTOMER CODE */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
@@ -666,12 +604,12 @@ export default function CustomerModal({
                   >
                     Full Name <span style={{ color: '#dc2626' }}>*</span>
                   </label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div className="customer-name-inputs-wrap">
                     <CustomSelect
                       value={formData.salutation}
                       onChange={(val) => setFormData({ ...formData, salutation: val })}
                       options={SALUTATIONS}
-                      width="100px"
+                      width="95px"
                     />
 
                     <input
@@ -682,6 +620,7 @@ export default function CustomerModal({
                       required
                       style={{
                         flex: 1,
+                        minWidth: 0,
                         height: '40px',
                         background: '#ffffff',
                         border: '1px solid #cbd5e1',
@@ -698,7 +637,7 @@ export default function CustomerModal({
               </div>
 
               {/* ROW 2: MOBILE (+91) & EMAIL */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="customer-form-row-2col">
                 {/* MOBILE */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
@@ -822,17 +761,7 @@ export default function CustomerModal({
             </div>
 
             {/* SECTION 2: DELIVERY ADDRESS & LOCATION */}
-            <div
-              style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '16px 18px',
-                display: 'grid',
-                gap: '14px',
-                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.02)',
-              }}
-            >
+            <div className="customer-form-section">
               <div
                 style={{
                   display: 'flex',
@@ -864,7 +793,7 @@ export default function CustomerModal({
               </div>
 
               {/* ADDRESS & AREA */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '12px' }}>
+              <div className="customer-form-row-address">
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
                     style={{
@@ -931,7 +860,7 @@ export default function CustomerModal({
               </div>
 
               {/* STATE & PIN CODE */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="customer-form-row-2col">
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
                     style={{
@@ -988,17 +917,7 @@ export default function CustomerModal({
             </div>
 
             {/* SECTION 3: LAUNDRY PREFERENCES, RATE LIST & TAX */}
-            <div
-              style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '16px 18px',
-                display: 'grid',
-                gap: '14px',
-                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.02)',
-              }}
-            >
+            <div className="customer-form-section">
               <div
                 style={{
                   display: 'flex',
@@ -1030,7 +949,7 @@ export default function CustomerModal({
               </div>
 
               {/* PREFERENCE & DISCOUNT % */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '12px' }}>
+              <div className="customer-form-row-pref">
                 {/* PREFERENCE */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
@@ -1115,7 +1034,7 @@ export default function CustomerModal({
               </div>
 
               {/* COMM PREFERENCE & RATE LIST */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="customer-form-row-2col">
                 {/* COMM PREFERENCE */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
@@ -1160,7 +1079,7 @@ export default function CustomerModal({
               </div>
 
               {/* GSTIN & REFERRAL CODE */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="customer-form-row-2col">
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
                     style={{
@@ -1229,17 +1148,7 @@ export default function CustomerModal({
         </div>
 
         {/* MODAL FOOTER */}
-        <div
-          style={{
-            padding: '16px 24px',
-            borderTop: '1px solid #f1f5f9',
-            background: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px',
-          }}
-        >
+        <div className="customer-modal-footer">
           <div>
             {activeCustomer ? (
               confirmDelete ? (
@@ -1329,7 +1238,7 @@ export default function CustomerModal({
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div className="customer-modal-footer-actions">
             <button
               type="button"
               onClick={onClose}
