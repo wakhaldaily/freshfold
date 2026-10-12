@@ -203,7 +203,7 @@ export default function PackageManageModal({
 
               <div style={{ display: 'grid', gap: '14px' }}>
                 {/* 1. Name and Type */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '12px' }}>
+                <div className="pkg-manage-grid-2">
                   <label className="field-group">
                     <span className="field-label">Package Name</span>
                     <input
@@ -242,7 +242,7 @@ export default function PackageManageModal({
                 </label>
 
                 {/* 3. Pricing & Benefit values */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div className="pkg-manage-grid-3">
                   <label className="field-group">
                     <span className="field-label">Price to Purchase (₹)</span>
                     <input
@@ -357,7 +357,7 @@ export default function PackageManageModal({
                       <Tag size={15} /> Customize Target Clothes & Services
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                    <div className="pkg-manage-grid-3">
                       <div className="field-group">
                         <span className="field-label">Target Service</span>
                         <CustomSelect

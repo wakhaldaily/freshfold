@@ -745,7 +745,7 @@ export default function PosRegister({
           {/* 1. PIECE MODE VIEW                                       */}
           {/* ========================================================= */}
           {orderType === 'pieces' ? (
-            <div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
                 {/* Category selector */}
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>

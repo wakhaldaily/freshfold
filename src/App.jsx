@@ -623,7 +623,7 @@ export default function App() {
             {/* Desktop Sidebar Collapse Button */}
             <button
               type="button"
-              className="icon-button"
+              className="icon-button desktop-only"
               onClick={toggleSidebar}
               style={{ width: '32px', height: '32px', borderRadius: '6px' }}
               title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
@@ -631,7 +631,7 @@ export default function App() {
             >
               {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
             </button>
-            <div className="breadcrumb">
+            <div className="breadcrumb desktop-only">
               <span>Clean Clear Dry Cleaning</span>
               <ChevronRight size={14} />
               <strong>
@@ -645,9 +645,9 @@ export default function App() {
             </div>
           </div>
 
-          <div className="topbar-actions" style={{ flex: 1, justifyContent: 'flex-end', maxWidth: '820px' }}>
+          <div className="topbar-actions">
             {/* Global Search Bar */}
-            <div className="customer-search-wrap" style={{ width: '560px', maxWidth: '680px', height: '42px', flex: '1 1 380px' }}>
+            <div className="customer-search-wrap">
               <Search size={16} />
               <input
                 type="search"
@@ -692,7 +692,7 @@ export default function App() {
               )}
             </div>
 
-            <div className={`sync-state ${isRemoteMode() ? 'sync-online' : ''}`}>
+            <div className={`sync-state desktop-only ${isRemoteMode() ? 'sync-online' : ''}`}>
               <span className="sync-dot" />
               <span>{isRemoteMode() ? 'Neon DB Active' : 'Local Storage Ready'}</span>
             </div>
@@ -700,7 +700,7 @@ export default function App() {
             {adminUser ? (
               <button
                 type="button"
-                className="button button-quiet"
+                className="button button-quiet desktop-only"
                 style={{ minHeight: '36px', fontSize: '11px' }}
                 onClick={handleAdminLogout}
               >
@@ -709,7 +709,7 @@ export default function App() {
             ) : (
               <button
                 type="button"
-                className="button button-quiet"
+                className="button button-quiet desktop-only"
                 style={{ minHeight: '36px', fontSize: '11px' }}
                 onClick={() => setModal({ type: 'admin-auth' })}
               >
@@ -719,7 +719,7 @@ export default function App() {
 
             <button
               type="button"
-              className="button button-quiet"
+              className="button button-quiet desktop-only"
               style={{ minHeight: '36px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px' }}
               onClick={handleLockTerminal}
               title={`Active: ${authSession?.name || 'Staff'}. Click to lock POS terminal.`}
@@ -1381,8 +1381,8 @@ export default function App() {
                   <p className="muted-copy" style={{ margin: '4px 0 0' }}>All registered laundry accounts and contact records</p>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '8px 14px', borderRadius: '8px', border: '1.5px solid #cbd5e1', width: '420px', minWidth: '280px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', width: '100%', maxWidth: '640px', justifyContent: 'flex-end' }}>
+                  <div className="customer-directory-search">
                     <Search size={15} color="#94a3b8" />
                     <input
                       type="text"
@@ -1779,22 +1779,22 @@ export default function App() {
           {/* ========================================================= */}
           {view === 'packages' && (
             <div className="responsive-page-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px' }}>
+              <div className="packages-page-header">
                 <div>
-                  <h2 style={{ margin: 0, fontSize: '22px', color: '#1e293b' }}>Laundry Benefit Packages ({data.packages.length})</h2>
+                  <h2 className="packages-page-title">Laundry Benefit Packages ({data.packages.length})</h2>
                   <p className="muted-copy" style={{ margin: '4px 0 0' }}>All packages are lifetime plans with no expiration date</p>
                 </div>
 
                 <button
                   type="button"
-                  className="button button-primary"
+                  className="button button-primary packages-manage-btn"
                   onClick={() => requireAdmin(() => setModal({ type: 'manage-packages' }))}
                 >
                   <PackagePlus size={16} /> Manage Packages (Create/Edit/Delete)
                 </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '18px' }}>
+              <div className="packages-catalog-grid">
                 {data.packages.map((pkg) => (
                   <div key={pkg.id} className="detail-card" style={{ padding: '20px' }}>
                     <div className="card-heading">

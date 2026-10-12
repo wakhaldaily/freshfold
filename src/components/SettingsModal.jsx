@@ -351,71 +351,30 @@ export default function SettingsModal({
   ];
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop settings-modal-backdrop" onClick={onClose}>
       <div
         className="modal-panel settings-modal-panel"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="settings-modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '11px',
-                background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(124, 58, 237, 0.2))',
-                color: '#2563eb',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.15)',
-                flexShrink: 0,
-              }}
-            >
+          <div className="settings-header-title-group">
+            <div className="settings-header-icon-box">
               <Store size={22} />
             </div>
             <div>
-              <span
-                style={{
-                  display: 'block',
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  letterSpacing: '1px',
-                  textTransform: 'uppercase',
-                  color: 'var(--settings-text-muted)',
-                }}
-              >
+              <span className="settings-header-eyebrow">
                 Store Administration
               </span>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: '18px',
-                  fontWeight: 800,
-                  color: 'var(--settings-text-primary)',
-                  letterSpacing: '-0.3px',
-                }}
-              >
+              <h3 className="settings-header-title">
                 Store & Personnel Settings
               </h3>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className="settings-header-actions-group">
             <div
-              style={{
-                padding: '6px 12px',
-                borderRadius: '999px',
-                background: 'rgba(37, 99, 235, 0.08)',
-                border: '1px solid rgba(37, 99, 235, 0.2)',
-                fontSize: '11px',
-                fontWeight: 700,
-                color: '#2563eb',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
+              className="settings-header-badges"
               title="Total people registered to operate or manage this store"
             >
               <Users size={13} />
@@ -427,7 +386,7 @@ export default function SettingsModal({
             </div>
 
             <button
-              className="icon-button"
+              className="icon-button settings-header-close-btn"
               type="button"
               onClick={onClose}
               aria-label="Close"
@@ -444,9 +403,9 @@ export default function SettingsModal({
           style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
         >
           <div className="settings-body-layout">
-            {/* Left Vertical Side Menu */}
+            {/* Left Vertical Side Menu (Desktop) / Horizontal Nav Strip (Mobile) */}
             <aside className="settings-sidebar-nav">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div className="settings-sidebar-sections-wrapper">
                 {/* Section 1: Store Configuration */}
                 <div className="settings-sidebar-section">
                   <div className="settings-sidebar-heading">Store Configuration</div>
@@ -504,7 +463,7 @@ export default function SettingsModal({
                       <div className="settings-sidebar-icon">
                         <MessageSquare size={15} />
                       </div>
-                      <span className="settings-sidebar-title">WhatsApp Dispatch</span>
+                      <span className="settings-sidebar-title">WhatsApp</span>
                     </div>
                     <span className="settings-sidebar-badge">
                       {formData.whatsappDispatchMode === 'web' ? 'Web' : 'App'}
@@ -527,7 +486,7 @@ export default function SettingsModal({
                       <span className="settings-sidebar-title">Shop Admins</span>
                     </div>
                     <span className="settings-sidebar-badge">
-                      {admins.length} {admins.length === 1 ? 'Admin' : 'Admins'}
+                      {admins.length}
                     </span>
                   </button>
 
@@ -543,7 +502,7 @@ export default function SettingsModal({
                       <span className="settings-sidebar-title">Counter Operators</span>
                     </div>
                     <span className="settings-sidebar-badge">
-                      {staff.length} Active
+                      {staff.length}
                     </span>
                   </button>
                 </div>
@@ -657,7 +616,7 @@ export default function SettingsModal({
                       </div>
                     </label>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr', gap: '12px' }}>
+                    <div className="settings-grid-2-phone-code">
                       <label className="field-group">
                         <span className="field-label">Contact Phone</span>
                         <div style={{ position: 'relative' }}>
@@ -1025,7 +984,7 @@ export default function SettingsModal({
                         </span>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div className="settings-form-grid-2">
                         <label className="field-group">
                           <span className="field-label">Tax Scheme Label</span>
                           <input
@@ -1243,10 +1202,8 @@ export default function SettingsModal({
                       </div>
 
                       <div
+                        className="settings-tax-simulation-grid"
                         style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(4, 1fr)',
-                          gap: '12px',
                           background: 'var(--settings-card-subtle-bg)',
                           padding: '14px',
                           borderRadius: '10px',
@@ -1489,7 +1446,7 @@ export default function SettingsModal({
                     </small>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr auto', gap: '10px', alignItems: 'center' }}>
+                  <div className="settings-new-staff-form-grid">
                     <input
                       type="text"
                       placeholder="Operator Full Name"
@@ -1504,7 +1461,7 @@ export default function SettingsModal({
                         { value: 'cashier', label: 'Counter Cashier', badge: 'Cashier' },
                         { value: 'admin', label: 'Store Manager', badge: 'Manager' },
                       ]}
-                      width="160px"
+                      width="100%"
                     />
 
                     <input
@@ -1559,7 +1516,7 @@ export default function SettingsModal({
                       </span>
                     </label>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', background: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    <div className="settings-delivery-surcharge-grid">
                       <div>
                         <label className="field-label" style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
                           Standard Express Surcharge (%)
@@ -1621,15 +1578,12 @@ export default function SettingsModal({
                     {(formData.expressOptions || defaultSettings.expressOptions).map((opt, idx) => (
                       <div
                         key={opt.id || idx}
+                        className="settings-express-opt-row"
                         style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'minmax(140px, 2fr) 110px 100px auto',
-                          gap: '10px',
-                          alignItems: 'center',
-                          background: '#f8fafc',
+                          background: 'var(--settings-card-subtle-bg)',
                           padding: '10px 14px',
                           borderRadius: '8px',
-                          border: '1px solid #e2e8f0',
+                          border: '1px solid var(--settings-card-border)',
                         }}
                       >
                         <input
@@ -1730,7 +1684,7 @@ export default function SettingsModal({
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+                  <div className="settings-whatsapp-mode-grid">
                     <div
                       onClick={() => handleChange('whatsappDispatchMode', 'app')}
                       style={{
@@ -2006,7 +1960,7 @@ export default function SettingsModal({
                         </span>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                      <div className="settings-admin-fields-grid">
                         <div>
                           <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--settings-text-secondary)', display: 'block', marginBottom: '4px' }}>
                             Full Name
@@ -2420,24 +2374,25 @@ export default function SettingsModal({
 
           {/* Modal Footer */}
           <div className="settings-modal-footer">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--settings-text-muted)' }}>
-              <CheckCircle2 size={16} color="#16a34a" />
+            <div className="settings-footer-note">
+              <CheckCircle2 size={15} color="#16a34a" />
               <span>Settings automatically apply to all checkout registers, tickets, and bills</span>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <div className="settings-footer-actions">
               <button
                 type="button"
-                className="settings-footer-btn"
+                className="settings-footer-btn settings-footer-reset-btn"
                 onClick={handleResetDefaults}
                 title="Reset to recommended defaults"
-                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
               >
-                <RotateCcw size={13} /> Reset Defaults
+                <RotateCcw size={13} />
+                <span className="settings-btn-text">Reset Defaults</span>
+                <span className="settings-btn-short-text">Reset</span>
               </button>
               <button
                 type="button"
-                className="settings-footer-btn"
+                className="settings-footer-btn settings-footer-cancel-btn"
                 onClick={onClose}
               >
                 Cancel
@@ -2447,7 +2402,8 @@ export default function SettingsModal({
                 className="settings-footer-save-btn"
                 disabled={saving}
               >
-                <Save size={16} /> {saving ? 'Saving...' : 'Save Settings'}
+                <Save size={15} />
+                <span>{saving ? 'Saving...' : 'Save Settings'}</span>
               </button>
             </div>
           </div>
