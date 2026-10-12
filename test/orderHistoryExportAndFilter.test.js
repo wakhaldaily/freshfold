@@ -138,3 +138,51 @@ test('4. downloadBatchInvoicesPdf generates multi-page PDF document for all filt
   // Multi-page PDF must have 1 page per order
   assert.equal(res.doc.getNumberOfPages(), 3);
 });
+
+test('5. filterOrdersByDate supports Date Range Picker (startDate & endDate)', () => {
+  // Between 2026-10-01 and 2026-10-05 (only ord-2 on 2026-10-02)
+  const range1 = filterOrdersByDate({
+    orders: mockOrders,
+    timePreset: 'range',
+    startDate: '2026-10-01',
+    endDate: '2026-10-05',
+  });
+  assert.equal(range1.length, 1);
+  assert.equal(range1[0].id, 'ord-2');
+
+  // Single day exact match: 2026-10-12 (only ord-1)
+  const rangeSingleDay = filterOrdersByDate({
+    orders: mockOrders,
+    timePreset: 'range',
+    startDate: '2026-10-12',
+    endDate: '2026-10-12',
+  });
+  assert.equal(rangeSingleDay.length, 1);
+  assert.equal(rangeSingleDay[0].id, 'ord-1');
+
+  // Both ord-1 and ord-2: 2026-10-01 to 2026-10-15
+  const rangeAllOct = filterOrdersByDate({
+    orders: mockOrders,
+    timePreset: 'range',
+    startDate: '2026-10-01',
+    endDate: '2026-10-15',
+  });
+  assert.equal(rangeAllOct.length, 2);
+  assert.deepEqual(rangeAllOct.map((o) => o.id), ['ord-1', 'ord-2']);
+
+  // Label test for date range
+  const label = getFilterPeriodLabel({
+    timePreset: 'range',
+    startDate: '2026-10-01',
+    endDate: '2026-10-15',
+  });
+  assert.equal(label, 'Date Range (2026-10-01 to 2026-10-15)');
+
+  const labelSingle = getFilterPeriodLabel({
+    timePreset: 'range',
+    startDate: '2026-10-12',
+    endDate: '2026-10-12',
+  });
+  assert.equal(labelSingle, 'Date (2026-10-12)');
+});
+

@@ -46,17 +46,38 @@ export function getAvailableYears(orders = []) {
 }
 
 /**
- * Filters orders based on date presets (all, this-week, this-month, this-year, custom).
+ * Helper to convert date to YYYY-MM-DD local string
+ */
+function toLocalDateStr(dateInput) {
+  if (!dateInput) return null;
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Filters orders based on date presets (all, this-week, this-month, range/custom dates).
  */
 export function filterOrdersByDate({
   orders = [],
   timePreset = 'all',
   selectedYear = 'all',
   selectedMonth = 'all',
+  startDate = '',
+  endDate = '',
   refDate = new Date(),
 }) {
   if (!Array.isArray(orders)) return [];
-  if (timePreset === 'all' && selectedYear === 'all' && selectedMonth === 'all') {
+  if (
+    timePreset === 'all' &&
+    selectedYear === 'all' &&
+    selectedMonth === 'all' &&
+    !startDate &&
+    !endDate
+  ) {
     return orders;
   }
 
@@ -68,6 +89,15 @@ export function filterOrdersByDate({
     if (!rawDate) return false;
     const d = new Date(rawDate);
     if (isNaN(d.getTime())) return false;
+
+    // Date range filter takes priority when timePreset is 'range' or dates are specified
+    if (timePreset === 'range' || (timePreset !== 'this-week' && timePreset !== 'this-month' && timePreset !== 'this-year' && (startDate || endDate))) {
+      const orderDateStr = toLocalDateStr(rawDate);
+      if (!orderDateStr) return false;
+      if (startDate && orderDateStr < startDate) return false;
+      if (endDate && orderDateStr > endDate) return false;
+      return true;
+    }
 
     if (timePreset === 'this-week') {
       return isDateInThisWeek(rawDate, refDate);
@@ -98,8 +128,20 @@ export function getFilterPeriodLabel({
   timePreset = 'all',
   selectedYear = 'all',
   selectedMonth = 'all',
+  startDate = '',
+  endDate = '',
   refDate = new Date(),
 }) {
+  if (timePreset === 'range' || (startDate || endDate)) {
+    if (startDate && endDate) {
+      return startDate === endDate
+        ? `Date (${startDate})`
+        : `Date Range (${startDate} to ${endDate})`;
+    }
+    if (startDate) return `From ${startDate}`;
+    if (endDate) return `Until ${endDate}`;
+  }
+
   if (timePreset === 'this-week') {
     const day = refDate.getDay();
     const diffToMonday = day === 0 ? -6 : 1 - day;

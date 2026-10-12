@@ -54,7 +54,9 @@ export default function App() {
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [customerDetailTab, setCustomerDetailTab] = useState('overview'); // 'overview' | 'packages' | 'ledger'
   const [orderStatusFilter, setOrderStatusFilter] = useState('All');
-  const [orderTimeFilter, setOrderTimeFilter] = useState('all'); // 'all' | 'this-week' | 'this-month' | 'this-year' | 'custom'
+  const [orderTimeFilter, setOrderTimeFilter] = useState('all'); // 'all' | 'this-week' | 'this-month' | 'range'
+  const [orderStartDate, setOrderStartDate] = useState('');
+  const [orderEndDate, setOrderEndDate] = useState('');
   const [orderFilterYear, setOrderFilterYear] = useState('all');
   const [orderFilterMonth, setOrderFilterMonth] = useState('all');
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
@@ -264,6 +266,8 @@ export default function App() {
       timePreset: orderTimeFilter,
       selectedYear: orderFilterYear,
       selectedMonth: orderFilterMonth,
+      startDate: orderStartDate,
+      endDate: orderEndDate,
     });
 
     // 3. Search query filter
@@ -280,15 +284,17 @@ export default function App() {
     }
 
     return list;
-  }, [data?.orders, data?.customers, orderStatusFilter, orderTimeFilter, orderFilterYear, orderFilterMonth, orderSearchQuery]);
+  }, [data?.orders, data?.customers, orderStatusFilter, orderTimeFilter, orderFilterYear, orderFilterMonth, orderStartDate, orderEndDate, orderSearchQuery]);
 
   const periodLabel = useMemo(() => {
     return getFilterPeriodLabel({
       timePreset: orderTimeFilter,
       selectedYear: orderFilterYear,
       selectedMonth: orderFilterMonth,
+      startDate: orderStartDate,
+      endDate: orderEndDate,
     });
-  }, [orderTimeFilter, orderFilterYear, orderFilterMonth]);
+  }, [orderTimeFilter, orderFilterYear, orderFilterMonth, orderStartDate, orderEndDate]);
 
   const filteredMetrics = useMemo(() => {
     const totalAmount = filteredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
@@ -1100,109 +1106,145 @@ export default function App() {
 
               {/* Comprehensive Filter Controls Card */}
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
-                {/* Row 1: Period Presets & Specific Month/Year Selectors */}
+                {/* Row 1: Period Presets (This Week, This Month, All Time) & Date Range Picker */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
                   
                   {/* Quick Time Presets */}
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.5px', marginRight: '4px' }}>
-                      Time Filter:
+                      Filter:
                     </span>
                     {[
                       { id: 'all', label: 'All Time' },
                       { id: 'this-week', label: 'This Week' },
                       { id: 'this-month', label: 'This Month' },
-                      { id: 'this-year', label: 'This Year' },
-                      { id: 'custom', label: 'Specific Month/Year' },
-                    ].map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          setOrderTimeFilter(p.id);
-                          if (p.id === 'this-month') {
-                            setOrderFilterYear(new Date().getFullYear());
-                            setOrderFilterMonth(new Date().getMonth());
-                          } else if (p.id === 'this-year') {
-                            setOrderFilterYear(new Date().getFullYear());
-                            setOrderFilterMonth('all');
-                          } else if (p.id === 'all') {
-                            setOrderFilterYear('all');
-                            setOrderFilterMonth('all');
-                          }
-                        }}
-                        style={{
-                          fontSize: '11px',
-                          padding: '6px 12px',
-                          borderRadius: '6px',
-                          border: orderTimeFilter === p.id ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                          background: orderTimeFilter === p.id ? '#2563eb' : '#fff',
-                          color: orderTimeFilter === p.id ? '#fff' : '#334155',
-                          fontWeight: orderTimeFilter === p.id ? 700 : 500,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
+                    ].map((p) => {
+                      const isActive =
+                        (p.id === 'all' && orderTimeFilter === 'all' && !orderStartDate && !orderEndDate) ||
+                        (p.id === orderTimeFilter && !orderStartDate && !orderEndDate);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setOrderTimeFilter(p.id);
+                            setOrderStartDate('');
+                            setOrderEndDate('');
+                          }}
+                          style={{
+                            fontSize: '12px',
+                            padding: '6px 14px',
+                            borderRadius: '7px',
+                            border: isActive ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                            background: isActive ? '#2563eb' : '#fff',
+                            color: isActive ? '#fff' : '#334155',
+                            fontWeight: isActive ? 700 : 500,
+                            cursor: 'pointer',
+                            boxShadow: isActive ? '0 1px 3px rgba(37,99,235,0.2)' : 'none',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
                   </div>
 
-                  {/* Specific Month & Year Selectors */}
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <Calendar size={14} color="#64748b" />
-                    
-                    {/* Month Picker */}
-                    <select
-                      value={orderFilterMonth}
-                      onChange={(e) => {
-                        const val = e.target.value === 'all' ? 'all' : Number(e.target.value);
-                        setOrderFilterMonth(val);
-                        setOrderTimeFilter('custom');
-                      }}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '12px',
-                        background: '#fff',
-                        color: '#0f172a',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                      title="Filter by specific Month"
-                    >
-                      <option value="all">All Months</option>
-                      {MONTH_NAMES.map((name, idx) => (
-                        <option key={idx} value={idx}>{name}</option>
-                      ))}
-                    </select>
+                  {/* Date Range Picker */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: (orderStartDate || orderEndDate || orderTimeFilter === 'range') ? '#eff6ff' : '#fff',
+                      border: (orderStartDate || orderEndDate || orderTimeFilter === 'range') ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      padding: '5px 12px',
+                      flexWrap: 'wrap',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: (orderStartDate || orderEndDate || orderTimeFilter === 'range') ? '#1d4ed8' : '#64748b' }}>
+                      <CalendarDays size={15} />
+                      <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Date Range:
+                      </span>
+                    </div>
 
-                    {/* Year Picker */}
-                    <select
-                      value={orderFilterYear}
-                      onChange={(e) => {
-                        const val = e.target.value === 'all' ? 'all' : Number(e.target.value);
-                        setOrderFilterYear(val);
-                        setOrderTimeFilter('custom');
-                      }}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '12px',
-                        background: '#fff',
-                        color: '#0f172a',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                      title="Filter by specific Year"
-                    >
-                      <option value="all">All Years</option>
-                      {availableYears.map((y) => (
-                        <option key={y} value={y}>{y}</option>
-                      ))}
-                    </select>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>From</span>
+                      <input
+                        type="date"
+                        value={orderStartDate}
+                        onChange={(e) => {
+                          setOrderStartDate(e.target.value);
+                          setOrderTimeFilter('range');
+                        }}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '12px',
+                          background: '#fff',
+                          color: '#0f172a',
+                          fontWeight: 500,
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                        title="Filter from date (inclusive)"
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>To</span>
+                      <input
+                        type="date"
+                        value={orderEndDate}
+                        onChange={(e) => {
+                          setOrderEndDate(e.target.value);
+                          setOrderTimeFilter('range');
+                        }}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '12px',
+                          background: '#fff',
+                          color: '#0f172a',
+                          fontWeight: 500,
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                        title="Filter until date (inclusive)"
+                      />
+                    </div>
+
+                    {(orderStartDate || orderEndDate) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOrderStartDate('');
+                          setOrderEndDate('');
+                          setOrderTimeFilter('all');
+                        }}
+                        title="Clear date range filter"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          fontSize: '11px',
+                          padding: '4px 8px',
+                          borderRadius: '5px',
+                          border: 'none',
+                          background: '#fee2e2',
+                          color: '#b91c1c',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <X size={12} /> Clear
+                      </button>
+                    )}
                   </div>
                 </div>
 
