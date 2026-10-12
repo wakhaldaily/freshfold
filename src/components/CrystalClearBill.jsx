@@ -89,7 +89,6 @@ export default function CrystalClearBill({
   settings,
   cashierName = 'CC02',
   previousDue = 0,
-  qrCodeUrl = '',
 }) {
   if (!order) return null;
 
@@ -493,19 +492,6 @@ export default function CrystalClearBill({
           <div style={{ marginTop: '14px', fontWeight: 700 }}>
             Urgent delivery of garments will be charged @ {expressPercent} % Extra.
           </div>
-          {qrCodeUrl && (
-            <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <img
-                src={qrCodeUrl}
-                alt="Digital Invoice QR"
-                style={{ width: '56px', height: '56px', border: '1px solid #000000', display: 'block', imageRendering: 'pixelated' }}
-              />
-              <div style={{ fontSize: '9px', fontWeight: 600, color: '#000000', lineHeight: 1.3 }}>
-                <div>Scan for Digital Bill</div>
-                <div style={{ color: '#444444', fontWeight: 500 }}>Track status & PDF download</div>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Right Column: Taxes & Net Due */}
