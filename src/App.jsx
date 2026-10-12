@@ -521,7 +521,11 @@ export default function App() {
 
         {/* Sidebar Bottom Status */}
         <div className="sidebar-bottom">
-          <div className="shift-card" title={`Logged in: ${authSession?.name || 'Staff'} (${authSession?.role || 'cashier'})`}>
+          <div
+            className="shift-card"
+            data-tooltip={`Shift: ${authSession?.name || 'Counter Staff'}`}
+            title={`Logged in: ${authSession?.name || 'Staff'} (${authSession?.role || 'cashier'})`}
+          >
             <div className="shift-icon">
               <Clock3 size={16} />
             </div>
@@ -538,6 +542,7 @@ export default function App() {
               className="staff-chip"
               style={{ cursor: 'pointer' }}
               onClick={handleAdminLogout}
+              data-tooltip="Admin Active (Click to Logout)"
               title="Click to Log Out of Admin Mode"
             >
               <div className="staff-avatar" style={{ background: '#2563eb', color: '#fff' }}>
@@ -554,6 +559,7 @@ export default function App() {
               className="staff-chip"
               style={{ cursor: 'pointer' }}
               onClick={() => setModal({ type: 'admin-auth' })}
+              data-tooltip="Counter Staff (Click for Admin)"
               title="Click to sign in as Administrator"
             >
               <div className="staff-avatar">
@@ -570,23 +576,13 @@ export default function App() {
           {/* Lock Terminal Quick Button */}
           <button
             type="button"
-            className="button button-quiet"
+            className="button button-quiet sidebar-lock-btn"
             onClick={handleLockTerminal}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              fontSize: '11px',
-              marginTop: '6px',
-              padding: '6px 10px',
-              color: '#94a3b8',
-              borderColor: 'rgba(255,255,255,0.1)',
-            }}
+            data-tooltip="Lock POS Terminal"
             title="Lock POS Terminal Screen"
           >
-            <Lock size={13} /> Lock Terminal
+            <Lock size={14} />
+            <span className="sidebar-lock-text">Lock Terminal</span>
           </button>
         </div>
       </aside>

@@ -128,15 +128,65 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   margin: 0 0 16px;
 }
 
+.sidebar.collapsed .sidebar-bottom {
+  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .sidebar.collapsed .shift-card {
-  justify-content: center;
-  padding: 8px 0;
+  width: 44px;
+  height: 40px;
   min-height: unset;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  position: relative;
+  cursor: default;
+}
+
+.sidebar.collapsed .shift-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
 }
 
 .sidebar.collapsed .staff-chip {
+  width: 44px;
+  height: 40px;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 8px 0 0;
+  border-top: none;
+  border-radius: 8px;
+  position: relative;
+  transition: background 0.15s ease;
+}
+
+.sidebar.collapsed .staff-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar.collapsed .sidebar-lock-btn {
+  width: 44px;
+  height: 40px;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  position: relative;
+}
+
+.sidebar.collapsed .sidebar-lock-btn .sidebar-lock-text {
+  display: none !important;
 }
 
 .sidebar.collapsed .primary-nav {
@@ -158,7 +208,10 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 }
 
 /* Floating Tooltip in Collapsed Mode */
-.sidebar.collapsed .nav-item::after {
+.sidebar.collapsed .nav-item::after,
+.sidebar.collapsed .shift-card::after,
+.sidebar.collapsed .staff-chip::after,
+.sidebar.collapsed .sidebar-lock-btn::after {
   content: attr(data-tooltip);
   position: absolute;
   left: calc(100% + 12px);
@@ -180,7 +233,10 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   transition: opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.sidebar.collapsed .nav-item::before {
+.sidebar.collapsed .nav-item::before,
+.sidebar.collapsed .shift-card::before,
+.sidebar.collapsed .staff-chip::before,
+.sidebar.collapsed .sidebar-lock-btn::before {
   content: '';
   position: absolute;
   left: calc(100% + 4px);
@@ -196,13 +252,19 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   transition: opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.sidebar.collapsed .nav-item:hover::after {
+.sidebar.collapsed .nav-item:hover::after,
+.sidebar.collapsed .shift-card:hover::after,
+.sidebar.collapsed .staff-chip:hover::after,
+.sidebar.collapsed .sidebar-lock-btn:hover::after {
   opacity: 1;
   visibility: visible;
   transform: translateY(-50%) translateX(0);
 }
 
-.sidebar.collapsed .nav-item:hover::before {
+.sidebar.collapsed .nav-item:hover::before,
+.sidebar.collapsed .shift-card:hover::before,
+.sidebar.collapsed .staff-chip:hover::before,
+.sidebar.collapsed .sidebar-lock-btn:hover::before {
   opacity: 1;
   visibility: visible;
   transform: translateY(-50%) translateX(0);
@@ -237,6 +299,28 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .staff-chip strong { font-size: 12px; font-weight: 600; color: #f8fafc; }
 .staff-chip span { font-size: 10px; color: #94a3b8; }
 .staff-chip > svg { color: #94a3b8; }
+.sidebar-lock-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  margin-top: 4px;
+  padding: 7px 10px;
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+.sidebar-lock-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.2);
+}
 .nav-close, .menu-toggle { display: none !important; }
 
 .main-shell {
