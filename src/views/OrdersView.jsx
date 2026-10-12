@@ -1,6 +1,7 @@
 import React from 'react';
 import { CalendarDays, FileSpreadsheet, Files, ReceiptText, Search, X } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
+import { OrderAccordionList } from '../components/MobileLists.jsx';
 import { formatDate } from '../lib/dateFormat.js';
 
 export default function OrdersView({
@@ -298,7 +299,7 @@ export default function OrdersView({
       </div>
 
       {/* Natural scrolling table */}
-      <div className="orders-table-wrap" style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
+      <div className={`orders-table-wrap ${filteredOrders.length > 0 ? 'desktop-only' : ''}`} style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
         {filteredOrders.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 20px', background: '#fafafa', borderRadius: '8px' }}>
             <div style={{ fontSize: '32px', marginBottom: '10px' }}>🔍</div>
@@ -322,7 +323,7 @@ export default function OrdersView({
             </button>
           </div>
         ) : (
-          <table className="orders-table responsive-table">
+          <table className="orders-table">
             <thead>
               <tr>
                 <th>Order No</th>
@@ -395,6 +396,13 @@ export default function OrdersView({
           </table>
         )}
       </div>
+
+      {/* Phones: compact expandable rows instead of the wide table */}
+      {filteredOrders.length > 0 && (
+        <div className="mobile-only">
+          <OrderAccordionList orders={filteredOrders} customers={data.customers} setModal={setModal} />
+        </div>
+      )}
     </div>
   );
 }

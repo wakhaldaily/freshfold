@@ -2,6 +2,7 @@ import React from 'react';
 import { Mail, MapPin, Megaphone, Package, PackagePlus, Pencil, Phone, Plus, ReceiptText, Tag, Wallet } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { formatDate, formatDateTime } from '../lib/dateFormat.js';
+import { OrderAccordionList } from '../components/MobileLists.jsx';
 
 export default function CustomerDetailView({
   setView,
@@ -167,15 +168,20 @@ export default function CustomerDetailView({
       </div>
 
       {/* TAB 1: ORDER HISTORY */}
+      {customerDetailTab === 'overview' && customerOrders.length > 0 && (
+        <div className="mobile-only">
+          <OrderAccordionList orders={customerOrders} customers={[currentDetailCustomer]} setModal={setModal} showCustomer={false} />
+        </div>
+      )}
       {customerDetailTab === 'overview' && (
-        <div className="orders-table-wrap">
+        <div className={`orders-table-wrap ${customerOrders.length > 0 ? 'desktop-only' : ''}`}>
           {customerOrders.length === 0 ? (
             <div className="empty-state">
               <strong>No orders placed by this customer yet.</strong>
               <p className="muted-copy">Click "Place Order for Customer" above to start billing.</p>
             </div>
           ) : (
-            <table className="orders-table responsive-table">
+            <table className="orders-table">
               <thead>
                 <tr>
                   <th>Order No</th>

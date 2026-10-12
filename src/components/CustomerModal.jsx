@@ -56,6 +56,17 @@ const RATE_LIST_OPTIONS = [
 
 const SALUTATIONS = ['Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Prof.', 'M/s.'];
 
+// Keep only the 10-digit local number; tolerates pasted "+91 98765 43210" or "098765 43210".
+function normalizeMobile(raw) {
+  let digits = String(raw || '').replace(/\D/g, '');
+  if (digits.length > 10 && digits.startsWith('91')) digits = digits.slice(2);
+  if (digits.length > 10 && digits.startsWith('0')) digits = digits.slice(1);
+  return digits.slice(0, 10);
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
 export default function CustomerModal({
   isOpen,
   onClose,
@@ -80,7 +91,7 @@ export default function CustomerModal({
     areaLocation: target?.areaLocation || target?.locality || '',
     state: target?.state || 'Haryana',
     pinCode: target?.pinCode || target?.pincode || '',
-    mobile: target?.mobile || '',
+    mobile: normalizeMobile(target?.mobile),
     email: target?.email || '',
     preference: target?.preference || 'NA',
     discountPercent:
@@ -95,6 +106,11 @@ export default function CustomerModal({
   });
 
   const [formData, setFormData] = useState(() => getInitialForm(customer));
+
+  // Functional update so rapid edits never overwrite each other with stale state.
+  const updateField = (key, value) => setFormData((prev) => ({ ...prev, [key]: value }));
+
+
 
   // Sync when prop customer changes
   useEffect(() => {
@@ -166,14 +182,38 @@ export default function CustomerModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const cleanMobile = formData.mobile.replace(/\D/g, '');
+    const cleanMobile = normalizeMobile(formData.mobile);
+    const email = formData.email.trim();
+    const pinCode = formData.pinCode.trim();
+    const gstin = formData.gstin.trim().toUpperCase();
+    const discount = formData.discountPercent === '' ? 0 : Number(formData.discountPercent);
 
     if (!formData.name.trim()) {
       onToast?.('Customer name is required.');
       return;
     }
-    if (cleanMobile.length < 10) {
+    if (cleanMobile.length !== 10) {
       onToast?.('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!formData.address.trim()) {
+      onToast?.('Street address is required for pickup & delivery.');
+      return;
+    }
+    if (email && !EMAIL_PATTERN.test(email)) {
+      onToast?.('Enter a valid email address or leave it blank.');
+      return;
+    }
+    if (pinCode && !/^\d{6}$/.test(pinCode)) {
+      onToast?.('Pin code must be 6 digits.');
+      return;
+    }
+    if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
+      onToast?.('Discount must be between 0 and 100%.');
+      return;
+    }
+    if (gstin && !GSTIN_PATTERN.test(gstin)) {
+      onToast?.('GSTIN must be 15 characters, e.g. 06AAAAA0000A1Z5.');
       return;
     }
 
@@ -186,14 +226,14 @@ export default function CustomerModal({
         address: formData.address.trim(),
         areaLocation: formData.areaLocation.trim(),
         state: formData.state,
-        pinCode: formData.pinCode.trim(),
+        pinCode,
         mobile: cleanMobile,
-        email: formData.email.trim(),
+        email,
         preference: formData.preference,
-        discountPercent: formData.discountPercent ? Number(formData.discountPercent) : 0,
+        discountPercent: discount,
         commPreference: formData.commPreference,
         rateList: formData.rateList,
-        gstin: formData.gstin.trim(),
+        gstin,
         referralCode: formData.referralCode.trim(),
         notes: formData.notes.trim(),
       };
@@ -376,6 +416,7 @@ export default function CustomerModal({
           {/* TOP SEARCH SPOTLIGHT BAR */}
           <div ref={searchContainerRef} style={{ position: 'relative' }}>
             <div
+              className="customer-input-group"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -392,6 +433,8 @@ export default function CustomerModal({
               <Search size={16} color="#64748b" style={{ flexShrink: 0 }} />
               <input
                 type="text"
+                aria-label="Search existing customers"
+                autoComplete="off"
                 placeholder="Search existing customer by Name, Mobile (+91), or Customer ID..."
                 value={searchQuery}
                 onChange={(e) => {
@@ -526,7 +569,7 @@ export default function CustomerModal({
           </div>
 
           {/* FORM */}
-          <form id="customer-form" onSubmit={handleSubmit} style={{ display: 'grid', gap: '16px' }}>
+          <form id="customer-form" onSubmit={handleSubmit} noValidate style={{ display: 'grid', gap: '16px' }}>
             {/* SECTION 1: IDENTITY & CONTACT */}
             <div className="customer-form-section">
               <div
@@ -564,6 +607,7 @@ export default function CustomerModal({
                 {/* CUSTOMER CODE */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-code"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -575,9 +619,11 @@ export default function CustomerModal({
                     Customer Code
                   </label>
                   <input
+                    id="cust-code"
                     type="text"
+                    autoComplete="off"
                     value={formData.customerCode}
-                    onChange={(e) => setFormData({ ...formData, customerCode: e.target.value })}
+                    onChange={(e) => updateField('customerCode', e.target.value.toUpperCase())}
                     placeholder="e.g. CUST-1001"
                     style={{
                       height: '40px',
@@ -596,6 +642,7 @@ export default function CustomerModal({
                 {/* SALUTATION & NAME */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-name"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -612,16 +659,23 @@ export default function CustomerModal({
                   <div className="customer-name-inputs-wrap">
                     <CustomSelect
                       value={formData.salutation}
-                      onChange={(val) => setFormData({ ...formData, salutation: val })}
+                      onChange={(val) => updateField('salutation', val)}
                       options={SALUTATIONS}
                       width="95px"
+                      minWidth="95px"
+                      ariaLabel="Salutation"
+                      className="customer-salutation-select"
+                      menuStyle={{ minWidth: '120px' }}
                     />
 
                     <input
+                      id="cust-name"
                       type="text"
+                      autoComplete="name"
+                      autoCapitalize="words"
                       placeholder="e.g. Ramesh Kumar"
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      onChange={(e) => updateField('name', e.target.value)}
                       required
                       style={{
                         flex: 1,
@@ -646,6 +700,7 @@ export default function CustomerModal({
                 {/* MOBILE */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-mobile"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -660,6 +715,7 @@ export default function CustomerModal({
                     Mobile Phone <span style={{ color: '#dc2626' }}>*</span>
                   </label>
                   <div
+                    className="customer-input-group"
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -688,13 +744,17 @@ export default function CustomerModal({
                       <span>🇮🇳 +91</span>
                     </div>
                     <input
+                      id="cust-mobile"
                       type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel-national"
                       placeholder="98765 43210"
                       value={formData.mobile}
-                      onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                      onChange={(e) => updateField('mobile', normalizeMobile(e.target.value))}
                       required
                       style={{
                         flex: 1,
+                        minWidth: 0,
                         background: 'transparent',
                         border: 'none',
                         color: '#0f172a',
@@ -710,6 +770,7 @@ export default function CustomerModal({
                 {/* EMAIL */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-email"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -721,6 +782,7 @@ export default function CustomerModal({
                     Email Address
                   </label>
                   <div
+                    className="customer-input-group"
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -746,12 +808,18 @@ export default function CustomerModal({
                       <Mail size={15} />
                     </div>
                     <input
+                      id="cust-email"
                       type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      autoCapitalize="off"
+                      spellCheck={false}
                       placeholder="customer@example.com"
                       value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      onChange={(e) => updateField('email', e.target.value.trim())}
                       style={{
                         flex: 1,
+                        minWidth: 0,
                         background: 'transparent',
                         border: 'none',
                         color: '#0f172a',
@@ -801,6 +869,7 @@ export default function CustomerModal({
               <div className="customer-form-row-address">
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-address"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -815,10 +884,12 @@ export default function CustomerModal({
                     Street Address / Flat No. <span style={{ color: '#dc2626' }}>*</span>
                   </label>
                   <input
+                    id="cust-address"
                     type="text"
+                    autoComplete="street-address"
                     placeholder="e.g. Flat 402, Tower B, Palm Grove"
                     value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    onChange={(e) => updateField('address', e.target.value)}
                     required
                     style={{
                       height: '40px',
@@ -835,6 +906,7 @@ export default function CustomerModal({
 
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-area"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -846,10 +918,12 @@ export default function CustomerModal({
                     Area / Locality
                   </label>
                   <input
+                    id="cust-area"
                     type="text"
+                    autoComplete="address-level3"
                     placeholder="e.g. Sector 14 / DLF Phase 2"
                     value={formData.areaLocation}
-                    onChange={(e) => setFormData({ ...formData, areaLocation: e.target.value })}
+                    onChange={(e) => updateField('areaLocation', e.target.value)}
                     style={{
                       height: '40px',
                       background: '#ffffff',
@@ -868,6 +942,7 @@ export default function CustomerModal({
               <div className="customer-form-row-2col">
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-state"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -879,17 +954,21 @@ export default function CustomerModal({
                     State
                   </label>
                   <CustomSelect
+                    id="cust-state"
                     value={formData.state}
-                    onChange={(val) => setFormData({ ...formData, state: val })}
+                    onChange={(val) => updateField('state', val)}
                     options={INDIAN_STATES}
+                    placeholder="Select state"
                     searchable={true}
                     searchPlaceholder="Search Indian state..."
                     width="100%"
+                    minWidth="0"
                   />
                 </div>
 
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-pincode"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -901,11 +980,14 @@ export default function CustomerModal({
                     Pin Code
                   </label>
                   <input
+                    id="cust-pincode"
                     type="text"
+                    inputMode="numeric"
+                    autoComplete="postal-code"
                     placeholder="e.g. 122001"
                     value={formData.pinCode}
-                    onChange={(e) => setFormData({ ...formData, pinCode: e.target.value })}
-                    maxLength={10}
+                    onChange={(e) => updateField('pinCode', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    maxLength={6}
                     style={{
                       height: '40px',
                       background: '#ffffff',
@@ -958,6 +1040,7 @@ export default function CustomerModal({
                 {/* PREFERENCE */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-preference"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -969,16 +1052,19 @@ export default function CustomerModal({
                     Wash & Packaging Preference
                   </label>
                   <CustomSelect
+                    id="cust-preference"
                     value={formData.preference}
-                    onChange={(val) => setFormData({ ...formData, preference: val })}
+                    onChange={(val) => updateField('preference', val)}
                     options={PREFERENCE_OPTIONS}
                     width="100%"
+                    minWidth="0"
                   />
                 </div>
 
                 {/* DISCOUNT % */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-discount"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -990,6 +1076,7 @@ export default function CustomerModal({
                     Default Discount
                   </label>
                   <div
+                    className="customer-input-group"
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -1001,14 +1088,23 @@ export default function CustomerModal({
                     }}
                   >
                     <input
-                      type="number"
-                      min="0"
-                      max="100"
+                      id="cust-discount"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
                       placeholder="0"
                       value={formData.discountPercent}
-                      onChange={(e) => setFormData({ ...formData, discountPercent: e.target.value })}
+                      onChange={(e) => {
+                        // Digits with at most one decimal point, capped at 100.
+                        let next = e.target.value.replace(/[^\d.]/g, '');
+                        const dot = next.indexOf('.');
+                        if (dot !== -1) next = next.slice(0, dot + 1) + next.slice(dot + 1).replace(/\./g, '').slice(0, 2);
+                        if (next !== '' && next !== '.' && Number(next) > 100) next = '100';
+                        updateField('discountPercent', next);
+                      }}
                       style={{
                         flex: 1,
+                        minWidth: 0,
                         background: 'transparent',
                         border: 'none',
                         color: '#0f172a',
@@ -1043,6 +1139,7 @@ export default function CustomerModal({
                 {/* COMM PREFERENCE */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-comm"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -1054,16 +1151,19 @@ export default function CustomerModal({
                     Communication Channel
                   </label>
                   <CustomSelect
+                    id="cust-comm"
                     value={formData.commPreference}
-                    onChange={(val) => setFormData({ ...formData, commPreference: val })}
+                    onChange={(val) => updateField('commPreference', val)}
                     options={COMM_PREFERENCES}
                     width="100%"
+                    minWidth="0"
                   />
                 </div>
 
                 {/* RATE LIST */}
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-ratelist"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -1075,10 +1175,13 @@ export default function CustomerModal({
                     Rate List Tier
                   </label>
                   <CustomSelect
+                    id="cust-ratelist"
                     value={formData.rateList}
-                    onChange={(val) => setFormData({ ...formData, rateList: val })}
+                    onChange={(val) => updateField('rateList', val)}
                     options={RATE_LIST_OPTIONS}
                     width="100%"
+                    minWidth="0"
+                    dropUp
                   />
                 </div>
               </div>
@@ -1087,6 +1190,7 @@ export default function CustomerModal({
               <div className="customer-form-row-2col">
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-gstin"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -1098,10 +1202,14 @@ export default function CustomerModal({
                     Customer GSTIN (B2B Tax Invoice)
                   </label>
                   <input
+                    id="cust-gstin"
                     type="text"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
                     placeholder="e.g. 06AAAAA0000A1Z5"
                     value={formData.gstin}
-                    onChange={(e) => setFormData({ ...formData, gstin: e.target.value.toUpperCase() })}
+                    onChange={(e) => updateField('gstin', e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, ''))}
                     maxLength={15}
                     style={{
                       height: '40px',
@@ -1120,6 +1228,7 @@ export default function CustomerModal({
 
                 <div style={{ display: 'grid', gap: '6px' }}>
                   <label
+                    htmlFor="cust-referral"
                     style={{
                       fontSize: '11px',
                       fontWeight: 700,
@@ -1131,10 +1240,13 @@ export default function CustomerModal({
                     Referral Code / Promo Tag
                   </label>
                   <input
+                    id="cust-referral"
                     type="text"
+                    autoComplete="off"
+                    autoCapitalize="characters"
                     placeholder="e.g. REF-SUMMER26"
                     value={formData.referralCode}
-                    onChange={(e) => setFormData({ ...formData, referralCode: e.target.value })}
+                    onChange={(e) => updateField('referralCode', e.target.value.toUpperCase())}
                     style={{
                       height: '40px',
                       background: '#ffffff',

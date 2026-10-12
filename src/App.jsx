@@ -533,7 +533,7 @@ export default function App() {
         />
 
         {/* Page Content Body */}
-        <main className="page-content" style={{ flex: 1, width: '100%', maxWidth: '100%' }}>
+        <main className={`page-content ${view === 'new-order' ? 'page-content--fill' : ''}`} style={{ flex: 1, width: '100%', maxWidth: '100%' }}>
           {/* ========================================================= */}
           {/* PAGE 1: HOME POS COUNTER DASHBOARD                        */}
           {/* ========================================================= */}

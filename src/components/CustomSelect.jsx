@@ -17,6 +17,8 @@ export default function CustomSelect({
   menuStyle = {},
   dropUp = false,
   theme = 'light',
+  id,
+  ariaLabel,
 }) {
   const isDark = theme === 'dark';
   const [isOpen, setIsOpen] = useState(false);
@@ -77,34 +79,57 @@ export default function CustomSelect({
 
   // Close on Escape
   useEffect(() => {
+    if (!isOpen) return undefined;
+    // Capture phase + stopPropagation: Escape closes only this menu, not the modal around it.
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
         setIsOpen(false);
         setSearchQuery('');
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isOpen]);
 
   const handleSelect = (option) => {
     if (option.disabled) return;
     setIsOpen(false);
     setSearchQuery('');
-    if (onChange) {
-      // Support both event-style (e.target.value) and direct value
-      const syntheticEvent = { target: { value: option.value } };
-      onChange(option.value, syntheticEvent);
-      // Also provide target in case caller expects e.target.value directly as 1st param:
-      if (typeof onChange === 'function') {
-        try {
-          onChange({ target: { value: option.value }, value: option.value });
-        } catch {
-          onChange(option.value);
-        }
-      }
+    // Call onChange exactly once: (value, syntheticEvent). A second call with an
+    // event-like object used to overwrite the chosen value in callers' state.
+    if (typeof onChange === 'function') {
+      onChange(option.value, { target: { value: option.value } });
     }
   };
+
+  // Open upwards automatically when there is not enough room below the trigger
+  // (inside the viewport or the nearest scrolling container, e.g. a modal body).
+  const [autoDropUp, setAutoDropUp] = useState(false);
+  const openMenu = () => {
+    const el = containerRef.current;
+    if (el && !dropUp) {
+      const rect = el.getBoundingClientRect();
+      let bottomLimit = window.innerHeight;
+      let topLimit = 0;
+      let parent = el.parentElement;
+      while (parent && parent !== document.body) {
+        const { overflowY } = window.getComputedStyle(parent);
+        if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'hidden') {
+          const pRect = parent.getBoundingClientRect();
+          bottomLimit = Math.min(bottomLimit, pRect.bottom);
+          topLimit = Math.max(topLimit, pRect.top);
+          break;
+        }
+        parent = parent.parentElement;
+      }
+      const spaceBelow = bottomLimit - rect.bottom;
+      const spaceAbove = rect.top - topLimit;
+      setAutoDropUp(spaceBelow < 270 && spaceAbove > spaceBelow);
+    }
+    setIsOpen(true);
+  };
+  const openUp = dropUp || autoDropUp;
 
   return (
     <div
@@ -122,7 +147,17 @@ export default function CustomSelect({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => !disabled && setIsOpen((prev) => !prev)}
+        id={id}
+        aria-label={ariaLabel}
+        onClick={() => {
+          if (disabled) return;
+          if (isOpen) {
+            setIsOpen(false);
+            setSearchQuery('');
+          } else {
+            openMenu();
+          }
+        }}
         className="custom-select-trigger"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
@@ -199,7 +234,7 @@ export default function CustomSelect({
             zIndex: 1000,
             left: 0,
             right: 0,
-            ...(dropUp
+            ...(openUp
               ? { bottom: 'calc(100% + 5px)' }
               : { top: 'calc(100% + 5px)' }),
             background: isDark ? '#1e293b' : '#ffffff',

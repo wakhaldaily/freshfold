@@ -1716,6 +1716,8 @@ export default function PosRegister({
             )}
           </div>
 
+          {/* Bill summary + checkout: pinned to the bottom of the ticket on desktop */}
+          <div className="pos-ticket-checkout">
           {/* Pricing & Tax Summary Breakdown */}
           <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'grid', gap: '6px', minWidth: 0, width: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b', minWidth: 0 }}>
@@ -1807,6 +1809,7 @@ export default function PosRegister({
               </>
             )}
           </button>
+          </div>
         </div>
       </div>
 

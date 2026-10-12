@@ -145,6 +145,9 @@ export default function PublicBillView({ billParam, tokenParam }) {
   const paid = Number(order.paidAmount || 0);
   const balance = Number(order.balanceAmount ?? (total - paid));
   const isPaid = balance <= 0;
+  // Match the other bill layouts: GST details only appear when GST is switched on in Settings.
+  const taxEnabled = settings?.taxEnabled !== false;
+  const taxAmount = Number(order.taxAmount || 0);
 
   const handleDownloadPdf = async () => {
     // jsPDF is loaded on demand to keep the initial bundle small.
@@ -368,10 +371,15 @@ export default function PublicBillView({ billParam, tokenParam }) {
                 </div>
               )}
 
-              {order.taxAmount > 0 && (
+              {/* The early/express delivery surcharge is intentionally not itemised here,
+                  matching the thermal receipt; it is already included in the Grand Total. */}
+
+              {/* Tax is shown whenever it was actually charged on this order, so the total always adds up.
+                  The rate comes from the order itself, not today's settings. */}
+              {taxAmount > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
-                  <span>Tax ({settings?.taxLabel || 'GST'} {settings?.taxPercent || 18}%)</span>
-                  <span>+{formatMoney(order.taxAmount)}</span>
+                  <span>Tax ({settings?.taxLabel || 'GST'} {Number(order.taxPercent || settings?.taxPercent || 0)}%)</span>
+                  <span>+{formatMoney(taxAmount)}</span>
                 </div>
               )}
 
@@ -395,7 +403,9 @@ export default function PublicBillView({ billParam, tokenParam }) {
             <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '12px', color: '#64748b' }}>
               <div style={{ fontWeight: 600, color: '#334155' }}>{storeName}</div>
               {settings?.address && <div>{settings.address}</div>}
-              {settings?.taxNumber && <div>GSTIN: {settings.taxNumber}</div>}
+              {taxEnabled && settings?.taxNumber && (
+                <div>{settings?.taxLabel || 'GST'}IN: {settings.taxNumber}</div>
+              )}
               {settings?.phone && (
                 <div style={{ marginTop: '8px' }}>
                   <a

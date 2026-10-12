@@ -43,6 +43,38 @@ export default function PamphletModal({
   const [isExporting, setIsExporting] = useState(false);
 
   const pamphletRef = useRef(null);
+  const previewRef = useRef(null);
+
+  // The flyer is designed at a fixed print width. On narrow screens we scale the
+  // whole card down (like a page preview) instead of letting it squeeze or clip.
+  const baseWidth = format === 'a5' ? 480 : format === 'digital' ? 540 : 720;
+  const [previewScale, setPreviewScale] = useState(1);
+  const [pamphletHeight, setPamphletHeight] = useState(0);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const container = previewRef.current;
+    const card = pamphletRef.current;
+    if (!container || !card || typeof ResizeObserver === 'undefined') return undefined;
+
+    const update = () => {
+      const cs = window.getComputedStyle(container);
+      const available = container.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+      setPreviewScale(available > 0 ? Math.min(1, available / baseWidth) : 1);
+      setPamphletHeight(card.offsetHeight);
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(container);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [isOpen, baseWidth]);
+
+  // Exports must capture the card at its true size, so drop the preview scale while exporting.
+  const appliedScale = isExporting ? 1 : previewScale;
+  const waitForRender = () =>
+    new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
   // Sync with store settings when opened
   useEffect(() => {
@@ -170,6 +202,7 @@ export default function PamphletModal({
     setIsExporting(true);
     onToast?.('Generating high-resolution pamphlet image...');
     try {
+      await waitForRender();
       const canvas = await html2canvas(pamphletRef.current, {
         scale: 2.5,
         useCORS: true,
@@ -196,6 +229,7 @@ export default function PamphletModal({
     setIsExporting(true);
     onToast?.('Generating printable PDF brochure...');
     try {
+      await waitForRender();
       const canvas = await html2canvas(pamphletRef.current, {
         scale: 2.5,
         useCORS: true,
@@ -285,17 +319,18 @@ export default function PamphletModal({
       >
         {/* MODAL HEADER */}
         <div
+          className="pamphlet-modal-header"
           style={{
             padding: '16px 24px',
             borderBottom: '1px solid #e2e8f0',
             display: 'flex',
-            justifyContent: 'space-between',
             alignItems: 'center',
+            gap: '12px',
             background: '#ffffff',
             flexShrink: 0,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="pamphlet-modal-title" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginRight: 'auto', minWidth: 0 }}>
             <div
               style={{
                 width: '40px',
@@ -318,7 +353,7 @@ export default function PamphletModal({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="pamphlet-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               type="button"
               className="button button-quiet"
@@ -372,17 +407,17 @@ export default function PamphletModal({
               <Printer size={14} />
               <span>Print Pamphlet</span>
             </button>
-
-            <button
-              type="button"
-              className="icon-button"
-              onClick={onClose}
-              aria-label="Close"
-              style={{ marginLeft: '4px' }}
-            >
-              <X size={18} />
-            </button>
           </div>
+
+          <button
+            type="button"
+            className="icon-button pamphlet-close"
+            onClick={onClose}
+            aria-label="Close"
+            style={{ marginLeft: '4px', flexShrink: 0 }}
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* MODAL BODY (TWO COLUMNS: CUSTOMIZE CONTROLS + LIVE FLYER PREVIEW) */}
@@ -632,21 +667,42 @@ export default function PamphletModal({
 
           {/* RIGHT: LIVE INTERACTIVE PAMPHLET PREVIEW */}
           <div
+            ref={previewRef}
+            className="pamphlet-preview"
             style={{
               padding: '24px',
               overflowY: 'auto',
+              overflowX: 'hidden',
               display: 'flex',
               justifyContent: 'center',
               alignItems: 'flex-start',
               background: '#e2e8f0',
+              minWidth: 0,
             }}
           >
+            {/* Scale wrapper: reserves the scaled footprint so the preview never overflows */}
+            <div
+              className="pamphlet-scale-frame"
+              style={{
+                width: `${baseWidth * appliedScale}px`,
+                height: pamphletHeight ? `${pamphletHeight * appliedScale}px` : 'auto',
+                flexShrink: 0,
+              }}
+            >
+            <div
+              className="pamphlet-scale-inner"
+              style={{
+                width: `${baseWidth}px`,
+                transform: appliedScale === 1 ? 'none' : `scale(${appliedScale})`,
+                transformOrigin: 'top left',
+              }}
+            >
             {/* THE PRINTABLE / EXPORTABLE PAMPHLET CARD */}
             <div
               id="print-pamphlet"
               ref={pamphletRef}
               style={{
-                width: format === 'a5' ? '480px' : format === 'digital' ? '540px' : '720px',
+                width: `${baseWidth}px`,
                 minHeight: format === 'digital' ? '680px' : '960px',
                 background: '#ffffff',
                 boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
@@ -1378,6 +1434,8 @@ export default function PamphletModal({
                   </div>
                 )}
               </div>
+            </div>
+            </div>
             </div>
           </div>
         </div>

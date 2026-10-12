@@ -2,6 +2,7 @@ import React from 'react';
 import { Search, UserPlus, X } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { onActivateKey } from '../lib/a11y.js';
+import { CustomerAccordionList } from '../components/MobileLists.jsx';
 
 export default function CustomersView({
   data,
@@ -11,6 +12,15 @@ export default function CustomersView({
   setCustomerSearchQuery,
   setSelectedCustomerId,
 }) {
+  const q = customerSearchQuery.trim().toLowerCase();
+  const visibleCustomers = q
+    ? data.customers.filter((c) => c.name.toLowerCase().includes(q) || c.mobile.includes(q) || String(c.notes || '').toLowerCase().includes(q))
+    : data.customers;
+  const openProfile = (id) => {
+    setSelectedCustomerId(id);
+    setView('customer-detail');
+  };
+
   return (
     <div className="responsive-page-card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
@@ -53,8 +63,8 @@ export default function CustomersView({
       </div>
 
       {/* Customer Directory Table */}
-      <div className="orders-table-wrap" style={{ maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
-        <table className="orders-table responsive-table">
+      <div className="orders-table-wrap desktop-only" style={{ maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
+        <table className="orders-table">
           <thead>
             <tr>
               <th>Customer Name</th>
@@ -67,13 +77,7 @@ export default function CustomersView({
             </tr>
           </thead>
           <tbody>
-            {data.customers
-              .filter((c) => {
-                if (!customerSearchQuery.trim()) return true;
-                const q = customerSearchQuery.trim().toLowerCase();
-                return c.name.toLowerCase().includes(q) || c.mobile.includes(q);
-              })
-              .map((c) => {
+            {visibleCustomers.map((c) => {
                 const custOrders = data.orders.filter((o) => o.customerId === c.id);
                 const due = custOrders.reduce((sum, o) => sum + (Number(o.balanceAmount) || 0), 0);
                 return (
@@ -109,6 +113,16 @@ export default function CustomersView({
               })}
           </tbody>
         </table>
+      </div>
+
+      {/* Phones: compact expandable rows instead of the wide table */}
+      <div className="mobile-only">
+        <CustomerAccordionList
+          customers={visibleCustomers}
+          orders={data.orders}
+          onOpenProfile={openProfile}
+          emptyText={q ? 'No customers match your search.' : 'No customers yet.'}
+        />
       </div>
     </div>
   );
