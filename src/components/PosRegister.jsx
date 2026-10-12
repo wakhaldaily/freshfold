@@ -583,14 +583,20 @@ export default function PosRegister({
         <button
           type="button"
           className={mobilePosTab === 'catalog' ? 'active' : ''}
-          onClick={() => setMobilePosTab('catalog')}
+          onClick={() => {
+            setMobilePosTab('catalog');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
         >
           <Shirt size={15} /> <span>Clothes & Services</span>
         </button>
         <button
           type="button"
           className={mobilePosTab === 'ticket' ? 'active' : ''}
-          onClick={() => setMobilePosTab('ticket')}
+          onClick={() => {
+            setMobilePosTab('ticket');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
         >
           <ReceiptText size={15} /> <span>Ticket & Checkout</span>
           {((orderType === 'pieces' && cartItems.length > 0) || (orderType === 'weight' && Number(weightKg) > 0)) && (
@@ -729,7 +735,7 @@ export default function PosRegister({
               </div>
 
               {/* Garment Cards Grid */}
-              <div className="pos-garment-grid">
+              <div className={`pos-garment-grid ${(orderType === 'pieces' && cartItems.length > 0) || (orderType === 'weight' && Number(weightKg) > 0) ? 'has-floating-cart' : ''}`}>
                 {filteredPieceGarments.length === 0 && (
                   <div className="pos-empty-catalog">
                     <Shirt size={28} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
@@ -1159,20 +1165,80 @@ export default function PosRegister({
           id="pos-ticket-panel"
           className={`pos-column-ticket ${mobilePosTab === 'catalog' ? 'hidden-mobile' : ''}`}
         >
-          {/* Mobile Back Button to Catalog */}
-          {mobilePosTab === 'ticket' && (
+          {/* Mobile Top Quick Checkout Action Card (Visible at TOP on Mobile Screens) */}
+          <div className="pos-mobile-top-checkout-card">
+            <div className="pos-mobile-top-checkout-header">
+              <div style={{ display: 'grid', gap: '2px', minWidth: 0 }}>
+                <span className="pos-mobile-top-checkout-sub">
+                  {orderType === 'pieces'
+                    ? `${cartItems.reduce((s, it) => s + it.quantity, 0)} Items · ${currentCustomer ? currentCustomer.name : 'Walk-in Customer'}`
+                    : `${weightKg || 0} kg Bundle · ${currentCustomer ? currentCustomer.name : 'Walk-in Customer'}`}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                  <span style={{ fontSize: '12px', opacity: 0.8 }}>Total Bill:</span>
+                  <strong className="pos-mobile-top-checkout-total">
+                    {formatMoney(grandTotal)}
+                  </strong>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="button button-quiet"
+                style={{
+                  minHeight: '34px',
+                  fontSize: '11px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  flexShrink: 0,
+                }}
+                onClick={() => {
+                  setMobilePosTab('catalog');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                <Shirt size={13} /> + Add Clothes
+              </button>
+            </div>
+
+            {currentCustomer?.walletBalance > 0 && (
+              <div className="pos-mobile-top-wallet-badge">
+                <Wallet size={12} style={{ flexShrink: 0 }} />
+                <span>
+                  Wallet credit {formatMoney(Math.min(currentCustomer.walletBalance, grandTotal))} will auto-deduct
+                </span>
+              </div>
+            )}
+
+            {/* Quick 1-Tap Place Order Button at TOP on Mobile */}
             <button
               type="button"
-              className="button button-quiet"
-              style={{ minHeight: '32px', fontSize: '11px', justifySelf: 'start', display: 'flex', alignItems: 'center', gap: '4px' }}
-              onClick={() => {
-                setMobilePosTab('catalog');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
+              className="button button-primary pos-mobile-top-place-btn"
+              disabled={submitting || (orderType === 'pieces' ? cartItems.length === 0 : !(Number(weightKg) > 0))}
+              onClick={handlePlaceOrder}
             >
-              ← Back to Garment Catalog
+              {currentCustomer?.walletBalance >= grandTotal ? (
+                <>
+                  <Wallet size={16} style={{ flexShrink: 0 }} />
+                  <span>{submitting ? 'Placing Order...' : `Place Order & Pay with Wallet (${formatMoney(grandTotal)})`}</span>
+                </>
+              ) : currentCustomer?.walletBalance > 0 ? (
+                <>
+                  <Wallet size={16} style={{ flexShrink: 0 }} />
+                  <span>{submitting ? 'Placing Order...' : `Place Order (Auto-deduct ${formatMoney(currentCustomer.walletBalance)})`}</span>
+                </>
+              ) : (
+                <>
+                  <ReceiptText size={16} style={{ flexShrink: 0 }} />
+                  <span>{submitting ? 'Placing Order...' : `Place Order Now · ${formatMoney(grandTotal)}`}</span>
+                </>
+              )}
             </button>
-          )}
+          </div>
 
           {/* Ticket Header */}
           <div style={{ paddingBottom: '12px', borderBottom: '1px solid #f1f5f9', minWidth: 0 }}>

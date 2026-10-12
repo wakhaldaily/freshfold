@@ -2405,6 +2405,10 @@ select, .styled-select {
   display: none;
 }
 
+.pos-mobile-top-checkout-card {
+  display: none;
+}
+
 .pos-register-header-bar {
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -2809,6 +2813,65 @@ select, .styled-select {
     grid-template-columns: 1fr !important;
   }
 
+  /* Mobile Top Quick Checkout Card at TOP of Ticket Panel */
+  .pos-mobile-top-checkout-card {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    background: #ffffff !important;
+    border: 1.5px solid #2563eb !important;
+    border-radius: 12px !important;
+    padding: 12px 14px !important;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12) !important;
+    margin-bottom: 12px !important;
+  }
+
+  .pos-mobile-top-checkout-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  .pos-mobile-top-checkout-sub {
+    font-size: 11px !important;
+    color: #64748b !important;
+    font-weight: 600 !important;
+  }
+
+  .pos-mobile-top-checkout-total {
+    font-size: 19px !important;
+    color: #0f172a !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  .pos-mobile-top-wallet-badge {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: #15803d !important;
+    background: #dcfce7 !important;
+    border: 1px solid #bbf7d0 !important;
+    padding: 4px 8px !important;
+    border-radius: 6px !important;
+  }
+
+  .pos-mobile-top-place-btn {
+    width: 100% !important;
+    min-height: 46px !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    border-radius: 10px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35) !important;
+  }
+
   .pos-column-ticket {
     position: static !important;
     overflow: visible !important;
@@ -2854,16 +2917,18 @@ select, .styled-select {
     box-shadow: 0 2px 6px rgba(37, 99, 235, 0.4) !important;
   }
 
+  /* Navigation Tabs: Sticky under Topbar */
   .pos-mobile-nav-tabs {
     display: flex !important;
     gap: 6px !important;
-    margin-bottom: 10px !important;
-    background: #f1f5f9 !important;
-    padding: 4px !important;
+    margin-bottom: 6px !important;
+    background: #f8fafc !important;
+    padding: 6px 4px !important;
     border-radius: 8px !important;
     position: sticky !important;
-    top: 0 !important;
+    top: 48px !important;
     z-index: 40 !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
   }
 
   .pos-mobile-nav-tabs button {
@@ -2911,7 +2976,7 @@ select, .styled-select {
     flex-direction: column !important;
     align-items: stretch !important;
     gap: 8px !important;
-    margin-bottom: 8px !important;
+    margin-bottom: 6px !important;
   }
 
   .pos-garment-search-box {
@@ -2919,17 +2984,29 @@ select, .styled-select {
     min-width: 100% !important;
   }
 
+  /* Categories Strip: Sticky right below Mobile Nav Tabs when scrolling */
   .pos-category-scroll-strip {
     width: 100% !important;
+    position: sticky !important;
+    top: 96px !important;
+    z-index: 38 !important;
+    background: #ffffff !important;
+    padding: 6px 2px !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
   }
 
   .pos-garment-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     grid-auto-rows: 105px !important;
     gap: 8px !important;
-    padding-bottom: 95px !important;
+    padding-bottom: 12px !important; /* No huge empty bottom gap by default! */
     max-height: none !important;
     overflow-y: visible !important;
+  }
+
+  .pos-garment-grid.has-floating-cart {
+    padding-bottom: 75px !important; /* Clear bottom space only when floating cart is active */
   }
 
   .pos-garment-card {
@@ -2939,6 +3016,79 @@ select, .styled-select {
 
   .pos-garment-name {
     font-size: 12px !important;
+  }
+}
+
+/* Dark Theme overrides for Sticky elements & Mobile Top Checkout */
+@media (max-width: 980px) {
+  [data-theme="dark"] .pos-mobile-top-checkout-card,
+  body.dark-mode .pos-mobile-top-checkout-card {
+    background: #141f36 !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  [data-theme="dark"] .pos-mobile-top-checkout-total,
+  body.dark-mode .pos-mobile-top-checkout-total {
+    color: #f8fafc !important;
+  }
+
+  [data-theme="dark"] .pos-mobile-top-checkout-sub,
+  body.dark-mode .pos-mobile-top-checkout-sub {
+    color: #94a3b8 !important;
+  }
+
+  [data-theme="dark"] .pos-mobile-top-wallet-badge,
+  body.dark-mode .pos-mobile-top-wallet-badge {
+    background: rgba(22, 163, 74, 0.2) !important;
+    border-color: #16a34a !important;
+    color: #86efac !important;
+  }
+
+  [data-theme="dark"] .pos-mobile-nav-tabs,
+  body.dark-mode .pos-mobile-nav-tabs {
+    background: #0f172a !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  [data-theme="dark"] .pos-category-scroll-strip,
+  body.dark-mode .pos-category-scroll-strip {
+    background: #0f172a !important;
+    border-bottom-color: #1e293b !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+  }
+}
+
+@media (prefers-color-scheme: dark) and (max-width: 980px) {
+  .pos-mobile-top-checkout-card {
+    background: #141f36 !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  .pos-mobile-top-checkout-total {
+    color: #f8fafc !important;
+  }
+
+  .pos-mobile-top-checkout-sub {
+    color: #94a3b8 !important;
+  }
+
+  .pos-mobile-top-wallet-badge {
+    background: rgba(22, 163, 74, 0.2) !important;
+    border-color: #16a34a !important;
+    color: #86efac !important;
+  }
+
+  .pos-mobile-nav-tabs {
+    background: #0f172a !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .pos-category-scroll-strip {
+    background: #0f172a !important;
+    border-bottom-color: #1e293b !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
   }
 }
 
@@ -3866,55 +4016,60 @@ select, .styled-select {
   .page-content {
     display: flex;
     flex-direction: column;
-    min-height: calc(100vh - 54px);
-    min-height: calc(100dvh - 54px);
+    min-height: auto !important;
+    padding: 6px 4px 20px !important;
   }
 
   .pos-register-container {
-    flex: 1;
-    min-height: 100%;
+    min-height: auto !important;
+    flex: none !important;
     gap: 8px !important;
   }
 
   .pos-register-layout {
-    flex: 1;
     display: flex !important;
     flex-direction: column;
-    min-height: 0;
+    min-height: auto !important;
+    flex: none !important;
+    gap: 8px !important;
   }
 
   .pos-column-catalog,
   .pos-column-ticket {
-    flex: 1;
     min-height: auto !important;
+    flex: none !important;
     max-width: 100% !important;
   }
 
-  /* Make garment catalog container fill all available vertical space */
   .pos-column-catalog {
     display: flex !important;
     flex-direction: column;
     gap: 10px !important;
     overflow: visible !important;
+    border-radius: 10px !important;
+    padding: 10px 8px !important;
   }
 
   .pos-garment-grid {
-    flex: 1;
-    min-height: 0;
+    min-height: auto !important;
+    flex: none !important;
     max-height: none !important;
     overflow-y: visible !important;
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     grid-auto-rows: 105px !important;
     gap: 8px !important;
-    padding-bottom: 95px !important;
+    padding-bottom: 12px !important;
+  }
+
+  .pos-garment-grid.has-floating-cart {
+    padding-bottom: 75px !important;
   }
 }
 
 @media (max-width: 768px) {
   .pos-register-container {
-    min-height: calc(100vh - 60px);
-    min-height: calc(100dvh - 60px);
+    min-height: auto !important;
   }
 }
 
