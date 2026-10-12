@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
 import {
   Check,
   Copy,
@@ -10,7 +9,6 @@ import {
   Image as ImageIcon,
   MessageSquare,
   Printer,
-  QrCode,
   ReceiptText,
   Send,
   Share2,
@@ -46,10 +44,9 @@ export default function ThermalReceiptModal({
   const [copiedImage, setCopiedImage] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [billUrl, setBillUrl] = useState('');
-  const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Pre-generate the public digital bill URL and QR code image when modal opens
+  // Pre-generate the public digital bill URL when modal opens
   useEffect(() => {
     let active = true;
     if (isOpen && order) {
@@ -57,20 +54,6 @@ export default function ThermalReceiptModal({
         .then((url) => {
           if (!active) return;
           setBillUrl(url);
-          if (url) {
-            QRCode.toDataURL(url, {
-              width: 320,
-              margin: 1,
-              color: {
-                dark: '#0f172a',
-                light: '#ffffff',
-              },
-            })
-              .then((dataUrl) => {
-                if (active) setQrCodeUrl(dataUrl);
-              })
-              .catch(() => {});
-          }
         })
         .catch(() => {});
     }
@@ -656,7 +639,6 @@ export default function ThermalReceiptModal({
                 settings={settings}
                 cashierName={cashierName}
                 previousDue={0}
-                qrCodeUrl={qrCodeUrl}
               />
             </div>
           ) : (
@@ -1019,22 +1001,6 @@ export default function ThermalReceiptModal({
               <strong style={{ fontSize: '10px', color: '#0f172a' }}>
                 * * * {order.orderNo} * * *
               </strong>
-
-              {qrCodeUrl && (
-                <div style={{ margin: '8px auto 6px', textAlign: 'center' }}>
-                  <img
-                    src={qrCodeUrl}
-                    alt="Digital Bill QR"
-                    style={{ width: '92px', height: '92px', display: 'block', margin: '0 auto', imageRendering: 'pixelated' }}
-                  />
-                  <div style={{ fontSize: '8px', color: '#0f172a', marginTop: '3px', fontWeight: 700, letterSpacing: '0.4px' }}>
-                    SCAN FOR DIGITAL BILL & TRACKING
-                  </div>
-                  <div style={{ fontSize: '7.5px', color: '#64748b' }}>
-                    #{order.orderNo || order.id}
-                  </div>
-                </div>
-              )}
 
               <span>{settings?.receiptFooter || 'Thank you for choosing Clean Clear Dry Cleaning!'}</span>
               <small style={{ color: '#64748b' }}>
