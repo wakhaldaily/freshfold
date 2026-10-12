@@ -2409,6 +2409,13 @@ select, .styled-select {
   display: none;
 }
 
+.pos-catalog-sticky-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
 .pos-register-header-bar {
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -2921,14 +2928,14 @@ select, .styled-select {
   .pos-mobile-nav-tabs {
     display: flex !important;
     gap: 6px !important;
-    margin-bottom: 6px !important;
+    margin-bottom: 0 !important;
     background: #f8fafc !important;
     padding: 6px 4px !important;
-    border-radius: 8px !important;
+    border-radius: 8px 8px 0 0 !important;
     position: sticky !important;
     top: 48px !important;
-    z-index: 40 !important;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+    z-index: 50 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
   }
 
   .pos-mobile-nav-tabs button {
@@ -2955,8 +2962,18 @@ select, .styled-select {
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08) !important;
   }
 
-  .hidden-mobile {
-    display: none !important;
+  /* Sticky controls containing Mode, Services, Search & Categories */
+  .pos-catalog-sticky-controls {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    position: sticky !important;
+    top: 92px !important;
+    z-index: 48 !important;
+    background: #ffffff !important;
+    padding: 8px 6px 6px !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
   }
 
   .pos-header-customer-badges {
@@ -2976,7 +2993,7 @@ select, .styled-select {
     flex-direction: column !important;
     align-items: stretch !important;
     gap: 8px !important;
-    margin-bottom: 6px !important;
+    margin-bottom: 0 !important;
   }
 
   .pos-garment-search-box {
@@ -2984,16 +3001,8 @@ select, .styled-select {
     min-width: 100% !important;
   }
 
-  /* Categories Strip: Sticky right below Mobile Nav Tabs when scrolling */
   .pos-category-scroll-strip {
     width: 100% !important;
-    position: sticky !important;
-    top: 96px !important;
-    z-index: 38 !important;
-    background: #ffffff !important;
-    padding: 6px 2px !important;
-    border-bottom: 1px solid #e2e8f0 !important;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
   }
 
   .pos-garment-grid {
@@ -3051,11 +3060,11 @@ select, .styled-select {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
   }
 
-  [data-theme="dark"] .pos-category-scroll-strip,
-  body.dark-mode .pos-category-scroll-strip {
+  [data-theme="dark"] .pos-catalog-sticky-controls,
+  body.dark-mode .pos-catalog-sticky-controls {
     background: #0f172a !important;
     border-bottom-color: #1e293b !important;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
   }
 }
 
@@ -3085,10 +3094,10 @@ select, .styled-select {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
   }
 
-  .pos-category-scroll-strip {
+  .pos-catalog-sticky-controls {
     background: #0f172a !important;
     border-bottom-color: #1e293b !important;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
   }
 }
 
@@ -4034,20 +4043,41 @@ select, .styled-select {
     gap: 8px !important;
   }
 
-  .pos-column-catalog,
-  .pos-column-ticket {
-    min-height: auto !important;
-    flex: none !important;
-    max-width: 100% !important;
-  }
-
-  .pos-column-catalog {
+  .pos-column-catalog:not(.hidden-mobile) {
     display: flex !important;
     flex-direction: column;
     gap: 10px !important;
     overflow: visible !important;
     border-radius: 10px !important;
     padding: 10px 8px !important;
+    min-height: auto !important;
+    flex: none !important;
+    max-width: 100% !important;
+  }
+
+  .pos-column-ticket:not(.hidden-mobile) {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px !important;
+    overflow: visible !important;
+    padding: 12px 10px !important;
+    min-height: auto !important;
+    flex: none !important;
+    max-width: 100% !important;
+  }
+
+  .pos-column-catalog.hidden-mobile,
+  .pos-column-ticket.hidden-mobile,
+  .pos-register-layout > .hidden-mobile,
+  .hidden-mobile {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
   }
 
   .pos-garment-grid {

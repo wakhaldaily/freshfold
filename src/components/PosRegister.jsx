@@ -414,6 +414,26 @@ export default function PosRegister({
     }
   };
 
+  const handleSwitchTab = (tab) => {
+    setMobilePosTab(tab);
+    // FreshFold scrolls via .main-shell, not window
+    requestAnimationFrame(() => {
+      const mainShell = document.querySelector('.main-shell');
+      if (mainShell) {
+        mainShell.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      if (tab === 'ticket') {
+        const ticketPanel = document.getElementById('pos-ticket-panel');
+        if (ticketPanel) {
+          ticketPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    });
+  };
+
   return (
     <div className="pos-register-container">
       {/* Top Header & Customer Selector Bar */}
@@ -583,20 +603,14 @@ export default function PosRegister({
         <button
           type="button"
           className={mobilePosTab === 'catalog' ? 'active' : ''}
-          onClick={() => {
-            setMobilePosTab('catalog');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
+          onClick={() => handleSwitchTab('catalog')}
         >
           <Shirt size={15} /> <span>Clothes & Services</span>
         </button>
         <button
           type="button"
           className={mobilePosTab === 'ticket' ? 'active' : ''}
-          onClick={() => {
-            setMobilePosTab('ticket');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
+          onClick={() => handleSwitchTab('ticket')}
         >
           <ReceiptText size={15} /> <span>Ticket & Checkout</span>
           {((orderType === 'pieces' && cartItems.length > 0) || (orderType === 'weight' && Number(weightKg) > 0)) && (
@@ -613,90 +627,89 @@ export default function PosRegister({
         <div
           className={`pos-column-catalog ${mobilePosTab === 'ticket' ? 'hidden-mobile' : ''}`}
         >
-          {/* Order Type & Service Switcher */}
-          <div className="pos-service-bar">
-            {/* Row 1: Mode Switcher (Pieces vs Weight) + Active Info */}
-            <div className="pos-mode-row">
-              <div className="pos-mode-tabs">
-                <button
-                  type="button"
-                  className={`pos-mode-btn ${orderType === 'pieces' ? 'active' : ''}`}
-                  onClick={() => setOrderType('pieces')}
-                >
-                  <Shirt size={14} /> Piece by Piece
-                </button>
-                <button
-                  type="button"
-                  className={`pos-mode-btn ${orderType === 'weight' ? 'active' : ''}`}
-                  onClick={() => setOrderType('weight')}
-                >
-                  <Scale size={14} /> By Weight (kg)
-                </button>
+          {/* STICKY SELECTION CONTROLS ON MOBILE: Mode, Services, Search & Categories */}
+          <div className="pos-catalog-sticky-controls">
+            {/* Order Type & Service Switcher */}
+            <div className="pos-service-bar">
+              {/* Row 1: Mode Switcher (Pieces vs Weight) + Active Info */}
+              <div className="pos-mode-row">
+                <div className="pos-mode-tabs">
+                  <button
+                    type="button"
+                    className={`pos-mode-btn ${orderType === 'pieces' ? 'active' : ''}`}
+                    onClick={() => setOrderType('pieces')}
+                  >
+                    <Shirt size={14} /> Piece by Piece
+                  </button>
+                  <button
+                    type="button"
+                    className={`pos-mode-btn ${orderType === 'weight' ? 'active' : ''}`}
+                    onClick={() => setOrderType('weight')}
+                  >
+                    <Scale size={14} /> By Weight (kg)
+                  </button>
+                </div>
+
+                <span className="pos-active-service-badge">
+                  {orderType === 'pieces'
+                    ? selectedPieceService
+                    : `₹${weightServices.find((w) => w.label === selectedWeightService)?.ratePerKg || 0}/kg`}
+                </span>
               </div>
 
-              <span className="pos-active-service-badge">
-                {orderType === 'pieces'
-                  ? selectedPieceService
-                  : `₹${weightServices.find((w) => w.label === selectedWeightService)?.ratePerKg || 0}/kg`}
-              </span>
+              {/* Row 2: Service Selector Tiers - Sleek Horizontal Strip */}
+              {orderType === 'pieces' ? (
+                <div className="pos-service-scroll-strip" role="tablist">
+                  {services.filter((s) => s.tier !== 'club-fresh').map((s) => {
+                    const isSelected = selectedPieceService === s.label;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSelectedPieceService(s.label)}
+                        className={`pos-service-pill ${isSelected ? 'active' : ''}`}
+                      >
+                        {s.label}
+                      </button>
+                    );
+                  })}
+                  <div className="pos-service-strip-divider" />
+                  {services.filter((s) => s.tier === 'club-fresh').map((s) => {
+                    const isSelected = selectedPieceService === s.label;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSelectedPieceService(s.label)}
+                        className={`pos-service-pill club-fresh ${isSelected ? 'active' : ''}`}
+                      >
+                        ⭐ {s.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="pos-service-scroll-strip" role="tablist">
+                  {weightServices.map((ws) => {
+                    const isSelected = selectedWeightService === ws.label;
+                    return (
+                      <button
+                        key={ws.id}
+                        type="button"
+                        onClick={() => setSelectedWeightService(ws.label)}
+                        className={`pos-service-pill ${isSelected ? 'active' : ''}`}
+                      >
+                        <strong>{ws.label}</strong>
+                        <span className="pos-pill-rate">(₹{ws.ratePerKg}/kg)</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Row 2: Service Selector Tiers - Sleek Horizontal Strip */}
-            {orderType === 'pieces' ? (
-              <div className="pos-service-scroll-strip" role="tablist">
-                {services.filter((s) => s.tier !== 'club-fresh').map((s) => {
-                  const isSelected = selectedPieceService === s.label;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSelectedPieceService(s.label)}
-                      className={`pos-service-pill ${isSelected ? 'active' : ''}`}
-                    >
-                      {s.label}
-                    </button>
-                  );
-                })}
-                <div className="pos-service-strip-divider" />
-                {services.filter((s) => s.tier === 'club-fresh').map((s) => {
-                  const isSelected = selectedPieceService === s.label;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSelectedPieceService(s.label)}
-                      className={`pos-service-pill club-fresh ${isSelected ? 'active' : ''}`}
-                    >
-                      ⭐ {s.label}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="pos-service-scroll-strip" role="tablist">
-                {weightServices.map((ws) => {
-                  const isSelected = selectedWeightService === ws.label;
-                  return (
-                    <button
-                      key={ws.id}
-                      type="button"
-                      onClick={() => setSelectedWeightService(ws.label)}
-                      className={`pos-service-pill ${isSelected ? 'active' : ''}`}
-                    >
-                      <strong>{ws.label}</strong>
-                      <span className="pos-pill-rate">(₹{ws.ratePerKg}/kg)</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* ========================================================= */}
-          {/* 1. PIECE MODE VIEW                                       */}
-          {/* ========================================================= */}
-          {orderType === 'pieces' ? (
-            <div className="pos-piece-catalog-wrap">
+            {/* Piece Mode Search & Category Filter */}
+            {orderType === 'pieces' && (
               <div className="pos-filter-search-row">
                 {/* Garment Quick Search */}
                 <div className="pos-garment-search-box">
@@ -733,6 +746,14 @@ export default function PosRegister({
                   ))}
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* ========================================================= */}
+          {/* 1. PIECE MODE VIEW                                       */}
+          {/* ========================================================= */}
+          {orderType === 'pieces' ? (
+            <div className="pos-piece-catalog-wrap">
 
               {/* Garment Cards Grid */}
               <div className={`pos-garment-grid ${(orderType === 'pieces' && cartItems.length > 0) || (orderType === 'weight' && Number(weightKg) > 0) ? 'has-floating-cart' : ''}`}>
@@ -1196,10 +1217,7 @@ export default function PosRegister({
                   border: '1px solid #cbd5e1',
                   flexShrink: 0,
                 }}
-                onClick={() => {
-                  setMobilePosTab('catalog');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
+                onClick={() => handleSwitchTab('catalog')}
               >
                 <Shirt size={13} /> + Add Clothes
               </button>
@@ -1828,10 +1846,7 @@ export default function PosRegister({
           <button
             type="button"
             className="btn-checkout"
-            onClick={() => {
-              setMobilePosTab('ticket');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
+            onClick={() => handleSwitchTab('ticket')}
           >
             Review & Place Order →
           </button>
