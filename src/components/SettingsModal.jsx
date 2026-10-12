@@ -438,73 +438,161 @@ export default function SettingsModal({
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="settings-nav-bar">
-          <button
-            type="button"
-            className={`settings-tab-pill ${activeTab === 'store' ? 'active' : ''}`}
-            onClick={() => setActiveTab('store')}
-          >
-            <Building2 size={16} /> Store Profile
-          </button>
-          <button
-            type="button"
-            className={`settings-tab-pill ${activeTab === 'tax' ? 'active' : ''}`}
-            onClick={() => setActiveTab('tax')}
-          >
-            <BadgePercent size={16} /> Tax & GST Compliance
-            <span className="settings-tab-badge">
-              {formData.taxEnabled ? `${formData.taxPercent}% ${formData.taxLabel || 'GST'}` : 'Exempt'}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`settings-tab-pill ${activeTab === 'staff' ? 'active' : ''}`}
-            onClick={() => setActiveTab('staff')}
-          >
-            <Users size={16} /> Counter Operators
-            <span className="settings-tab-badge">
-              {staff.length} Active
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`settings-tab-pill ${activeTab === 'delivery' ? 'active' : ''}`}
-            onClick={() => setActiveTab('delivery')}
-          >
-            <Clock size={16} /> Early Delivery Surcharge
-            <span className="settings-tab-badge">
-              {formData.expressDeliveryEnabled !== false ? `${formData.expressDeliveryPercent !== undefined ? formData.expressDeliveryPercent : 25}%` : 'Off'}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`settings-tab-pill ${activeTab === 'whatsapp' ? 'active' : ''}`}
-            onClick={() => setActiveTab('whatsapp')}
-          >
-            <MessageSquare size={16} /> WhatsApp Dispatch
-            <span className="settings-tab-badge">
-              {formData.whatsappDispatchMode === 'web' ? 'Web' : 'App'}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`settings-tab-pill ${activeTab === 'admin' ? 'active' : ''}`}
-            onClick={() => setActiveTab('admin')}
-          >
-            <ShieldCheck size={16} /> Shop Admins & Personnel
-            <span className="settings-tab-badge">
-              {admins.length} Admins
-            </span>
-          </button>
-        </div>
-
-        {/* Form Body */}
+        {/* Form Body encompassing Sidebar Nav + Content + Footer */}
         <form
           onSubmit={handleSave}
-          style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+          style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
         >
-          <div className="settings-modal-content">
+          <div className="settings-body-layout">
+            {/* Left Vertical Side Menu */}
+            <aside className="settings-sidebar-nav">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Section 1: Store Configuration */}
+                <div className="settings-sidebar-section">
+                  <div className="settings-sidebar-heading">Store Configuration</div>
+                  <button
+                    type="button"
+                    className={`settings-sidebar-btn ${activeTab === 'store' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('store')}
+                  >
+                    <div className="settings-sidebar-item-left">
+                      <div className="settings-sidebar-icon">
+                        <Building2 size={15} />
+                      </div>
+                      <span className="settings-sidebar-title">Store Profile</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`settings-sidebar-btn ${activeTab === 'tax' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('tax')}
+                  >
+                    <div className="settings-sidebar-item-left">
+                      <div className="settings-sidebar-icon">
+                        <BadgePercent size={15} />
+                      </div>
+                      <span className="settings-sidebar-title">Tax & GST</span>
+                    </div>
+                    <span className="settings-sidebar-badge">
+                      {formData.taxEnabled ? `${formData.taxPercent}%` : 'Exempt'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`settings-sidebar-btn ${activeTab === 'delivery' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('delivery')}
+                  >
+                    <div className="settings-sidebar-item-left">
+                      <div className="settings-sidebar-icon">
+                        <Clock size={15} />
+                      </div>
+                      <span className="settings-sidebar-title">Early Delivery</span>
+                    </div>
+                    <span className="settings-sidebar-badge">
+                      {formData.expressDeliveryEnabled !== false ? `${formData.expressDeliveryPercent !== undefined ? formData.expressDeliveryPercent : 25}%` : 'Off'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`settings-sidebar-btn ${activeTab === 'whatsapp' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('whatsapp')}
+                  >
+                    <div className="settings-sidebar-item-left">
+                      <div className="settings-sidebar-icon">
+                        <MessageSquare size={15} />
+                      </div>
+                      <span className="settings-sidebar-title">WhatsApp Dispatch</span>
+                    </div>
+                    <span className="settings-sidebar-badge">
+                      {formData.whatsappDispatchMode === 'web' ? 'Web' : 'App'}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Section 2: Personnel & Access */}
+                <div className="settings-sidebar-section">
+                  <div className="settings-sidebar-heading">Personnel & Security</div>
+                  <button
+                    type="button"
+                    className={`settings-sidebar-btn ${activeTab === 'admin' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('admin')}
+                  >
+                    <div className="settings-sidebar-item-left">
+                      <div className="settings-sidebar-icon">
+                        <ShieldCheck size={15} />
+                      </div>
+                      <span className="settings-sidebar-title">Shop Admins</span>
+                    </div>
+                    <span className="settings-sidebar-badge">
+                      {admins.length} {admins.length === 1 ? 'Admin' : 'Admins'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`settings-sidebar-btn ${activeTab === 'staff' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('staff')}
+                  >
+                    <div className="settings-sidebar-item-left">
+                      <div className="settings-sidebar-icon">
+                        <Users size={15} />
+                      </div>
+                      <span className="settings-sidebar-title">Counter Operators</span>
+                    </div>
+                    <span className="settings-sidebar-badge">
+                      {staff.length} Active
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sidebar Footer User Widget */}
+              <div className="settings-sidebar-footer-widget">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'linear-gradient(135deg, #2563eb, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>
+                    {(adminUser?.name || 'A').charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--settings-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {adminUser?.name || 'Store Administrator'}
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'var(--settings-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {adminUser?.email || 'Active Session'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            {/* Right Content Workspace */}
+            <main className="settings-modal-content">
+              {/* Dynamic Tab Header Banner */}
+              <div className="settings-tab-header">
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#3b82f6', marginBottom: '3px' }}>
+                    {activeTab === 'admin' || activeTab === 'staff' ? 'Personnel & Security' : 'Store Configuration'}
+                  </div>
+                  <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--settings-text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {activeTab === 'store' && <><Building2 size={20} color="#3b82f6" /> Store Profile & Branding</>}
+                    {activeTab === 'tax' && <><BadgePercent size={20} color="#3b82f6" /> Tax & GST Compliance</>}
+                    {activeTab === 'delivery' && <><Clock size={20} color="#3b82f6" /> Early Delivery Surcharge</>}
+                    {activeTab === 'whatsapp' && <><MessageSquare size={20} color="#3b82f6" /> WhatsApp Dispatch</>}
+                    {activeTab === 'admin' && <><ShieldCheck size={20} color="#3b82f6" /> Shop Admins & Personnel</>}
+                    {activeTab === 'staff' && <><Users size={20} color="#3b82f6" /> Counter Operators & Staff</>}
+                  </h2>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--settings-text-muted)' }}>
+                    {activeTab === 'store' && 'Configure store contact information, receipt header/footer notes, winter campaign pamphlet, and ticket printer branding.'}
+                    {activeTab === 'tax' && 'Set tax identification numbers (GSTIN/VAT), calculation rates, SAC/HSN codes, and invoice compliance.'}
+                    {activeTab === 'delivery' && 'Configure expedited processing rush fees, express percentages, and turn-around time commitments.'}
+                    {activeTab === 'whatsapp' && 'Manage customer order updates, ready-for-pickup notifications, and web vs desktop app dispatch modes.'}
+                    {activeTab === 'admin' && 'Manage store administrators, credentials, login emails, passwords, and sensitive operations access.'}
+                    {activeTab === 'staff' && 'Manage counter staff profiles, employee IDs, shift assignments, and intake operator roles.'}
+                  </p>
+                </div>
+              </div>
             {/* ========================================================= */}
             {/* TAB 1: STORE & RECEIPT PROFILE                            */}
             {/* ========================================================= */}
@@ -2327,6 +2415,7 @@ export default function SettingsModal({
                 </div>
               </div>
             )}
+            </main>
           </div>
 
           {/* Modal Footer */}

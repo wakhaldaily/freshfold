@@ -730,25 +730,25 @@ export default function App() {
         </header>
 
         {/* Page Content Body */}
-        <main className="page-content" style={{ flex: 1, padding: '24px 32px 60px', width: '100%', maxWidth: '100%' }}>
+        <main className="page-content" style={{ flex: 1, width: '100%', maxWidth: '100%' }}>
           {/* ========================================================= */}
           {/* PAGE 1: HOME POS COUNTER DASHBOARD                        */}
           {/* ========================================================= */}
           {view === 'dashboard' && (
-            <div style={{ display: 'grid', gap: '24px' }}>
+            <div className="dashboard-layout">
               {/* Executive Welcome & Action Banner */}
-              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '22px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+              <div className="dashboard-welcome-banner">
                 <div>
                   <span className="caption-label">Counter Home</span>
-                  <h1 style={{ margin: '4px 0 6px', fontSize: '24px', color: '#1e293b' }}>
+                  <h1>
                     Welcome to {data.settings?.storeName || 'Clean Clear Dry Cleaning'}
                   </h1>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                  <p>
                     Frictionless laundry intake, piece and weight orders, and instant thermal receipts.
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <div className="dashboard-welcome-actions">
                   <button
                     type="button"
                     className="button button-primary"
@@ -780,7 +780,7 @@ export default function App() {
               </div>
 
               {/* 4 Counter Summary Metrics */}
-              <div className="metric-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+              <div className="metric-grid dashboard-metrics-grid">
                 <div className="metric-card" onClick={() => setView('orders')}>
                   <div className="metric-top">
                     <span>Total Orders Intake</span>
@@ -829,8 +829,8 @@ export default function App() {
               </div>
 
               {/* Active Counter Queue Section */}
-              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '22px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div className="dashboard-queue-card">
+                <div className="dashboard-queue-header">
                   <div>
                     <h3 style={{ margin: 0, fontSize: '16px', color: '#1e293b' }}>Active Counter Queue</h3>
                     <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#64748b' }}>Recent orders currently in progress or ready for pickup</p>
@@ -845,7 +845,8 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="orders-table-wrap">
+                {/* Desktop View Table (> 768px) */}
+                <div className="desktop-only orders-table-wrap">
                   <table className="orders-table">
                     <thead>
                       <tr>
@@ -916,6 +917,77 @@ export default function App() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Mobile View Card List (<= 768px) */}
+                <div className="mobile-only mobile-queue-list">
+                  {data.orders.slice(0, 6).map((o) => {
+                    const cust = data.customers.find((c) => c.id === o.customerId);
+                    return (
+                      <div key={o.id} className="mobile-queue-item">
+                        <div className="mobile-queue-item-top">
+                          <button
+                            type="button"
+                            className="order-number"
+                            style={{ fontSize: '13px', fontWeight: 700 }}
+                            onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
+                          >
+                            {o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`}
+                          </button>
+                          <span className={`status-pill status-${o.status.toLowerCase()}`}>
+                            <i />
+                            {o.status}
+                          </span>
+                        </div>
+
+                        <div className="mobile-queue-item-customer">
+                          <strong>{cust?.name || 'Customer'}</strong>
+                          <small>+91 {cust?.mobile}</small>
+                        </div>
+
+                        <div className="mobile-queue-item-details">
+                          <div className="mobile-queue-detail-row">
+                            <span className="mobile-queue-detail-label">Service</span>
+                            <span className="mobile-queue-detail-val">{o.service}</span>
+                          </div>
+                          <div className="mobile-queue-detail-row">
+                            <span className="mobile-queue-detail-label">Promised</span>
+                            <span className="mobile-queue-detail-val">{formatDate(o.dueDate)}</span>
+                          </div>
+                          <div className="mobile-queue-detail-row">
+                            <span className="mobile-queue-detail-label">Total Bill</span>
+                            <span className="mobile-queue-detail-val">{formatMoney(o.totalAmount)}</span>
+                          </div>
+                          <div className="mobile-queue-detail-row">
+                            <span className="mobile-queue-detail-label">Balance Due</span>
+                            <span className={`mobile-queue-detail-val ${o.balanceAmount > 0 ? 'balance-due' : 'balance-clear'}`} style={{ color: o.balanceAmount > 0 ? '#dc2626' : '#16a34a' }}>
+                              {formatMoney(o.balanceAmount)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="mobile-queue-item-actions">
+                          <button
+                            type="button"
+                            className="button button-quiet"
+                            style={{ minHeight: '34px', padding: '0 12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            onClick={() => setModal({ type: 'order-detail', orderId: o.id })}
+                          >
+                            Manage Order
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            style={{ minHeight: '34px', padding: '0 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            onClick={() => setModal({ type: 'thermal-receipt', orderId: o.id })}
+                            title="Thermal Receipt PDF"
+                          >
+                            <ReceiptText size={13} /> Receipt
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -964,7 +1036,7 @@ export default function App() {
           {/* PAGE 3: DEDICATED ORDER HISTORY / ALL ORDERS PAGE         */}
           {/* ========================================================= */}
           {view === 'orders' && (
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '24px' }}>
+            <div className="responsive-page-card">
               
               {/* Header Title & Batch Export / Invoices Actions */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
@@ -1302,7 +1374,7 @@ export default function App() {
           {/* PAGE 4: DEDICATED CUSTOMER BOOK DIRECTORY                 */}
           {/* ========================================================= */}
           {view === 'customers' && (
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '24px' }}>
+            <div className="responsive-page-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
                   <h2 style={{ margin: 0, fontSize: '22px', color: '#1e293b' }}>Customer Directory ({data.customers.length})</h2>
@@ -1706,7 +1778,7 @@ export default function App() {
           {/* PAGE 6: PACKAGE PLANS CATALOG PAGE                        */}
           {/* ========================================================= */}
           {view === 'packages' && (
-            <div style={{ background: '#fff', border: '1px solid #e8e8e6', borderRadius: '14px', padding: '24px' }}>
+            <div className="responsive-page-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px' }}>
                 <div>
                   <h2 style={{ margin: 0, fontSize: '22px', color: '#1e293b' }}>Laundry Benefit Packages ({data.packages.length})</h2>
