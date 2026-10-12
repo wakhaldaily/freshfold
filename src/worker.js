@@ -54,6 +54,31 @@ function getNextOrderNo(currentOrderNo) {
   return `${trimmed}1`;
 }
 
+async function ensureAdminTable(sql) {
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS admin_users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      security_question TEXT NOT NULL DEFAULT 'What city is this store in?',
+      security_answer TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS admin_users_email_idx ON admin_users (LOWER(email))`.catch(() => {});
+  } catch {}
+}
+
+async function syncAdminsToStoreSettings(sql) {
+  try {
+    const admins = await sql`SELECT id, name, email, password, security_question AS "securityQuestion", security_answer AS "securityAnswer" FROM admin_users ORDER BY created_at ASC`;
+    const existing = await sql`SELECT config FROM store_settings WHERE id = 'current' LIMIT 1`.catch(() => []);
+    const merged = { ...(existing[0]?.config || {}), admins };
+    await sql`INSERT INTO store_settings (id, config) VALUES ('current', ${JSON.stringify(merged)}::jsonb)
+      ON CONFLICT (id) DO UPDATE SET config = ${JSON.stringify(merged)}::jsonb`;
+  } catch {}
+}
+
 async function handleApi(request, env) {
   const url = new URL(request.url);
   const method = request.method;
@@ -76,14 +101,33 @@ async function handleApi(request, env) {
         sql`SELECT id, name, role, pin FROM staff_members`.catch(() => fallbackStaff),
       ]);
 
+      let rawAdmins = [];
+      try {
+        rawAdmins = await sql`SELECT id, name, email, password, security_question AS "securityQuestion", security_answer AS "securityAnswer", created_at AS "createdAt" FROM admin_users ORDER BY created_at ASC`;
+      } catch {
+        await ensureAdminTable(sql);
+        rawAdmins = await sql`SELECT id, name, email, password, security_question AS "securityQuestion", security_answer AS "securityAnswer", created_at AS "createdAt" FROM admin_users ORDER BY created_at ASC`.catch(() => []);
+      }
+
+      // If admin_users table is empty, check store_settings config as backup
+      if ((!rawAdmins || rawAdmins.length === 0) && Array.isArray(rawSettings[0]?.config?.admins) && rawSettings[0].config.admins.length > 0) {
+        rawAdmins = rawSettings[0].config.admins;
+        for (const adm of rawAdmins) {
+          await sql`INSERT INTO admin_users (id, name, email, password, security_question, security_answer)
+            VALUES (${adm.id || id('admin')}, ${adm.name || 'Store Administrator'}, ${String(adm.email || '').toLowerCase()}, ${adm.password || ''}, ${adm.securityQuestion || 'What city is this store in?'}, ${adm.securityAnswer || ''})
+            ON CONFLICT (id) DO NOTHING`.catch(() => {});
+        }
+      }
+
       const packages = rawPackages.length ? rawPackages : fallbackPackages;
       const settings = {
         ...fallbackSettings,
         ...(rawSettings[0]?.config || {}),
       };
       const staff = rawStaff.length ? rawStaff : fallbackStaff;
+      const admins = Array.isArray(rawAdmins) ? rawAdmins : [];
 
-      return response({ customers, orders, customerPackages, payments, packageSales, walletTransactions, packages, settings, staff });
+      return response({ customers, orders, customerPackages, payments, packageSales, walletTransactions, packages, settings, staff, admins });
     }
 
     // --- CUSTOMERS ---
@@ -160,6 +204,100 @@ async function handleApi(request, env) {
         await sql`INSERT INTO staff_members (id, name, role, pin) VALUES (${s.id || id('staff')}, ${s.name}, ${s.role}, ${s.pin})`;
       }
       return response({ success: true });
+    }
+
+    // --- ADMINISTRATORS CRUD & PASSWORD RESET ---
+    if (method === 'GET' && path === '/api/admins') {
+      await ensureAdminTable(sql);
+      const rows = await sql`SELECT id, name, email, password, security_question AS "securityQuestion", security_answer AS "securityAnswer", created_at AS "createdAt" FROM admin_users ORDER BY created_at ASC`.catch(() => []);
+      return response({ admins: rows });
+    }
+
+    if (method === 'POST' && path === '/api/admins') {
+      const body = await request.json();
+      const name = String(body.name || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const password = String(body.password || '').trim();
+      const securityQuestion = String(body.securityQuestion || 'What city is this store in?').trim();
+      const securityAnswer = String(body.securityAnswer || '').trim().toLowerCase();
+
+      if (!name || !email || !password) {
+        return response({ error: 'Name, email, and password are required.' }, 400);
+      }
+      await ensureAdminTable(sql);
+      const adminId = body.id || id('admin');
+      await sql`INSERT INTO admin_users (id, name, email, password, security_question, security_answer)
+        VALUES (${adminId}, ${name}, ${email}, ${password}, ${securityQuestion}, ${securityAnswer})
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          email = EXCLUDED.email,
+          password = EXCLUDED.password,
+          security_question = EXCLUDED.security_question,
+          security_answer = EXCLUDED.security_answer`;
+
+      await syncAdminsToStoreSettings(sql);
+      return response({ id: adminId, success: true, admin: { id: adminId, name, email, password, securityQuestion, securityAnswer } }, 201);
+    }
+
+    const adminMatch = path.match(/^\/api\/admins\/([^/]+)$/);
+    if (method === 'PATCH' && adminMatch) {
+      const adminId = decodeURIComponent(adminMatch[1]);
+      const body = await request.json();
+      await ensureAdminTable(sql);
+
+      const nameVal = body.name ? String(body.name).trim() : null;
+      const emailVal = body.email ? String(body.email).trim().toLowerCase() : null;
+      const passVal = body.password ? String(body.password).trim() : null;
+      const quesVal = body.securityQuestion ? String(body.securityQuestion).trim() : null;
+      const ansVal = body.securityAnswer ? String(body.securityAnswer).trim().toLowerCase() : null;
+
+      const rows = await sql`
+        UPDATE admin_users SET
+          name = COALESCE(${nameVal}, name),
+          email = COALESCE(${emailVal}, email),
+          password = COALESCE(${passVal}, password),
+          security_question = COALESCE(${quesVal}, security_question),
+          security_answer = COALESCE(${ansVal}, security_answer)
+        WHERE id = ${adminId}
+        RETURNING id, name, email, password, security_question AS "securityQuestion", security_answer AS "securityAnswer"
+      `;
+
+      if (rows.length) {
+        await syncAdminsToStoreSettings(sql);
+        return response({ id: adminId, success: true, admin: rows[0] });
+      }
+      return response({ error: 'Administrator not found.' }, 404);
+    }
+
+    if (method === 'DELETE' && adminMatch) {
+      const adminId = decodeURIComponent(adminMatch[1]);
+      await ensureAdminTable(sql);
+
+      const adminCountRows = await sql`SELECT count(*) AS total FROM admin_users`;
+      const totalAdmins = Number(adminCountRows[0]?.total || 0);
+      if (totalAdmins <= 1) {
+        return response({ error: 'Cannot remove the last administrator. The shop must have at least one active administrator.' }, 400);
+      }
+
+      await sql`DELETE FROM admin_users WHERE id = ${adminId}`;
+      await syncAdminsToStoreSettings(sql);
+      return response({ id: adminId, success: true });
+    }
+
+    if (method === 'POST' && path === '/api/admins/reset-password') {
+      const body = await request.json();
+      const adminId = String(body.adminId || '').trim();
+      const newPassword = String(body.newPassword || '').trim();
+      if (!adminId || !newPassword) {
+        return response({ error: 'Admin ID and new password are required.' }, 400);
+      }
+      await ensureAdminTable(sql);
+      const rows = await sql`UPDATE admin_users SET password = ${newPassword} WHERE id = ${adminId} RETURNING id`;
+      if (rows.length) {
+        await syncAdminsToStoreSettings(sql);
+        return response({ success: true });
+      }
+      return response({ error: 'Administrator not found.' }, 404);
     }
 
     // --- ORDERS (WITH GST/TAX & BEST DISCOUNT) ---

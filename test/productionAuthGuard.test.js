@@ -293,4 +293,269 @@ describe('Production & Testing Environment Authentication Guard', () => {
     const whitespaceAttempt = verifyAdminCredentials('  BIJITA@CleanClear.in  ', 'SecureLaundryPass1!  ', adminList);
     assert.strictEqual(whitespaceAttempt.success, true);
   });
+
+  it('10. Multi-device & cross-browser sync: Empty localStorage device resolves remote admins for production login', async () => {
+    const { loadStore, isRemoteMode } = await import('../src/lib/persistence.js');
+    
+    // Simulate a brand-new device or browser (Device B) with completely empty localStorage
+    const storageMapB = new Map();
+    global.localStorage = {
+      getItem: (key) => storageMapB.get(key) || null,
+      setItem: (key, val) => storageMapB.set(key, String(val)),
+      removeItem: (key) => storageMapB.delete(key),
+      clear: () => storageMapB.clear(),
+    };
+
+    // Mock fetch for /api/bootstrap returning database-backed admins created on Device A
+    const originalFetch = global.fetch;
+    global.fetch = async (url) => {
+      if (String(url).includes('/api/bootstrap')) {
+        return {
+          ok: true,
+          json: async () => ({
+            customers: [],
+            orders: [],
+            customerPackages: [],
+            payments: [],
+            packageSales: [],
+            walletTransactions: [],
+            packages: [],
+            settings: { storeName: 'Clean Clear Galleria' },
+            staff: [{ id: 'staff-1', name: 'Cashier 1', role: 'cashier', pin: '5555' }],
+            admins: [
+              {
+                id: 'admin-device-a',
+                name: 'Device A Admin',
+                email: 'owner@galleriafreshfold.com',
+                password: 'MySecretPassword2026!',
+                securityQuestion: 'What city is this store in?',
+                securityAnswer: 'gurugram',
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    const prevEnv = process.env.VITE_ALLOW_DEMO_ACCOUNTS;
+    const prevProd = process.env.NODE_ENV;
+    process.env.VITE_ALLOW_DEMO_ACCOUNTS = 'false';
+    process.env.NODE_ENV = 'production';
+
+    try {
+      // Device B loads store from remote database
+      const storeData = await loadStore();
+      assert.strictEqual(isRemoteMode(), true);
+      assert.ok(Array.isArray(storeData.admins));
+      assert.strictEqual(storeData.admins.length, 1);
+      assert.strictEqual(storeData.admins[0].email, 'owner@galleriafreshfold.com');
+
+      // Admin on Device B signs in in production mode with credentials created on Device A
+      const loginAttempt = verifyAdminCredentials(
+        'owner@galleriafreshfold.com',
+        'MySecretPassword2026!',
+        storeData.admins
+      );
+      assert.strictEqual(loginAttempt.success, true);
+      assert.strictEqual(loginAttempt.user.name, 'Device A Admin');
+      assert.strictEqual(loginAttempt.user.email, 'owner@galleriafreshfold.com');
+    } finally {
+      process.env.VITE_ALLOW_DEMO_ACCOUNTS = prevEnv;
+      process.env.NODE_ENV = prevProd;
+      global.fetch = originalFetch;
+      const { setRemoteMode } = await import('../src/lib/persistence.js');
+      setRemoteMode(false);
+      delete global.localStorage;
+    }
+  });
+
+  it('11. Password preservation: Updating name/email without password preserves original password', async () => {
+    const { updateAdminProfile, saveSettings } = await import('../src/lib/persistence.js');
+    const storageMap = new Map();
+    global.localStorage = {
+      getItem: (key) => storageMap.get(key) || null,
+      setItem: (key, val) => storageMap.set(key, String(val)),
+      removeItem: (key) => storageMap.delete(key),
+      clear: () => storageMap.clear(),
+    };
+
+    try {
+      const initialStore = {
+        admins: [
+          {
+            id: 'admin-99',
+            name: 'Original Name',
+            email: 'admin99@freshfold.com',
+            password: 'KeepThisPasswordStrong123!',
+            securityQuestion: 'What city?',
+            securityAnswer: 'delhi',
+          },
+        ],
+        settings: { storeName: 'Clean Clear' },
+      };
+
+      // 1. Update name only, omitting password (or passing empty password)
+      const updatedStore = await updateAdminProfile(
+        'admin-99',
+        {
+          name: 'Renamed Admin',
+          email: 'admin99@freshfold.com',
+          password: '', // Empty password field must NOT wipe out existing password
+        },
+        initialStore
+      );
+
+      const targetAdmin = updatedStore.admins.find((a) => a.id === 'admin-99');
+      assert.strictEqual(targetAdmin.name, 'Renamed Admin');
+      // Password remains intact!
+      assert.strictEqual(targetAdmin.password, 'KeepThisPasswordStrong123!');
+
+      // 2. Saving general store settings preserves admins array and does not erase it
+      const savedSettingsStore = await saveSettings(
+        { storeName: 'Clean Clear Dry Cleaning - Sector 28', taxPercent: 18 },
+        updatedStore
+      );
+      assert.ok(Array.isArray(savedSettingsStore.settings.admins));
+      assert.strictEqual(savedSettingsStore.settings.admins[0].password, 'KeepThisPasswordStrong123!');
+
+      // User can still sign in with original password
+      const loginAttempt = verifyAdminCredentials(
+        'admin99@freshfold.com',
+        'KeepThisPasswordStrong123!',
+        savedSettingsStore.settings.admins
+      );
+      assert.strictEqual(loginAttempt.success, true);
+    } finally {
+      delete global.localStorage;
+    }
+  });
+
+  it('12. createAdmin persists admin and allows immediate & subsequent login', async () => {
+    const { createAdmin } = await import('../src/lib/persistence.js');
+    const storageMap = new Map();
+    global.localStorage = {
+      getItem: (key) => storageMap.get(key) || null,
+      setItem: (key, val) => storageMap.set(key, String(val)),
+      removeItem: (key) => storageMap.delete(key),
+      clear: () => storageMap.clear(),
+    };
+
+    try {
+      const curStore = {
+        admins: [],
+        settings: {},
+      };
+
+      const newAdminData = {
+        name: 'New Franchise Owner',
+        email: 'franchise@cleanclear.in',
+        password: 'FranchiseSecurePass99!',
+        securityQuestion: 'What city is this store in?',
+        securityAnswer: 'mumbai',
+      };
+
+      const nextStore = await createAdmin(newAdminData, curStore);
+      assert.ok(Array.isArray(nextStore.admins));
+      assert.strictEqual(nextStore.admins.length, 1);
+      assert.strictEqual(nextStore.admins[0].email, 'franchise@cleanclear.in');
+
+      // Verify credentials validate successfully
+      const loginRes = verifyAdminCredentials(
+        'franchise@cleanclear.in',
+        'FranchiseSecurePass99!',
+        nextStore.admins
+      );
+      assert.strictEqual(loginRes.success, true);
+      assert.strictEqual(loginRes.user.name, 'New Franchise Owner');
+    } finally {
+      delete global.localStorage;
+    }
+  });
+
+  it('13. deleteAdmin successfully removes target administrator when multiple admins exist', async () => {
+    const { deleteAdmin } = await import('../src/lib/persistence.js');
+    const storageMap = new Map();
+    global.localStorage = {
+      getItem: (key) => storageMap.get(key) || null,
+      setItem: (key, val) => storageMap.set(key, String(val)),
+      removeItem: (key) => storageMap.delete(key),
+      clear: () => storageMap.clear(),
+    };
+
+    try {
+      const storeWithTwoAdmins = {
+        admins: [
+          {
+            id: 'admin-owner',
+            name: 'Store Owner',
+            email: 'owner@cleanclear.in',
+            password: 'OwnerPassword2026!',
+          },
+          {
+            id: 'admin-temp',
+            name: 'Temporary Admin',
+            email: 'temp@cleanclear.in',
+            password: 'TempPassword2026!',
+          },
+        ],
+        settings: {},
+      };
+
+      // Admin A deletes Admin B
+      const updatedStore = await deleteAdmin('admin-temp', storeWithTwoAdmins);
+      assert.strictEqual(updatedStore.admins.length, 1);
+      assert.strictEqual(updatedStore.admins[0].id, 'admin-owner');
+      assert.strictEqual(updatedStore.admins.find((a) => a.id === 'admin-temp'), undefined);
+
+      // Verify removed admin can no longer log in
+      const failedLogin = verifyAdminCredentials('temp@cleanclear.in', 'TempPassword2026!', updatedStore.admins);
+      assert.strictEqual(failedLogin.success, false);
+
+      // Verify remaining owner can still log in
+      const ownerLogin = verifyAdminCredentials('owner@cleanclear.in', 'OwnerPassword2026!', updatedStore.admins);
+      assert.strictEqual(ownerLogin.success, true);
+    } finally {
+      delete global.localStorage;
+    }
+  });
+
+  it('14. deleteAdmin throws error and enforces safety guard when attempting to delete the sole remaining administrator', async () => {
+    const { deleteAdmin } = await import('../src/lib/persistence.js');
+    const storageMap = new Map();
+    global.localStorage = {
+      getItem: (key) => storageMap.get(key) || null,
+      setItem: (key, val) => storageMap.set(key, String(val)),
+      removeItem: (key) => storageMap.delete(key),
+      clear: () => storageMap.clear(),
+    };
+
+    try {
+      const storeWithOneAdmin = {
+        admins: [
+          {
+            id: 'admin-sole',
+            name: 'Sole Store Administrator',
+            email: 'sole@cleanclear.in',
+            password: 'SolePassword2026!',
+          },
+        ],
+        settings: {},
+      };
+
+      // Attempting to delete the only admin must throw an error
+      await assert.rejects(
+        async () => {
+          await deleteAdmin('admin-sole', storeWithOneAdmin);
+        },
+        {
+          name: 'Error',
+          message: /cannot remove the last administrator/i,
+        }
+      );
+    } finally {
+      delete global.localStorage;
+    }
+  });
 });
+

@@ -126,3 +126,16 @@ VALUES
   ('staff-cashier1', 'Cashier 1', 'cashier', '0000'),
   ('staff-cashier2', 'Cashier 2', 'cashier', '2222')
 ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS admin_users (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  password TEXT NOT NULL,
+  security_question TEXT NOT NULL DEFAULT 'What city is this store in?',
+  security_answer TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS admin_users_email_idx ON admin_users (LOWER(email));
+

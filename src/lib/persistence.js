@@ -61,11 +61,25 @@ function normalize(data) {
     }
   } catch {}
 
-  const resolvedAdmins = Array.isArray(data.admins) && data.admins.length > 0
+  const dbAdmins = Array.isArray(data.admins) && data.admins.length > 0
     ? data.admins
     : (data.settings?.admins && Array.isArray(data.settings.admins) && data.settings.admins.length > 0)
       ? data.settings.admins
-      : (existingAdmins.length > 0 ? existingAdmins : [...initialAdmins]);
+      : [];
+
+  let resolvedAdmins = [];
+  if (dbAdmins.length > 0) {
+    resolvedAdmins = [...dbAdmins];
+    for (const localAdm of existingAdmins) {
+      if (localAdm.email && !resolvedAdmins.some((a) => a.email?.toLowerCase() === localAdm.email?.toLowerCase())) {
+        resolvedAdmins.push(localAdm);
+      }
+    }
+  } else if (existingAdmins.length > 0) {
+    resolvedAdmins = existingAdmins;
+  } else {
+    resolvedAdmins = [...initialAdmins];
+  }
 
   return {
     settings: {
@@ -149,7 +163,10 @@ function saveLocal(data) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  const url = (typeof window === 'undefined' && path.startsWith('/'))
+    ? `http://localhost${path}`
+    : path;
+  const response = await fetch(url, {
     ...options,
     headers: { 'content-type': 'application/json', ...(options.headers || {}) },
   });
@@ -167,6 +184,20 @@ export async function loadStore() {
     remoteMode = true;
     const normalized = normalize(data);
     saveLocal(normalized);
+
+    // If remote DB currently has no admins but local storage has a custom admin, auto-sync it to remote Neon DB
+    if ((!data.admins || data.admins.length === 0) && (!data.settings?.admins || data.settings.admins.length === 0)) {
+      const customAdmins = (normalized.admins || []).filter(
+        (a) => a.email && a.email.toLowerCase() !== 'admin@freshfold.test'
+      );
+      for (const adm of customAdmins) {
+        api('/api/admins', {
+          method: 'POST',
+          body: JSON.stringify(adm),
+        }).catch(() => {});
+      }
+    }
+
     return normalized;
   } catch {
     remoteMode = false;
@@ -178,9 +209,19 @@ export function isRemoteMode() {
   return remoteMode;
 }
 
+export function setRemoteMode(mode) {
+  remoteMode = Boolean(mode);
+}
+
 async function finishRemoteMutation(path, method, body) {
-  await api(path, { method, body: body ? JSON.stringify(body) : undefined });
-  return loadStore();
+  try {
+    await api(path, { method, body: body ? JSON.stringify(body) : undefined });
+    return loadStore();
+  } catch (err) {
+    console.warn(`Remote mutation ${path} failed, falling back to local:`, err.message);
+    remoteMode = false;
+    return loadLocal();
+  }
 }
 
 // --- STAFF & SESSION AUTH ---
@@ -235,18 +276,93 @@ export async function createAdmin(adminData, current) {
     ...adminData,
     id: adminData.id || `admin-${crypto.randomUUID()}`,
   };
+
+  const nextAdmins = [
+    ...(current?.admins || []).filter(
+      (a) => a.id !== newAdmin.id && a.email?.toLowerCase() !== newAdmin.email?.toLowerCase()
+    ),
+    newAdmin,
+  ];
+
+  if (remoteMode) {
+    try {
+      await api('/api/admins', {
+        method: 'POST',
+        body: JSON.stringify(newAdmin),
+      });
+      return loadStore();
+    } catch (err) {
+      console.warn('Could not save admin remotely, saving locally:', err);
+    }
+  }
+
   return saveLocal({
     ...current,
-    admins: [...(current.admins || initialAdmins), newAdmin],
+    admins: nextAdmins,
+    settings: {
+      ...(current?.settings || {}),
+      admins: nextAdmins,
+    },
   });
 }
 
 export async function resetAdminPassword(adminId, newPassword, current) {
+  const cleanPassword = String(newPassword || '').trim();
+  const nextAdmins = (current?.admins || initialAdmins).map((a) =>
+    a.id === adminId ? { ...a, password: cleanPassword } : a
+  );
+
+  if (remoteMode) {
+    try {
+      await api('/api/admins/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ adminId, newPassword: cleanPassword }),
+      });
+      return loadStore();
+    } catch (err) {
+      console.warn('Could not reset password remotely, saving locally:', err);
+    }
+  }
+
   return saveLocal({
     ...current,
-    admins: (current.admins || initialAdmins).map((a) =>
-      a.id === adminId ? { ...a, password: newPassword } : a
-    ),
+    admins: nextAdmins,
+    settings: {
+      ...(current?.settings || {}),
+      admins: nextAdmins,
+    },
+  });
+}
+
+export async function deleteAdmin(adminId, current) {
+  const currentAdmins = Array.isArray(current?.admins) && current.admins.length > 0
+    ? current.admins
+    : [...initialAdmins];
+
+  if (currentAdmins.length <= 1) {
+    throw new Error('Cannot remove the last administrator. The shop must have at least one active administrator.');
+  }
+
+  const nextAdmins = currentAdmins.filter((a) => a.id !== adminId);
+
+  if (remoteMode) {
+    try {
+      await api(`/api/admins/${encodeURIComponent(adminId)}`, {
+        method: 'DELETE',
+      });
+      return loadStore();
+    } catch (err) {
+      console.warn('Could not delete admin remotely, saving locally:', err);
+    }
+  }
+
+  return saveLocal({
+    ...current,
+    admins: nextAdmins,
+    settings: {
+      ...(current?.settings || {}),
+      admins: nextAdmins,
+    },
   });
 }
 
@@ -261,8 +377,9 @@ export async function updateAdminProfile(adminId, updates, current) {
 
   const cleanName = updates.name ? String(updates.name).trim() : undefined;
   const cleanEmail = updates.email ? String(updates.email).trim().toLowerCase() : undefined;
-  const cleanPassword = updates.password ? String(updates.password).trim() : undefined;
-  const cleanAnswer = updates.securityAnswer ? String(updates.securityAnswer).trim().toLowerCase() : undefined;
+  // CRITICAL: only set cleanPassword if updates.password is provided and non-empty!
+  const cleanPassword = updates.password && String(updates.password).trim() ? String(updates.password).trim() : undefined;
+  const cleanAnswer = updates.securityAnswer && String(updates.securityAnswer).trim() ? String(updates.securityAnswer).trim().toLowerCase() : undefined;
 
   let found = false;
   const nextAdmins = currentAdmins.map((admin) => {
@@ -322,21 +439,31 @@ export async function updateAdminProfile(adminId, updates, current) {
     }
   } catch {}
 
-  // If remoteMode, sync admins into store settings
+  // If remoteMode, sync admins into remote database and store settings
   if (remoteMode) {
     try {
-      await api('/api/settings', {
+      const patchPayload = {
+        ...(cleanName ? { name: cleanName } : {}),
+        ...(cleanEmail ? { email: cleanEmail } : {}),
+        ...(cleanPassword ? { password: cleanPassword } : {}),
+        ...(updates.securityQuestion ? { securityQuestion: updates.securityQuestion } : {}),
+        ...(cleanAnswer ? { securityAnswer: cleanAnswer } : {}),
+      };
+      await api(`/api/admins/${encodeURIComponent(adminId)}`, {
         method: 'PATCH',
-        body: JSON.stringify({ admins: nextAdmins }),
+        body: JSON.stringify(patchPayload),
       });
-    } catch {}
+      return loadStore();
+    } catch (err) {
+      console.warn('Could not update admin remotely, saving locally:', err);
+    }
   }
 
   return saveLocal({
     ...current,
     admins: nextAdmins,
     settings: {
-      ...(current.settings || {}),
+      ...(current?.settings || {}),
       admins: nextAdmins,
     },
   });
@@ -344,10 +471,18 @@ export async function updateAdminProfile(adminId, updates, current) {
 
 // --- SETTINGS (TAX & STORE) ---
 export async function saveSettings(newSettings, current) {
+  const mergedSettings = {
+    ...(current?.settings || {}),
+    ...newSettings,
+    admins: (current?.admins && current.admins.length > 0)
+      ? current.admins
+      : (newSettings?.admins || current?.settings?.admins),
+  };
+
   if (remoteMode) {
-    return finishRemoteMutation('/api/settings', 'PATCH', newSettings);
+    return finishRemoteMutation('/api/settings', 'PATCH', mergedSettings);
   }
-  return saveLocal({ ...current, settings: { ...current.settings, ...newSettings } });
+  return saveLocal({ ...current, settings: mergedSettings });
 }
 
 // --- CUSTOMERS ---

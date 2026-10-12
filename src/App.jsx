@@ -9,7 +9,7 @@ import {
 
 import {
   assignPackage, clearAdminSession, createAdmin, createCustomer, createOrder,
-  createPackage, deleteCustomer, deletePackage, formatMoney, getAdminSession, isRemoteMode,
+  createPackage, deleteAdmin, deleteCustomer, deletePackage, formatMoney, getAdminSession, isRemoteMode,
   loadStore, recordPayment, resetAdminPassword, saveSettings, saveStaff, setAdminSession,
   updateAdminProfile, updateCustomer, updateOrderStatus, updatePackage,
   saveCustomAddon, saveCustomBrand, saveCustomColor, saveCustomDefect,
@@ -1799,6 +1799,18 @@ export default function App() {
             setAuthSession((prev) => (prev?.role === 'admin' || prev?.type === 'admin' ? { ...prev, ...updatedUser } : prev));
             return next;
           }, 'Administrator profile and credentials updated.');
+        }}
+        onDeleteAdmin={async (adminId) => {
+          await runMutation(async (cur) => {
+            const next = await deleteAdmin(adminId, cur);
+            if (authSession?.id === adminId) {
+              handleLockTerminal();
+            }
+            return next;
+          }, 'Administrator removed from shop.');
+        }}
+        onCreateAdmin={async (newAdmin) => {
+          await runMutation((cur) => createAdmin(newAdmin, cur), 'Administrator registered.');
         }}
         onToast={showToast}
       />

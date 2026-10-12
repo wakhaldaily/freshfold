@@ -53,11 +53,14 @@ export default function SettingsModal({
   onSaveSettings,
   onSaveStaff,
   onUpdateAdmin,
+  onDeleteAdmin,
+  onCreateAdmin,
   onToast,
 }) {
   const [activeTab, setActiveTab] = useState('store');
   const [formData, setFormData] = useState({ ...settings });
   const [staff, setStaff] = useState([...staffList]);
+  const [admins, setAdmins] = useState([...adminsList]);
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffRole, setNewStaffRole] = useState('cashier');
   const [newStaffPin, setNewStaffPin] = useState('0000');
@@ -66,9 +69,18 @@ export default function SettingsModal({
   const [testAmount, setTestAmount] = useState(1000);
   const [saving, setSaving] = useState(false);
 
+  // New Admin Registration State
+  const [showAddAdmin, setShowAddAdmin] = useState(false);
+  const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [newAdminQuestion, setNewAdminQuestion] = useState('What city is this store in?');
+  const [newAdminAnswer, setNewAdminAnswer] = useState('');
+  const [isAddingAdmin, setIsAddingAdmin] = useState(false);
+
   // Admin Profile & Security State
-  const primaryAdmin = (adminsList && adminsList.length > 0)
-    ? (adminsList.find((a) => a.id === adminUser?.id) || adminsList[0])
+  const primaryAdmin = (admins && admins.length > 0)
+    ? (admins.find((a) => a.id === adminUser?.id) || admins[0])
     : {
         id: adminUser?.id || 'admin-1',
         name: adminUser?.name || 'Store Administrator',
@@ -89,8 +101,10 @@ export default function SettingsModal({
     if (isOpen) {
       setFormData({ ...settings });
       setStaff([...staffList]);
-      const currentAdm = (adminsList && adminsList.length > 0)
-        ? (adminsList.find((a) => a.id === adminUser?.id) || adminsList[0])
+      const currentAdmins = (adminsList && adminsList.length > 0) ? adminsList : [];
+      setAdmins([...currentAdmins]);
+      const currentAdm = currentAdmins.length > 0
+        ? (currentAdmins.find((a) => a.id === adminUser?.id) || currentAdmins[0])
         : {
             id: adminUser?.id || 'admin-1',
             name: adminUser?.name || 'Store Administrator',
@@ -133,19 +147,25 @@ export default function SettingsModal({
       onToast?.('Please enter an administrator email.');
       return;
     }
-    if (!adminPassword || adminPassword.length < 6) {
+    const cleanPass = adminPassword.trim();
+    if (cleanPass && cleanPass.length < 6) {
       onToast?.('Password must be at least 6 characters.');
       return;
     }
     try {
       if (onUpdateAdmin) {
-        await onUpdateAdmin(primaryAdmin.id, {
+        const updatePayload = {
           name: adminName.trim(),
           email: adminEmail.trim().toLowerCase(),
-          password: adminPassword.trim(),
           securityQuestion: adminSecurityQuestion,
           securityAnswer: adminSecurityAnswer.trim(),
-        });
+        };
+        if (cleanPass) {
+          updatePayload.password = cleanPass;
+        } else if (primaryAdmin?.password && primaryAdmin.password !== 'admin123') {
+          updatePayload.password = primaryAdmin.password;
+        }
+        await onUpdateAdmin(primaryAdmin.id, updatePayload);
       }
       onToast?.('Administrator profile & password updated successfully.');
     } catch (err) {
@@ -162,13 +182,17 @@ export default function SettingsModal({
         await onSaveStaff(staff);
       }
       if (onUpdateAdmin && (adminName.trim() || adminEmail.trim())) {
-        await onUpdateAdmin(primaryAdmin.id, {
+        const adminPayload = {
           name: adminName.trim() || primaryAdmin.name,
           email: adminEmail.trim().toLowerCase(),
-          password: adminPassword.trim() || primaryAdmin.password,
           securityQuestion: adminSecurityQuestion,
           securityAnswer: adminSecurityAnswer.trim(),
-        });
+        };
+        const passToUpdate = adminPassword.trim() || primaryAdmin.password;
+        if (passToUpdate && passToUpdate !== 'admin123') {
+          adminPayload.password = passToUpdate;
+        }
+        await onUpdateAdmin(primaryAdmin.id, adminPayload);
       }
       onToast?.('Store, tax, and administrator settings saved successfully.');
       onClose();
@@ -206,13 +230,94 @@ export default function SettingsModal({
 
   const handleDeleteStaff = (id) => {
     if (staff.length <= 1) {
-      onToast('You must have at least one counter operator.');
+      onToast?.('You must have at least one counter operator.');
       return;
     }
     const target = staff.find((s) => s.id === id);
-    if (window.confirm(`Are you sure you want to remove operator "${target?.name}"?`)) {
-      setStaff(staff.filter((s) => s.id !== id));
-      onToast('Staff member removed.');
+    if (window.confirm(`Are you sure you want to remove counter operator "${target?.name}"?`)) {
+      const updated = staff.filter((s) => s.id !== id);
+      setStaff(updated);
+      if (onSaveStaff) {
+        onSaveStaff(updated);
+      }
+      onToast?.(`Removed counter operator: ${target?.name}`);
+    }
+  };
+
+  const handleDeleteAdmin = async (id, name) => {
+    if (admins.length <= 1) {
+      onToast?.('Cannot remove the last administrator. The shop must have at least one active administrator.');
+      return;
+    }
+    const isCurrent = (adminUser?.id && id === adminUser.id) || (adminUser?.email && admins.find((a) => a.id === id)?.email?.toLowerCase() === adminUser.email?.toLowerCase());
+    const confirmMsg = isCurrent
+      ? `WARNING: You are about to remove your own administrator account "${name}". You will be logged out immediately. Do you want to proceed?`
+      : `Are you sure you want to remove administrator "${name}" from this shop? They will no longer have access to this store.`;
+
+    if (window.confirm(confirmMsg)) {
+      try {
+        if (onDeleteAdmin) {
+          await onDeleteAdmin(id);
+        }
+        const updated = admins.filter((a) => a.id !== id);
+        setAdmins(updated);
+        onToast?.(`Administrator "${name}" removed from shop.`);
+        if (primaryAdmin?.id === id && updated.length > 0) {
+          const nextPrimary = updated[0];
+          setAdminName(nextPrimary.name || '');
+          setAdminEmail(nextPrimary.email || '');
+          setAdminPassword(nextPrimary.password || '');
+          setAdminSecurityQuestion(nextPrimary.securityQuestion || 'What city is this store in?');
+          setAdminSecurityAnswer(nextPrimary.securityAnswer || '');
+        }
+      } catch (err) {
+        onToast?.(err.message || 'Failed to remove administrator.');
+      }
+    }
+  };
+
+  const handleRegisterNewAdmin = async (e) => {
+    if (e) e.preventDefault();
+    if (!newAdminName.trim()) {
+      onToast?.('Please enter an administrator name.');
+      return;
+    }
+    if (!newAdminEmail.trim()) {
+      onToast?.('Please enter an administrator email.');
+      return;
+    }
+    if (!newAdminPassword.trim() || newAdminPassword.trim().length < 6) {
+      onToast?.('Password must be at least 6 characters.');
+      return;
+    }
+    if (!newAdminAnswer.trim()) {
+      onToast?.('Please provide an answer for the recovery question.');
+      return;
+    }
+    setIsAddingAdmin(true);
+    try {
+      const newAdm = {
+        id: `admin-${Date.now()}`,
+        name: newAdminName.trim(),
+        email: newAdminEmail.trim().toLowerCase(),
+        password: newAdminPassword.trim(),
+        securityQuestion: newAdminQuestion,
+        securityAnswer: newAdminAnswer.trim().toLowerCase(),
+      };
+      if (onCreateAdmin) {
+        await onCreateAdmin(newAdm);
+      }
+      setAdmins((prev) => [...prev, newAdm]);
+      setNewAdminName('');
+      setNewAdminEmail('');
+      setNewAdminPassword('');
+      setNewAdminAnswer('');
+      setShowAddAdmin(false);
+      onToast?.(`Administrator "${newAdm.name}" registered successfully!`);
+    } catch (err) {
+      onToast?.(err.message || 'Could not register administrator.');
+    } finally {
+      setIsAddingAdmin(false);
     }
   };
 
@@ -259,12 +364,12 @@ export default function SettingsModal({
                 width: '42px',
                 height: '42px',
                 borderRadius: '11px',
-                background: 'rgba(113, 102, 220, 0.16)',
-                color: '#8b80f9',
+                background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(124, 58, 237, 0.2))',
+                color: '#2563eb',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 2px 8px rgba(113, 102, 220, 0.2)',
+                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.15)',
                 flexShrink: 0,
               }}
             >
@@ -281,7 +386,7 @@ export default function SettingsModal({
                   color: 'var(--settings-text-muted)',
                 }}
               >
-                Counter Administration
+                Store Administration
               </span>
               <h3
                 style={{
@@ -292,19 +397,45 @@ export default function SettingsModal({
                   letterSpacing: '-0.3px',
                 }}
               >
-                Store & Tax Settings
+                Store & Personnel Settings
               </h3>
             </div>
           </div>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{ borderRadius: '8px' }}
-          >
-            <X size={18} />
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                padding: '6px 12px',
+                borderRadius: '999px',
+                background: 'rgba(37, 99, 235, 0.08)',
+                border: '1px solid rgba(37, 99, 235, 0.2)',
+                fontSize: '11px',
+                fontWeight: 700,
+                color: '#2563eb',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              title="Total people registered to operate or manage this store"
+            >
+              <Users size={13} />
+              <span>{admins.length + staff.length} Registered</span>
+              <span style={{ opacity: 0.4 }}>•</span>
+              <span style={{ color: '#7c3aed' }}>{admins.length} Admins</span>
+              <span style={{ opacity: 0.4 }}>•</span>
+              <span style={{ color: '#0284c7' }}>{staff.length} Staff</span>
+            </div>
+
+            <button
+              className="icon-button"
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              style={{ borderRadius: '8px' }}
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -314,7 +445,7 @@ export default function SettingsModal({
             className={`settings-tab-pill ${activeTab === 'store' ? 'active' : ''}`}
             onClick={() => setActiveTab('store')}
           >
-            <Building2 size={16} /> Store & Receipt Profile
+            <Building2 size={16} /> Store Profile
           </button>
           <button
             type="button"
@@ -331,9 +462,9 @@ export default function SettingsModal({
             className={`settings-tab-pill ${activeTab === 'staff' ? 'active' : ''}`}
             onClick={() => setActiveTab('staff')}
           >
-            <Users size={16} /> Staff & Counter Operators
+            <Users size={16} /> Counter Operators
             <span className="settings-tab-badge">
-              {staff.length}
+              {staff.length} Active
             </span>
           </button>
           <button
@@ -361,9 +492,9 @@ export default function SettingsModal({
             className={`settings-tab-pill ${activeTab === 'admin' ? 'active' : ''}`}
             onClick={() => setActiveTab('admin')}
           >
-            <ShieldCheck size={16} /> Admin Profile & Security
+            <ShieldCheck size={16} /> Shop Admins & Personnel
             <span className="settings-tab-badge">
-              {adminEmail ? adminEmail.split('@')[0] : 'Admin'}
+              {admins.length} Admins
             </span>
           </button>
         </div>
@@ -1231,16 +1362,19 @@ export default function SettingsModal({
                           </div>
                         </div>
 
-                        {staff.length > 1 && (
+                        {staff.length > 1 ? (
                           <button
                             type="button"
-                            className="icon-button"
+                            className="settings-remove-btn"
                             onClick={() => handleDeleteStaff(s.id)}
-                            style={{ color: '#ef4444', padding: '6px' }}
                             title="Remove staff operator"
                           >
-                            <Trash2 size={16} />
+                            <Trash2 size={13} /> Remove
                           </button>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', fontStyle: 'italic', padding: '4px 8px' }}>
+                            Primary Staff
+                          </span>
                         )}
                       </div>
                     ))}
@@ -1682,219 +1816,512 @@ export default function SettingsModal({
             {/* TAB 6: ADMIN PROFILE & PASSWORD SECURITY                  */}
             {/* ========================================================= */}
             {activeTab === 'admin' && (
-              <div className="settings-split-layout">
-                {/* Left Column: Form Fields */}
-                <div style={{ display: 'grid', gap: '16px' }}>
-                  {/* Card 1: Admin Profile Details */}
-                  <div className="settings-card">
-                    <div className="settings-card-header">
-                      <div className="settings-card-title">
-                        <User size={16} /> Administrator Profile & Identity
-                      </div>
-                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
-                        Root store manager
-                      </span>
+              <div style={{ display: 'grid', gap: '16px' }}>
+                {/* 1. Store Personnel Summary Metrics Bar */}
+                <div className="settings-metrics-row">
+                  <div className="settings-metric-card">
+                    <div className="settings-metric-icon-wrap" style={{ background: 'rgba(37, 99, 235, 0.1)', color: '#2563eb' }}>
+                      <Users size={20} />
                     </div>
-
-                    <label className="field-group">
-                      <span className="field-label">Administrator Full Name</span>
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          type="text"
-                          value={adminName}
-                          onChange={(e) => setAdminName(e.target.value)}
-                          placeholder="e.g. Store Administrator"
-                          required
-                          style={{ paddingLeft: '34px' }}
-                        />
-                        <User
-                          size={15}
-                          style={{
-                            position: 'absolute',
-                            left: '11px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            color: 'var(--settings-placeholder)',
-                          }}
-                        />
-                      </div>
-                    </label>
-
-                    <label className="field-group">
-                      <span className="field-label">Administrator Login Email</span>
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          type="email"
-                          value={adminEmail}
-                          onChange={(e) => setAdminEmail(e.target.value)}
-                          placeholder="admin@yourstore.com"
-                          required
-                          style={{ paddingLeft: '34px' }}
-                        />
-                        <Mail
-                          size={15}
-                          style={{
-                            position: 'absolute',
-                            left: '11px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            color: 'var(--settings-placeholder)',
-                          }}
-                        />
-                      </div>
-                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', marginTop: '4px', display: 'block' }}>
-                        Used to sign in to the terminal after logout or lock.
-                      </span>
-                    </label>
+                    <div>
+                      <div className="settings-metric-val">{admins.length + staff.length}</div>
+                      <div className="settings-metric-lbl">Total Registered</div>
+                    </div>
                   </div>
 
-                  {/* Card 2: Password & Account Security */}
-                  <div className="settings-card">
-                    <div className="settings-card-header">
-                      <div className="settings-card-title">
-                        <Lock size={16} /> Password & Recovery Security
-                      </div>
-                      <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700 }}>
-                        Encrypted Storage
-                      </span>
+                  <div className="settings-metric-card">
+                    <div className="settings-metric-icon-wrap" style={{ background: 'rgba(124, 58, 237, 0.1)', color: '#7c3aed' }}>
+                      <ShieldCheck size={20} />
                     </div>
-
-                    <label className="field-group">
-                      <span className="field-label">Administrator Password</span>
-                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                        <input
-                          type={showAdminPassword ? 'text' : 'password'}
-                          value={adminPassword}
-                          onChange={(e) => setAdminPassword(e.target.value)}
-                          placeholder="Enter password (min 6 characters)"
-                          required
-                          style={{ width: '100%', paddingLeft: '34px', paddingRight: '36px' }}
-                        />
-                        <Lock
-                          size={15}
-                          style={{
-                            position: 'absolute',
-                            left: '11px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            color: 'var(--settings-placeholder)',
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowAdminPassword((v) => !v)}
-                          style={{
-                            position: 'absolute',
-                            right: '10px',
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            padding: 0,
-                            color: 'var(--settings-placeholder)',
-                            display: 'flex',
-                            alignItems: 'center',
-                          }}
-                          title={showAdminPassword ? 'Hide password' : 'Show password'}
-                          aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
-                        >
-                          {showAdminPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', marginTop: '4px', display: 'block' }}>
-                        Must be at least 6 characters. Use the eye icon to verify what you typed.
-                      </span>
-                    </label>
-
-                    <div className="field-group">
-                      <span className="field-label">Security Recovery Question</span>
-                      <CustomSelect
-                        value={adminSecurityQuestion}
-                        onChange={(val) => setAdminSecurityQuestion(val)}
-                        options={[
-                          { value: 'What city is this store in?', label: 'What city is this store in?' },
-                          { value: 'What is your primary phone last 4 digits?', label: 'What is your primary phone last 4 digits?' },
-                          { value: 'What was your first pet name?', label: 'What was your first pet name?' },
-                        ]}
-                      />
+                    <div>
+                      <div className="settings-metric-val">{admins.length}</div>
+                      <div className="settings-metric-lbl">Administrators</div>
                     </div>
+                  </div>
 
-                    <label className="field-group">
-                      <span className="field-label">Security Recovery Answer</span>
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          type="text"
-                          value={adminSecurityAnswer}
-                          onChange={(e) => setAdminSecurityAnswer(e.target.value)}
-                          placeholder="e.g. gurugram"
-                          style={{ paddingLeft: '34px' }}
-                        />
-                        <KeyRound
-                          size={15}
-                          style={{
-                            position: 'absolute',
-                            left: '11px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            color: 'var(--settings-placeholder)',
-                          }}
-                        />
+                  <div className="settings-metric-card">
+                    <div className="settings-metric-icon-wrap" style={{ background: 'rgba(2, 132, 199, 0.1)', color: '#0284c7' }}>
+                      <UserCheck size={20} />
+                    </div>
+                    <div>
+                      <div className="settings-metric-val">{staff.length}</div>
+                      <div className="settings-metric-lbl">Counter Staff</div>
+                    </div>
+                  </div>
+
+                  <div className="settings-metric-card">
+                    <div className="settings-metric-icon-wrap" style={{ background: 'rgba(22, 163, 74, 0.1)', color: '#16a34a' }}>
+                      <User size={20} />
+                    </div>
+                    <div style={{ overflow: 'hidden' }}>
+                      <div className="settings-metric-val" style={{ fontSize: '14px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                        {adminUser?.name || adminName || 'Admin'}
                       </div>
-                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', marginTop: '4px', display: 'block' }}>
-                        Answer used for password recovery if you ever forget your password.
-                      </span>
-                    </label>
-
-                    <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
-                      <button
-                        type="button"
-                        className="settings-footer-save-btn"
-                        onClick={handleSaveAdminDirect}
-                        style={{ padding: '8px 16px', fontSize: '12px' }}
-                      >
-                        <Check size={14} /> Update Admin Profile & Password
-                      </button>
+                      <div className="settings-metric-lbl">Active Session</div>
                     </div>
                   </div>
                 </div>
 
-                {/* Right Column: Live Credential Status & Preview Card */}
-                <div style={{ display: 'grid', gap: '16px', alignContent: 'start' }}>
-                  <div className="settings-card" style={{ background: 'var(--settings-card-alt-bg, #f8fafc)' }}>
-                    <div className="settings-card-header">
+                {/* 2. Registered Store Administrators Directory Card */}
+                <div className="settings-card">
+                  <div className="settings-card-header">
+                    <div>
                       <div className="settings-card-title">
-                        <ShieldCheck size={16} color="#16a34a" /> Active Login Credentials
+                        <ShieldCheck size={16} /> Registered Store Administrators ({admins.length})
                       </div>
-                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '999px', background: '#dcfce7', color: '#15803d', fontWeight: 700 }}>
-                        LIVE
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                        All administrators authorized to configure store policies, tax rates, and manage personnel
                       </span>
                     </div>
 
-                    <div style={{ fontSize: '13px', display: 'grid', gap: '10px', padding: '6px 0' }}>
-                      <div>
-                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Current Admin Name</span>
-                        <strong style={{ fontSize: '14px', color: 'var(--settings-text-primary)' }}>{adminName || 'Store Administrator'}</strong>
-                      </div>
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        padding: '6px 12px',
+                        borderRadius: '7px',
+                        background: showAddAdmin ? '#e2e8f0' : 'rgba(37, 99, 235, 0.08)',
+                        color: showAddAdmin ? '#334155' : '#2563eb',
+                        border: '1px solid rgba(37, 99, 235, 0.2)',
+                      }}
+                      onClick={() => setShowAddAdmin((v) => !v)}
+                    >
+                      <Plus size={14} /> {showAddAdmin ? 'Cancel' : 'Register New Admin'}
+                    </button>
+                  </div>
 
+                  {/* Inline Add Admin Form */}
+                  {showAddAdmin && (
+                    <form
+                      onSubmit={handleRegisterNewAdmin}
+                      style={{
+                        padding: '16px',
+                        borderRadius: '10px',
+                        background: 'var(--settings-card-subtle-bg, #f8fafc)',
+                        border: '1.5px dashed var(--settings-dashed-border, #cbd5e1)',
+                        marginBottom: '16px',
+                        display: 'grid',
+                        gap: '12px',
+                      }}
+                    >
                       <div>
-                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Login Email</span>
-                        <strong style={{ fontSize: '14px', color: 'var(--settings-text-primary)' }}>{adminEmail || 'admin@freshfold.test'}</strong>
-                      </div>
-
-                      <div>
-                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Password Status</span>
-                        <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <CheckCircle2 size={13} /> {adminPassword ? `${adminPassword.length} characters configured` : 'Active'}
+                        <strong style={{ fontSize: '13px', color: 'var(--settings-text-primary)', display: 'block' }}>
+                          Register Additional Store Administrator
+                        </strong>
+                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                          The new administrator can sign in to this store from any browser or device.
                         </span>
                       </div>
 
-                      <div>
-                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Recovery Question</span>
-                        <span style={{ fontSize: '12px', color: 'var(--settings-text-primary)' }}>{adminSecurityQuestion}</span>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                        <div>
+                          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--settings-text-secondary)', display: 'block', marginBottom: '4px' }}>
+                            Full Name
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Rahul Sharma"
+                            value={newAdminName}
+                            onChange={(e) => setNewAdminName(e.target.value)}
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--settings-text-secondary)', display: 'block', marginBottom: '4px' }}>
+                            Login Email
+                          </label>
+                          <input
+                            type="email"
+                            placeholder="admin2@store.com"
+                            value={newAdminEmail}
+                            onChange={(e) => setNewAdminEmail(e.target.value)}
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--settings-text-secondary)', display: 'block', marginBottom: '4px' }}>
+                            Password (min 6 chars)
+                          </label>
+                          <input
+                            type="password"
+                            placeholder="••••••••"
+                            value={newAdminPassword}
+                            onChange={(e) => setNewAdminPassword(e.target.value)}
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--settings-text-secondary)', display: 'block', marginBottom: '4px' }}>
+                            Recovery Question
+                          </label>
+                          <CustomSelect
+                            value={newAdminQuestion}
+                            onChange={(val) => setNewAdminQuestion(val)}
+                            options={[
+                              { value: 'What city is this store in?', label: 'What city is this store in?' },
+                              { value: 'What is your primary phone last 4 digits?', label: 'What is your primary phone last 4 digits?' },
+                              { value: 'What was your first pet name?', label: 'What was your first pet name?' },
+                            ]}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--settings-text-secondary)', display: 'block', marginBottom: '4px' }}>
+                            Recovery Answer
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. gurugram"
+                            value={newAdminAnswer}
+                            onChange={(e) => setNewAdminAnswer(e.target.value)}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => setShowAddAdmin(false)}
+                          style={{ padding: '6px 12px', fontSize: '12px' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="button-primary"
+                          disabled={isAddingAdmin}
+                          style={{ padding: '6px 16px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          <Check size={14} /> {isAddingAdmin ? 'Registering...' : 'Register Administrator'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Administrators List */}
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    {(admins.length > 0 ? admins : [{ id: 'default', name: adminName, email: adminEmail }]).map((adm) => {
+                      const isCurrent =
+                        (adminUser?.id && adm.id === adminUser.id) ||
+                        (adminUser?.email && adm.email?.toLowerCase() === adminUser.email?.toLowerCase()) ||
+                        (!adminUser && adm.id === primaryAdmin?.id);
+
+                      return (
+                        <div key={adm.id || adm.email} className="settings-operator-card">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                            <div
+                              style={{
+                                width: '40px',
+                                height: '40px',
+                                borderRadius: '10px',
+                                background: 'rgba(124, 58, 237, 0.16)',
+                                color: '#7c3aed',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontWeight: 800,
+                                fontSize: '15px',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {(adm.name || adm.email || 'A').charAt(0).toUpperCase()}
+                            </div>
+
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <strong style={{ fontSize: '14px', color: 'var(--settings-text-primary)' }}>
+                                  {adm.name || 'Store Administrator'}
+                                </strong>
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    padding: '2px 8px',
+                                    background: 'rgba(124, 58, 237, 0.12)',
+                                    color: '#7c3aed',
+                                    borderRadius: '6px',
+                                    textTransform: 'uppercase',
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  Administrator
+                                </span>
+                                {isCurrent && (
+                                  <span
+                                    style={{
+                                      fontSize: '10px',
+                                      padding: '2px 8px',
+                                      background: '#dcfce7',
+                                      color: '#15803d',
+                                      borderRadius: '6px',
+                                      fontWeight: 700,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                    }}
+                                  >
+                                    <CheckCircle2 size={11} /> Active Session (You)
+                                  </span>
+                                )}
+                              </div>
+
+                              <div style={{ fontSize: '12px', color: 'var(--settings-text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <Mail size={12} /> {adm.email}
+                                </span>
+                                {adm.securityQuestion && (
+                                  <span style={{ fontSize: '11px', opacity: 0.8 }}>
+                                    • Recovery set
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            {admins.length <= 1 ? (
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  color: 'var(--settings-text-muted)',
+                                  background: 'var(--settings-tag-bg, #f1f5f9)',
+                                  padding: '4px 10px',
+                                  borderRadius: '6px',
+                                  fontWeight: 600,
+                                  display: 'inline-block',
+                                }}
+                                title="At least one administrator is required to manage the store"
+                              >
+                                Protected (Sole Admin)
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="settings-remove-btn"
+                                onClick={() => handleDeleteAdmin(adm.id, adm.name || adm.email)}
+                                title={isCurrent ? 'Remove your own administrator account' : 'Remove administrator from store'}
+                              >
+                                <Trash2 size={13} /> Remove
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. Split Layout: Edit Active Admin & Credentials Preview */}
+                <div className="settings-split-layout">
+                  {/* Left Column: Form Fields */}
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    {/* Card: Active Admin Profile Details */}
+                    <div className="settings-card">
+                      <div className="settings-card-header">
+                        <div className="settings-card-title">
+                          <User size={16} /> Edit Administrator Profile & Identity
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                          Active store manager
+                        </span>
+                      </div>
+
+                      <label className="field-group">
+                        <span className="field-label">Administrator Full Name</span>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="text"
+                            value={adminName}
+                            onChange={(e) => setAdminName(e.target.value)}
+                            placeholder="e.g. Store Administrator"
+                            required
+                            style={{ paddingLeft: '34px' }}
+                          />
+                          <User
+                            size={15}
+                            style={{
+                              position: 'absolute',
+                              left: '11px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              color: 'var(--settings-placeholder)',
+                            }}
+                          />
+                        </div>
+                      </label>
+
+                      <label className="field-group">
+                        <span className="field-label">Administrator Login Email</span>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="email"
+                            value={adminEmail}
+                            onChange={(e) => setAdminEmail(e.target.value)}
+                            placeholder="admin@yourstore.com"
+                            required
+                            style={{ paddingLeft: '34px' }}
+                          />
+                          <Mail
+                            size={15}
+                            style={{
+                              position: 'absolute',
+                              left: '11px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              color: 'var(--settings-placeholder)',
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', marginTop: '4px', display: 'block' }}>
+                          Used to sign in to the terminal after logout or lock.
+                        </span>
+                      </label>
+
+                      <div className="field-group" style={{ marginTop: '8px' }}>
+                        <span className="field-label">Change Password</span>
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                          <input
+                            type={showAdminPassword ? 'text' : 'password'}
+                            value={adminPassword}
+                            onChange={(e) => setAdminPassword(e.target.value)}
+                            placeholder="Enter new password (min 6 characters)"
+                            style={{ width: '100%', paddingLeft: '34px', paddingRight: '36px' }}
+                          />
+                          <Lock
+                            size={15}
+                            style={{
+                              position: 'absolute',
+                              left: '11px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              color: 'var(--settings-placeholder)',
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowAdminPassword((v) => !v)}
+                            style={{
+                              position: 'absolute',
+                              right: '10px',
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: 0,
+                              color: 'var(--settings-placeholder)',
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                            title={showAdminPassword ? 'Hide password' : 'Show password'}
+                            aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
+                          >
+                            {showAdminPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', marginTop: '4px', display: 'block' }}>
+                          Leave untouched to keep current password. Minimum 6 characters.
+                        </span>
+                      </div>
+
+                      <div className="field-group" style={{ marginTop: '8px' }}>
+                        <span className="field-label">Security Recovery Question</span>
+                        <CustomSelect
+                          value={adminSecurityQuestion}
+                          onChange={(val) => setAdminSecurityQuestion(val)}
+                          options={[
+                            { value: 'What city is this store in?', label: 'What city is this store in?' },
+                            { value: 'What is your primary phone last 4 digits?', label: 'What is your primary phone last 4 digits?' },
+                            { value: 'What was your first pet name?', label: 'What was your first pet name?' },
+                          ]}
+                        />
+                      </div>
+
+                      <label className="field-group">
+                        <span className="field-label">Security Recovery Answer</span>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="text"
+                            value={adminSecurityAnswer}
+                            onChange={(e) => setAdminSecurityAnswer(e.target.value)}
+                            placeholder="e.g. gurugram"
+                            style={{ paddingLeft: '34px' }}
+                          />
+                          <KeyRound
+                            size={15}
+                            style={{
+                              position: 'absolute',
+                              left: '11px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              color: 'var(--settings-placeholder)',
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', marginTop: '4px', display: 'block' }}>
+                          Answer used for password recovery if you ever forget your password.
+                        </span>
+                      </label>
+
+                      <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
+                        <button
+                          type="button"
+                          className="settings-footer-save-btn"
+                          onClick={handleSaveAdminDirect}
+                          style={{ padding: '8px 16px', fontSize: '12px' }}
+                        >
+                          <Check size={14} /> Update Admin Profile & Password
+                        </button>
                       </div>
                     </div>
+                  </div>
 
-                    <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(37, 99, 235, 0.08)', border: '1px solid rgba(37, 99, 235, 0.2)', fontSize: '11px', color: '#1d4ed8', lineHeight: 1.5 }}>
-                      💡 When you update your email and password here, you can immediately lock the terminal or log out and log back in using your new credentials.
+                  {/* Right Column: Live Credential Status & Preview Card */}
+                  <div style={{ display: 'grid', gap: '16px', alignContent: 'start' }}>
+                    <div className="settings-card" style={{ background: 'var(--settings-card-alt-bg, #f8fafc)' }}>
+                      <div className="settings-card-header">
+                        <div className="settings-card-title">
+                          <ShieldCheck size={16} color="#16a34a" /> Active Login Credentials
+                        </div>
+                        <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '999px', background: '#dcfce7', color: '#15803d', fontWeight: 700 }}>
+                          LIVE
+                        </span>
+                      </div>
+
+                      <div style={{ fontSize: '13px', display: 'grid', gap: '10px', padding: '6px 0' }}>
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Current Admin Name</span>
+                          <strong style={{ fontSize: '14px', color: 'var(--settings-text-primary)' }}>{adminName || 'Store Administrator'}</strong>
+                        </div>
+
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Login Email</span>
+                          <strong style={{ fontSize: '14px', color: 'var(--settings-text-primary)' }}>{adminEmail || 'admin@freshfold.test'}</strong>
+                        </div>
+
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Password Status</span>
+                          <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle2 size={13} /> {adminPassword ? `${adminPassword.length} characters configured` : 'Active'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)', display: 'block' }}>Recovery Question</span>
+                          <span style={{ fontSize: '12px', color: 'var(--settings-text-primary)' }}>{adminSecurityQuestion}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(37, 99, 235, 0.08)', border: '1px solid rgba(37, 99, 235, 0.2)', fontSize: '11px', color: '#1d4ed8', lineHeight: 1.5 }}>
+                        💡 When you update your email and password here, you can immediately lock the terminal or log out and log back in using your new credentials.
+                      </div>
                     </div>
                   </div>
                 </div>
