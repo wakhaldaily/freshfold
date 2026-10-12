@@ -28,7 +28,7 @@ export default function OrdersView({
     <div className="responsive-page-card">
       
       {/* Header Title & Batch Export / Invoices Actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
+      <div className="orders-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <h2 style={{ margin: 0, fontSize: '22px', color: '#1e293b' }}>
@@ -44,7 +44,7 @@ export default function OrdersView({
         </div>
 
         {/* Batch Actions: Export to Excel & Get All Invoices */}
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="orders-page-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Export to Excel */}
           <button
             type="button"
@@ -92,12 +92,12 @@ export default function OrdersView({
       </div>
 
       {/* Comprehensive Filter Controls Card */}
-      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+      <div className="orders-filter-panel" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
         {/* Row 1: Period Presets (This Week, This Month, All Time) & Date Range Picker */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
           
           {/* Quick Time Presets */}
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="orders-period-presets" style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.5px', marginRight: '4px' }}>
               Filter:
             </span>
@@ -139,6 +139,7 @@ export default function OrdersView({
 
           {/* Date Range Picker */}
           <div
+            className="orders-date-range"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -238,11 +239,12 @@ export default function OrdersView({
         {/* Row 2: Search Query & Status Tabs */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           {/* Search box */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '8px 14px', borderRadius: '8px', border: '1.5px solid #cbd5e1', width: '380px', minWidth: '260px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+          <div className="orders-search-box" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '8px 14px', borderRadius: '8px', border: '1.5px solid #cbd5e1', width: '380px', minWidth: '260px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
             <Search size={15} color="#94a3b8" />
             <input
               type="text"
-              placeholder="Search Order # (e.g. B6163) or Customer Mobile..."
+              placeholder="Search order no. or customer mobile"
+              aria-label="Search order number or customer mobile"
               value={orderSearchQuery}
               onChange={(e) => setOrderSearchQuery(e.target.value)}
               style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', width: '100%', color: '#1e293b' }}
@@ -251,6 +253,7 @@ export default function OrdersView({
               <button
                 type="button"
                 onClick={() => setOrderSearchQuery('')}
+                aria-label="Clear search"
                 style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', padding: '2px', display: 'flex' }}
               >
                 <X size={14} />
@@ -259,7 +262,7 @@ export default function OrdersView({
           </div>
 
           {/* Status buttons */}
-          <div style={{ display: 'flex', gap: '5px' }}>
+          <div className="orders-status-tabs" role="group" aria-label="Filter by status" style={{ display: 'flex', gap: '5px' }}>
             {['All', 'Received', 'Processing', 'Ready', 'Delivered', 'Cancelled'].map((st) => (
               <button
                 key={st}
@@ -276,19 +279,19 @@ export default function OrdersView({
       </div>
 
       {/* Filtered Financial Metrics Summary Strip */}
-      <div style={{ display: 'flex', gap: '16px', background: '#f1f5f9', padding: '10px 16px', borderRadius: '8px', marginBottom: '16px', fontSize: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="orders-summary-strip" style={{ display: 'flex', gap: '16px', background: '#f1f5f9', padding: '10px 16px', borderRadius: '8px', marginBottom: '16px', fontSize: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ color: '#475569' }}>
           Filtered Orders: <strong style={{ color: '#0f172a' }}>{filteredMetrics.count}</strong>
         </span>
-        <span style={{ color: '#94a3b8' }}>•</span>
+        <span className="summary-sep" aria-hidden="true" style={{ color: '#94a3b8' }}>•</span>
         <span style={{ color: '#475569' }}>
           Total Billed: <strong style={{ color: '#0f172a' }}>{formatMoney(filteredMetrics.totalAmount)}</strong>
         </span>
-        <span style={{ color: '#94a3b8' }}>•</span>
+        <span className="summary-sep" aria-hidden="true" style={{ color: '#94a3b8' }}>•</span>
         <span style={{ color: '#475569' }}>
           Paid Collected: <strong style={{ color: '#16a34a' }}>{formatMoney(filteredMetrics.totalPaid)}</strong>
         </span>
-        <span style={{ color: '#94a3b8' }}>•</span>
+        <span className="summary-sep" aria-hidden="true" style={{ color: '#94a3b8' }}>•</span>
         <span style={{ color: '#475569' }}>
           Balance Due: <strong style={{ color: filteredMetrics.totalBalance > 0 ? '#d97706' : '#16a34a' }}>{formatMoney(filteredMetrics.totalBalance)}</strong>
         </span>
@@ -319,7 +322,7 @@ export default function OrdersView({
             </button>
           </div>
         ) : (
-          <table className="orders-table">
+          <table className="orders-table responsive-table">
             <thead>
               <tr>
                 <th>Order No</th>
@@ -338,7 +341,7 @@ export default function OrdersView({
                 const cust = data.customers.find((c) => c.id === o.customerId);
                 return (
                   <tr key={o.id}>
-                    <td>
+                    <td data-label="Order No">
                       <button
                         type="button"
                         className="order-number"
@@ -347,24 +350,24 @@ export default function OrdersView({
                         {o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`}
                       </button>
                     </td>
-                    <td>
+                    <td data-label="Customer Name">
                       <strong>{cust?.name || 'Customer'}</strong>
                       <small>+91 {cust?.mobile}</small>
                     </td>
-                    <td>{o.service} ({o.type === 'weight' ? 'Weight' : 'Pieces'})</td>
-                    <td>{formatDate(o.createdAt)}</td>
-                    <td>{formatDate(o.dueDate)}</td>
-                    <td><strong>{formatMoney(o.totalAmount)}</strong></td>
-                    <td className={o.balanceAmount > 0 ? 'balance-due' : 'balance-clear'}>
+                    <td data-label="Service & Type">{o.service} ({o.type === 'weight' ? 'Weight' : 'Pieces'})</td>
+                    <td data-label="Intake Date">{formatDate(o.createdAt)}</td>
+                    <td data-label="Promised Due">{formatDate(o.dueDate)}</td>
+                    <td data-label="Total Bill"><strong>{formatMoney(o.totalAmount)}</strong></td>
+                    <td data-label="Balance Due" className={o.balanceAmount > 0 ? 'balance-due' : 'balance-clear'}>
                       {formatMoney(o.balanceAmount)}
                     </td>
-                    <td>
+                    <td data-label="Current Status">
                       <span className={`status-pill status-${o.status.toLowerCase()}`}>
                         <i />
                         {o.status}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td data-label="Actions" style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: '6px' }}>
                         <button
                           type="button"

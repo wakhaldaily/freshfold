@@ -1,5 +1,5 @@
 import React from 'react';
-import { Package, PackagePlus, Pencil, Plus, ReceiptText, Wallet } from 'lucide-react';
+import { Mail, MapPin, Megaphone, Package, PackagePlus, Pencil, Phone, Plus, ReceiptText, Tag, Wallet } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { formatDate, formatDateTime } from '../lib/dateFormat.js';
 
@@ -36,23 +36,23 @@ export default function CustomerDetailView({
           </div>
           <div>
             <div className="eyebrow">
-              CUSTOMER ACCOUNT <span className="customer-id">· #{currentDetailCustomer.customerCode || currentDetailCustomer.id.slice(0, 8)}</span>
+              CUSTOMER ACCOUNT {currentDetailCustomer.customerCode && <span className="customer-id">· #{currentDetailCustomer.customerCode}</span>}
             </div>
             <h1>{currentDetailCustomer.name}</h1>
             <div className="customer-contact">
-              <span>📞 +91 {currentDetailCustomer.mobile}</span>
-              {currentDetailCustomer.email && <span>✉️ {currentDetailCustomer.email}</span>}
+              <span><Phone size={13} aria-hidden="true" /> +91 {currentDetailCustomer.mobile}</span>
+              {currentDetailCustomer.email && <span><Mail size={13} aria-hidden="true" /> {currentDetailCustomer.email}</span>}
               {currentDetailCustomer.address && (
-                <span>📍 {currentDetailCustomer.address}{currentDetailCustomer.areaLocation ? `, ${currentDetailCustomer.areaLocation}` : ''}{currentDetailCustomer.state ? ` (${currentDetailCustomer.state})` : ''}</span>
+                <span><MapPin size={13} aria-hidden="true" /> {currentDetailCustomer.address}{currentDetailCustomer.areaLocation ? `, ${currentDetailCustomer.areaLocation}` : ''}{currentDetailCustomer.state ? ` (${currentDetailCustomer.state})` : ''}</span>
               )}
               {currentDetailCustomer.preference && currentDetailCustomer.preference !== 'NA' && (
                 <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                  🏷️ {currentDetailCustomer.preference}
+                  <Tag size={12} aria-hidden="true" /> {currentDetailCustomer.preference}
                 </span>
               )}
               {currentDetailCustomer.commPreference && (
                 <span style={{ background: '#f1f5f9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                  📢 {currentDetailCustomer.commPreference}
+                  <Megaphone size={12} aria-hidden="true" /> {currentDetailCustomer.commPreference}
                 </span>
               )}
               {currentDetailCustomer.gstin && (
@@ -120,7 +120,7 @@ export default function CustomerDetailView({
               <Package size={16} />
             </div>
           </div>
-          <strong className="metric-value">{customerPackages.length} Plans</strong>
+          <strong className="metric-value">{customerPackages.length} {customerPackages.length === 1 ? 'Plan' : 'Plans'}</strong>
           <small>No validity expiration (Lifetime)</small>
         </div>
       </div>
@@ -175,7 +175,7 @@ export default function CustomerDetailView({
               <p className="muted-copy">Click "Place Order for Customer" above to start billing.</p>
             </div>
           ) : (
-            <table className="orders-table">
+            <table className="orders-table responsive-table">
               <thead>
                 <tr>
                   <th>Order No</th>
@@ -191,7 +191,7 @@ export default function CustomerDetailView({
               <tbody>
                 {customerOrders.map((o) => (
                   <tr key={o.id}>
-                    <td>
+                    <td data-label="Order No">
                       <button
                         type="button"
                         className="order-number"
@@ -200,20 +200,20 @@ export default function CustomerDetailView({
                         {o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`}
                       </button>
                     </td>
-                    <td>{o.service} ({o.type === 'weight' ? 'Weight' : 'Pieces'})</td>
-                    <td>{formatDate(o.createdAt)}</td>
-                    <td>{formatDate(o.dueDate)}</td>
-                    <td><strong>{formatMoney(o.totalAmount)}</strong></td>
-                    <td className={o.balanceAmount > 0 ? 'balance-due' : 'balance-clear'}>
+                    <td data-label="Service & Type">{o.service} ({o.type === 'weight' ? 'Weight' : 'Pieces'})</td>
+                    <td data-label="Intake Date">{formatDate(o.createdAt)}</td>
+                    <td data-label="Promised Ready">{formatDate(o.dueDate)}</td>
+                    <td data-label="Total Bill"><strong>{formatMoney(o.totalAmount)}</strong></td>
+                    <td data-label="Balance Due" className={o.balanceAmount > 0 ? 'balance-due' : 'balance-clear'}>
                       {formatMoney(o.balanceAmount)}
                     </td>
-                    <td>
+                    <td data-label="Status">
                       <span className={`status-pill status-${o.status.toLowerCase()}`}>
                         <i />
                         {o.status}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td data-label="Actions" style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: '6px' }}>
                         <button
                           type="button"

@@ -19,12 +19,13 @@ export default function CustomersView({
           <p className="muted-copy" style={{ margin: '4px 0 0' }}>All registered laundry accounts and contact records</p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', width: '100%', maxWidth: '640px', justifyContent: 'flex-end' }}>
+        <div className="customers-page-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', width: '100%', maxWidth: '640px', justifyContent: 'flex-end' }}>
           <div className="customer-directory-search">
             <Search size={15} color="#94a3b8" />
             <input
               type="text"
-              placeholder="Search customers by full name, phone number, or notes..."
+              placeholder="Search by name, mobile or notes"
+              aria-label="Search customers by name, mobile or notes"
               value={customerSearchQuery}
               onChange={(e) => setCustomerSearchQuery(e.target.value)}
               style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', width: '100%', color: '#1e293b' }}
@@ -33,6 +34,7 @@ export default function CustomersView({
               <button
                 type="button"
                 onClick={() => setCustomerSearchQuery('')}
+                aria-label="Clear search"
                 style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', padding: '2px', display: 'flex' }}
               >
                 <X size={14} />
@@ -52,7 +54,7 @@ export default function CustomersView({
 
       {/* Customer Directory Table */}
       <div className="orders-table-wrap" style={{ maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
-        <table className="orders-table">
+        <table className="orders-table responsive-table">
           <thead>
             <tr>
               <th>Customer Name</th>
@@ -76,20 +78,20 @@ export default function CustomersView({
                 const due = custOrders.reduce((sum, o) => sum + (Number(o.balanceAmount) || 0), 0);
                 return (
                   <tr key={c.id}>
-                    <td>
+                    <td data-label="Customer Name">
                       <strong role="button" tabIndex={0} style={{ fontSize: '13px', color: '#2563eb', cursor: 'pointer' }} onClick={() => { setSelectedCustomerId(c.id); setView('customer-detail'); }} onKeyDown={onActivateKey(() => { setSelectedCustomerId(c.id); setView('customer-detail'); })}>
                         {c.name}
                       </strong>
                       {c.notes && <small style={{ display: 'block', color: '#64748b' }}>Note: {c.notes}</small>}
                     </td>
-                    <td>+91 {c.mobile}</td>
-                    <td>{c.address || '—'}</td>
-                    <td><strong>{formatMoney(c.walletBalance)}</strong></td>
-                    <td className={due > 0 ? 'balance-due' : 'balance-clear'}>
+                    <td data-label="Mobile Number">+91 {c.mobile}</td>
+                    <td data-label="Address">{c.address || '—'}</td>
+                    <td data-label="Wallet Balance"><strong>{formatMoney(c.walletBalance)}</strong></td>
+                    <td data-label="Outstanding Balance" className={due > 0 ? 'balance-due' : 'balance-clear'}>
                       {formatMoney(due)}
                     </td>
-                    <td>{custOrders.length} orders</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td data-label="Orders Count">{custOrders.length} {custOrders.length === 1 ? 'order' : 'orders'}</td>
+                    <td data-label="Workspace" style={{ textAlign: 'right' }}>
                       <button
                         type="button"
                         className="button button-quiet"

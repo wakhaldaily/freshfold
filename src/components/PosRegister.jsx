@@ -471,6 +471,7 @@ export default function PosRegister({
             type="button"
             className="button button-quiet pos-new-customer-btn"
             onClick={onOpenNewCustomerModal}
+            aria-label="New Customer"
           >
             <UserPlus size={14} /> <span>New Customer</span>
           </button>
@@ -498,6 +499,7 @@ export default function PosRegister({
         {/* Customer Profile Tiers & Logistics Badge Strip */}
         {currentCustomer && (
           <div className="pos-header-customer-badges">
+            {(currentCustomer.customerCode || currentCustomer.code) && (
             <span
               style={{
                 background: '#f8fafc',
@@ -509,8 +511,9 @@ export default function PosRegister({
                 flexShrink: 0,
               }}
             >
-              #{currentCustomer.customerCode || currentCustomer.code || currentCustomer.id.slice(0, 6)}
+              #{currentCustomer.customerCode || currentCustomer.code}
             </span>
+            )}
 
             {currentCustomer.rateList && currentCustomer.rateList !== 'Default' && (
               <span
@@ -1649,7 +1652,7 @@ export default function PosRegister({
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', minWidth: 0, gap: '4px' }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }} title={opt.label}>
+                          <span style={{ minWidth: 0, flex: 1, lineHeight: 1.3 }} title={opt.label}>
                             {opt.label}
                           </span>
                           {isSelected && <Check size={12} color="#d97706" style={{ flexShrink: 0 }} />}

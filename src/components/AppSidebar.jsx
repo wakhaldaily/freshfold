@@ -158,7 +158,8 @@ export default function AppSidebar({
           </div>
           <div>
             <span>COUNTER SHIFT</span>
-            <strong>{authSession ? `${authSession.name} (${authSession.role})` : 'Active · Counter'}</strong>
+            <strong>{authSession?.name || 'Active · Counter'}</strong>
+              {authSession && <small className="shift-role">{authSession.isAdmin || authSession.role === 'admin' ? 'Administrator' : 'Cashier'}</small>}
           </div>
           <span className="live-dot" />
         </div>

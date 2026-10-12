@@ -1290,31 +1290,8 @@ h1, h2, h3, p { margin-top: 0; }
   --settings-template-bg: #f8fafc;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --settings-modal-bg: #0f172a;
-    --settings-header-bg: #141f36;
-    --settings-nav-bg: #0b1120;
-    --settings-content-bg: #0b1120;
-    --settings-card-bg: #141f36;
-    --settings-card-border: #1e293b;
-    --settings-card-subtle-bg: #0e1626;
-    --settings-border: #1e293b;
-    --settings-text-primary: #f8fafc;
-    --settings-text-secondary: #cbd5e1;
-    --settings-text-muted: #94a3b8;
-    --settings-input-bg: #0e1626;
-    --settings-input-border: #28354f;
-    --settings-input-text: #f8fafc;
-    --settings-placeholder: #64748b;
-    --settings-pill-hover-bg: rgba(255, 255, 255, 0.08);
-    --settings-badge-bg: rgba(37, 99, 235, 0.2);
-    --settings-badge-text: #93c5fd;
-    --settings-active-highlight-bg: rgba(37, 99, 235, 0.12);
-    --settings-dashed-border: #334155;
-    --settings-template-bg: rgba(255, 255, 255, 0.04);
-  }
-}
+/* OS dark mode is not applied: the app ships a single light theme so screens stay consistent. */
+
 
 [data-theme="dark"], .dark-theme, body.dark-mode {
   --settings-modal-bg: #0f172a;
@@ -3224,44 +3201,8 @@ select, .styled-select {
   }
 }
 
-@media (prefers-color-scheme: dark) and (max-width: 980px) {
-  .pos-mobile-top-checkout-card {
-    background: #141f36 !important;
-    border-color: #3b82f6 !important;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
-  }
+/* OS dark mode is not applied: the app ships a single light theme so screens stay consistent. */
 
-  .pos-mobile-top-checkout-total {
-    color: #f8fafc !important;
-  }
-
-  .pos-mobile-top-checkout-sub {
-    color: #94a3b8 !important;
-  }
-
-  .pos-mobile-top-wallet-badge {
-    background: rgba(22, 163, 74, 0.2) !important;
-    border-color: #16a34a !important;
-    color: #86efac !important;
-  }
-
-  .pos-mobile-nav-tabs {
-    background: #0f172a !important;
-    border-bottom-color: #1e293b !important;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
-  }
-
-  .pos-mobile-nav-tabs button.active {
-    background: #1e293b !important;
-    color: #60a5fa !important;
-  }
-
-  .pos-catalog-sticky-controls {
-    background: #0f172a !important;
-    border-bottom-color: #1e293b !important;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
-  }
-}
 
 /* Ensure all form controls on mobile have minimum touch target */
 @media (max-width: 768px) {
@@ -4280,4 +4221,193 @@ select, .styled-select {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* =========================================================================
+   UI POLISH LAYER
+   Consistency fixes for desktop and mobile. Layout structure is unchanged;
+   these rules only correct spacing, overflow, wrapping and mobile patterns.
+   ========================================================================= */
+:root { color-scheme: light; }
+
+/* --- Sidebar ---------------------------------------------------------- */
+.brand-lockup strong { white-space: nowrap; font-size: 18px; }
+.shift-card div:nth-child(2) { min-width: 0; }
+.shift-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shift-card .shift-role { display: block; color: #94a3b8; font-size: 10px; font-weight: 600; letter-spacing: 0; }
+.sync-state { gap: 6px; }
+
+/* --- Tables: name over mobile number, no column squeeze ---------------- */
+.orders-table td small { display: block; margin-top: 2px; color: #64748b; font-size: 10px; font-weight: 500; }
+.orders-table td:first-child { width: auto; }
+.orders-table td strong { white-space: nowrap; }
+
+/* --- Package plan cards: price row always sits at the bottom ----------- */
+.package-plan-card { display: flex; flex-direction: column; }
+.package-plan-footer { margin-top: auto; }
+
+/* --- Settings: form columns never slide under the receipt preview ------ */
+.settings-modal-content,
+.settings-split-layout > *,
+.settings-card,
+.settings-grid-2-phone-code > *,
+.settings-form-grid-2 > * { min-width: 0; }
+.settings-grid-2-phone-code { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+.settings-grid-2-phone-code [style*="min-width"] { min-width: 0 !important; }
+.settings-policy-btn { min-width: 0; max-width: 100%; }
+
+/* --- Modal bodies: content stacks from the top instead of stretching to
+       fill full-screen sheets on phones ---------------------------------- */
+.modal-content { align-content: start; }
+
+/* --- Visible keyboard focus everywhere --------------------------------- */
+:where(button, a, input, select, textarea, [role="button"], [tabindex="0"]):focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* --- Tablet & phone ---------------------------------------------------- */
+@media (max-width: 900px) {
+  /* The off-canvas drawer's shadow should not bleed onto the page while closed. */
+  .sidebar { box-shadow: none; }
+  .sidebar.sidebar-open { box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4); }
+  /* Collapsing only applies to the desktop rail. */
+  .sidebar .sidebar-collapse-btn { display: none !important; }
+}
+
+@media (max-width: 980px) {
+  /* Comfortable, consistent page gutters (cards no longer touch the screen edge). */
+  .page-content { padding: 12px 12px 28px !important; }
+  .pos-mobile-nav-tabs { margin: -12px -12px 10px !important; }
+}
+
+@media (max-width: 768px) {
+  /* Toasts sit under the top bar so they never cover the checkout bar or buttons. */
+  .toast {
+    top: calc(env(safe-area-inset-top, 0px) + 68px);
+    bottom: auto;
+    left: 12px;
+    right: 12px;
+    max-width: none;
+    z-index: 10000;
+    font-size: 12px;
+  }
+
+  /* Stat cards: two per row; a lone last card spans the full width. */
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .metric-grid > .metric-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+  /* Customer workspace */
+  .workspace-toolbar { margin-bottom: 14px !important; }
+  .customer-title-row { flex-direction: column; gap: 14px; margin-bottom: 16px !important; }
+  .metric-grid { margin: 0 0 16px !important; }
+  .tabs-row { margin: 0 0 14px !important; padding-bottom: 10px; min-height: 0 !important; }
+  .customer-identity { align-items: flex-start; }
+  .customer-identity h1 { font-size: 24px; }
+  .customer-contact { flex-wrap: wrap; row-gap: 6px; }
+  .identity-actions { flex-direction: row !important; width: 100%; }
+  .identity-actions .button { flex: 1; }
+  .tabs-row { flex-wrap: wrap; gap: 10px; }
+  .tabs-row > .button { width: 100%; }
+  .segmented-tabs { width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .segmented-tabs::-webkit-scrollbar { display: none; }
+  .segmented-tabs button { white-space: nowrap; flex: 0 0 auto; }
+
+  /* Customer directory header */
+  .customers-page-actions { max-width: none !important; }
+  .customers-page-actions > * { flex: 1 1 100%; }
+
+  /* Order history header & filters */
+  .orders-page-header h2 { font-size: 20px !important; }
+  .orders-page-actions { width: 100%; }
+  .orders-page-actions .button { flex: 1; justify-content: center; }
+  .orders-filter-panel { padding: 12px !important; }
+  .orders-period-presets { flex-wrap: nowrap !important; overflow-x: auto; width: 100%; }
+  .orders-date-range { width: 100%; display: grid !important; grid-template-columns: 1fr 1fr; }
+  .orders-date-range > div:first-child { grid-column: 1 / -1; }
+  .orders-date-range > div { min-width: 0; }
+  .orders-date-range input[type="date"] { width: 100%; min-width: 0; }
+  .orders-search-box { width: 100% !important; min-width: 0 !important; }
+  .orders-status-tabs { width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; padding-bottom: 2px; }
+  .orders-status-tabs::-webkit-scrollbar { display: none; }
+  .orders-status-tabs button { flex: 0 0 auto; white-space: nowrap; }
+  .orders-summary-strip { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px 12px !important; }
+  .orders-summary-strip .summary-sep { display: none; }
+
+  /* POS header: one compact row */
+  .pos-header-top-row { flex-wrap: nowrap !important; }
+  .pos-header-title-group { flex-wrap: nowrap !important; min-width: 0; gap: 8px !important; }
+  .pos-back-btn { min-height: 34px !important; padding: 0 10px !important; flex: 0 0 auto; }
+  .pos-new-customer-btn { min-height: 34px !important; width: 34px; padding: 0 !important; justify-content: center; flex: 0 0 auto; }
+  .pos-new-customer-btn > span { display: none; }
+
+  /* Tables become stacked cards on phones (no sideways scrolling). */
+  .orders-table-wrap:has(> .responsive-table) {
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .orders-table.responsive-table { min-width: 0; display: block; }
+  .responsive-table thead { display: none; }
+  .responsive-table tbody { display: grid; gap: 10px; }
+  .responsive-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 12px 14px;
+    background: #fff;
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  .responsive-table tbody tr:hover { background: #fff; }
+  .responsive-table td {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 12px;
+    justify-items: end;
+    align-items: center;
+    text-align: right;
+    padding: 0 !important;
+    border: 0 !important;
+    white-space: normal;
+    font-size: 13px;
+    width: auto !important;
+  }
+  .responsive-table td::before {
+    content: attr(data-label);
+    justify-self: start;
+    grid-row: span 2;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  /* First cell is the card title; status pill sits beside it. */
+  .responsive-table td:first-child {
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+    text-align: left;
+    font-size: 15px;
+  }
+  .responsive-table td:first-child::before,
+  .responsive-table td[data-label$="Status"]::before,
+  .responsive-table td[data-label="Actions"]::before,
+  .responsive-table td[data-label="Workspace"]::before { content: none; }
+  .responsive-table td[data-label$="Status"] { grid-column: 2; grid-row: 1; grid-template-columns: auto; }
+  .responsive-table td[data-label="Actions"],
+  .responsive-table td[data-label="Workspace"] {
+    grid-template-columns: auto;
+    margin-top: 4px;
+    padding-top: 10px !important;
+    border-top: 1px dashed #e2e8f0 !important;
+  }
+  .responsive-table td[data-label="Actions"] .button,
+  .responsive-table td[data-label="Workspace"] .button { min-height: 36px !important; padding: 0 14px !important; font-size: 12px !important; }
+  .responsive-table td[data-label="Actions"] .icon-button { width: 36px !important; height: 36px !important; }
 }

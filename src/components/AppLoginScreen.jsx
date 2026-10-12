@@ -176,7 +176,7 @@ export default function AppLoginScreen({
         <div
           style={{
             background: '#0f172a',
-            padding: '28px 24px 20px',
+            padding: '44px 24px 20px',
             textAlign: 'center',
             color: '#fff',
             position: 'relative',

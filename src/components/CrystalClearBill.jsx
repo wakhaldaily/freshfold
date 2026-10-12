@@ -51,7 +51,10 @@ export function BarcodeSvg({ text = 'W1235', height = 34 }) {
 function formatDayAndDate(dateStr) {
   if (!dateStr) return { date: '—', time: '—', day: '—', fullDelivery: '—' };
   try {
-    const d = new Date(dateStr);
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(String(dateStr));
+    const d = dateOnly
+      ? new Date(Number(dateStr.slice(0, 4)), Number(dateStr.slice(5, 7)) - 1, Number(dateStr.slice(8, 10)))
+      : new Date(dateStr);
     if (isNaN(d.getTime())) return { date: String(dateStr), time: '', day: '', fullDelivery: String(dateStr) };
     
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -70,7 +73,7 @@ function formatDayAndDate(dateStr) {
 
     const dateFormatted = `${day} ${month} ${year}`;
     const timeFormatted = `H ${hours}:${minutes}:${seconds} ${ampm}`;
-    const deliveryFormatted = `${day} ${month} ${year} ${hours}:${minutes} ${ampm} /`;
+    const deliveryFormatted = dateOnly ? `${day} ${month} ${year} /` : `${day} ${month} ${year} ${hours}:${minutes} ${ampm} /`;
 
     return {
       date: dateFormatted,
@@ -95,10 +98,10 @@ export default function CrystalClearBill({
   const storeName = settings?.storeName || 'Crystal Clear Dry Cleaning';
   const storeAddress = settings?.address || 'Near Union Bank, Wazirabad, Gurgaon-122004';
   const taxEnabled = settings?.taxEnabled !== false;
-  const taxNumber = settings?.taxNumber || '06AIEPK5981E1Z8';
+  const taxNumber = settings?.taxNumber || '';
   const expressPercent = Number(settings?.expressDeliveryPercent ?? 25);
 
-  const orderNo = order.orderNo || order.id || 'W1235';
+  const orderNo = order.orderNo || order.id || '';
   const createdAtMeta = formatDayAndDate(order.createdAt || new Date().toISOString());
   const dueMeta = formatDayAndDate(order.dueDate || new Date().toISOString());
 
@@ -122,9 +125,11 @@ export default function CrystalClearBill({
   const taxableSubtotal = Math.max(0, grossAmount - discountAmount) + expressAmount;
   const taxAmount = taxEnabled ? Number(order.taxAmount || 0) : 0;
   const taxPercent = taxEnabled ? Number(order.taxPercent || 18) : 0;
-  const halfTax = taxAmount / 2;
+  // CGST/SGST halves that always add up to the tax amount.
+  const halfTax = Math.round((taxAmount / 2) * 100) / 100;
+  const otherHalfTax = Math.round((taxAmount - halfTax) * 100) / 100;
 
-  const totalAmount = Number(order.totalAmount || (taxableSubtotal + taxAmount));
+  const totalAmount = Number(order.totalAmount ?? (taxableSubtotal + taxAmount));
   const paidAmount = Number(order.paidAmount || 0);
   const prevDueVal = Number(previousDue || 0);
   const balanceDue = Math.max(0, prevDueVal + (totalAmount - paidAmount));
@@ -133,6 +138,20 @@ export default function CrystalClearBill({
   // Round off calculation if any
   const calculatedSum = taxableSubtotal + taxAmount;
   const roundOff = Math.round((totalAmount - calculatedSum) * 100) / 100;
+
+  // Spread the order discount across lines by amount; the last line takes the rounding remainder.
+  const lineAmounts = items.map((it) => (Number(it.quantity) || 1)
+    * ((Number(it.unitPrice) || 0) + (it.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0)));
+  const lineSum = lineAmounts.reduce((a, b) => a + b, 0);
+  const allocatable = Math.min(discountAmount, lineSum);
+  let allocated = 0;
+  const lineDiscounts = lineAmounts.map((amt, i) => {
+    if (lineSum <= 0) return 0;
+    if (i === lineAmounts.length - 1) return Math.round((allocatable - allocated) * 100) / 100;
+    const share = Math.round(((amt / lineSum) * allocatable) * 100) / 100;
+    allocated += share;
+    return share;
+  });
 
   // Garment preference note
   const packagingPref = customer?.preference && customer.preference !== 'NA'
@@ -227,7 +246,7 @@ export default function CrystalClearBill({
               color: '#000000',
             }}
           >
-            * {orderNo}-3 *
+            * {orderNo} *
           </div>
         </div>
 
@@ -236,12 +255,16 @@ export default function CrystalClearBill({
           <div style={{ fontWeight: 700 }}>
             {customer?.salutation ? `${customer.salutation} ` : ''}{customer?.name || 'Valued Customer'}-
           </div>
-          <div style={{ color: '#111111' }}>
-            {customer?.address || 'A 65A first floor sec 57 sushant lok 3'}
-          </div>
-          <div style={{ fontWeight: 600, marginTop: '2px' }}>
-            Place of Supply- {customer?.state || 'Haryana'}
-          </div>
+          {customer?.address && (
+            <div style={{ color: '#111111' }}>
+              {customer.address}
+            </div>
+          )}
+          {customer?.state && (
+            <div style={{ fontWeight: 600, marginTop: '2px' }}>
+              Place of Supply- {customer.state}
+            </div>
+          )}
         </div>
       </div>
 
@@ -385,11 +408,10 @@ export default function CrystalClearBill({
           ) : (
             items.map((item, idx) => {
               const qty = Number(item.quantity) || 1;
-              const unitPrice = Number(item.unitPrice) || 0;
+              const addonExtra = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
+              const unitPrice = (Number(item.unitPrice) || 0) + addonExtra;
               const itemAmt = qty * unitPrice;
-              const itemDis = discountPercent > 0
-                ? Math.round((itemAmt * (discountPercent / 100)) * 100) / 100
-                : 0;
+              const itemDis = lineDiscounts[idx] || 0;
               const itemTotal = Math.max(0, itemAmt - itemDis);
 
               // Prefix category if available (e.g. "Women - KAMEEZ WOM")
@@ -459,7 +481,7 @@ export default function CrystalClearBill({
           Terms and Conditions &nbsp; Booked By : {cashierName}
           {taxEnabled && taxAmount > 0 && (
             <span style={{ fontWeight: 500, marginLeft: '6px' }}>
-              ( CGST: {halfTax.toFixed(2)}, SGST: {halfTax.toFixed(2)} = {taxAmount.toFixed(2)} )
+              ( CGST: {halfTax.toFixed(2)}, SGST: {otherHalfTax.toFixed(2)} = {taxAmount.toFixed(2)} )
             </span>
           )}
         </div>
@@ -504,7 +526,7 @@ export default function CrystalClearBill({
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
                 <span style={{ fontWeight: 700 }}>SGST ({(taxPercent / 2).toFixed(0)}%)</span>
-                <span style={{ fontWeight: 600 }}>{halfTax.toFixed(2)}</span>
+                <span style={{ fontWeight: 600 }}>{otherHalfTax.toFixed(2)}</span>
               </div>
             </>
           )}

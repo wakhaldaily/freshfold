@@ -11,6 +11,9 @@ export default function DashboardView({
   setOrderStatusFilter,
   dashboardStats,
 }) {
+  // Only orders still at the counter: delivered and cancelled ones live in Order History.
+  const activeQueue = data.orders.filter((o) => ['Received', 'Processing', 'Ready'].includes(o.status)).slice(0, 8);
+
   return (
     <div className="dashboard-layout">
       {/* Executive Welcome & Action Banner */}
@@ -122,8 +125,15 @@ export default function DashboardView({
           </button>
         </div>
 
+        {activeQueue.length === 0 && (
+          <div className="empty-state">
+            <strong>No orders waiting at the counter</strong>
+            <span>New orders appear here until they are delivered.</span>
+          </div>
+        )}
+
         {/* Desktop View Table (> 768px) */}
-        <div className="desktop-only orders-table-wrap">
+        {activeQueue.length > 0 && <div className="desktop-only orders-table-wrap">
           <table className="orders-table">
             <thead>
               <tr>
@@ -138,7 +148,7 @@ export default function DashboardView({
               </tr>
             </thead>
             <tbody>
-              {data.orders.slice(0, 6).map((o) => {
+              {activeQueue.map((o) => {
                 const cust = data.customers.find((c) => c.id === o.customerId);
                 return (
                   <tr key={o.id}>
@@ -193,11 +203,11 @@ export default function DashboardView({
               })}
             </tbody>
           </table>
-        </div>
+        </div>}
 
         {/* Mobile View Card List (<= 768px) */}
-        <div className="mobile-only mobile-queue-list">
-          {data.orders.slice(0, 6).map((o) => {
+        {activeQueue.length > 0 && <div className="mobile-only mobile-queue-list">
+          {activeQueue.map((o) => {
             const cust = data.customers.find((c) => c.id === o.customerId);
             return (
               <div key={o.id} className="mobile-queue-item">
@@ -264,7 +274,7 @@ export default function DashboardView({
               </div>
             );
           })}
-        </div>
+        </div>}
       </div>
     </div>
   );

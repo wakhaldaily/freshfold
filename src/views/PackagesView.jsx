@@ -26,7 +26,7 @@ export default function PackagesView({
 
       <div className="packages-catalog-grid">
         {data.packages.map((pkg) => (
-          <div key={pkg.id} className="detail-card" style={{ padding: '20px' }}>
+          <div key={pkg.id} className="detail-card package-plan-card" style={{ padding: '20px' }}>
             <div className="card-heading">
               <h3>{pkg.name}</h3>
               <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#eff6ff', color: '#1d4ed8' }}>
@@ -34,7 +34,7 @@ export default function PackagesView({
               </span>
             </div>
             <p className="note-copy" style={{ margin: '8px 0 14px' }}>{pkg.description}</p>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #eee' }}>
+            <div className="package-plan-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #eee' }}>
               <strong style={{ fontSize: '16px', color: '#0f172a' }}>{formatMoney(pkg.price)}</strong>
               <span style={{ fontSize: '12px', color: '#2563eb', fontWeight: 700 }}>
                 {pkg.kind === 'wallet'

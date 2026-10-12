@@ -26,6 +26,7 @@ import {
 } from '../lib/pdfGenerator.js';
 import { formatMoney, getShareableBillUrl } from '../lib/persistence.js';
 import CrystalClearBill from './CrystalClearBill.jsx';
+import ScaledToFit from './ScaledToFit.jsx';
 import { useEscapeKey } from '../lib/a11y.js';
 
 export default function ThermalReceiptModal({
@@ -85,8 +86,9 @@ export default function ThermalReceiptModal({
     try {
       // Loaded on demand; html2canvas is large and only needed for image sharing.
       const { default: html2canvas } = await import('html2canvas');
+      const fit = Number(el.closest('[data-fit-scale]')?.dataset.fitScale || 1);
       const canvas = await html2canvas(el, {
-        scale: 2,
+        scale: 2 / (fit > 0 ? fit : 1),
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
@@ -630,6 +632,7 @@ export default function ThermalReceiptModal({
           }}
         >
           {format === 'standard' ? (
+            <ScaledToFit width={820} className="invoice-fit">
             <div
               id="print-invoice"
               className="invoice-paper crystal-clear-print"
@@ -651,6 +654,7 @@ export default function ThermalReceiptModal({
                 previousDue={0}
               />
             </div>
+            </ScaledToFit>
           ) : (
             /* Authentic 80mm Thermal Paper Roll */
             <div

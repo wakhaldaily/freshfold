@@ -514,6 +514,7 @@ export default function App() {
 
         {/* Topbar */}
         <AppTopbar
+          data={data}
           view={view}
           setView={setView}
           setModal={setModal}

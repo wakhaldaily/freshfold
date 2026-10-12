@@ -3,6 +3,7 @@ import { ChevronRight, Lock, LogOut, Menu, PanelLeft, PanelLeftClose, Search, X 
 import { formatMoney, isRemoteMode } from '../lib/persistence.js';
 
 export default function AppTopbar({
+  data,
   view,
   setView,
   setModal,
@@ -46,7 +47,7 @@ export default function AppTopbar({
           {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
         </button>
         <div className="breadcrumb desktop-only">
-          <span>Clean Clear Dry Cleaning</span>
+          <span>{data?.settings?.storeName || 'Clean Clear Dry Cleaning'}</span>
           <ChevronRight size={14} />
           <strong>
             {view === 'dashboard' && 'Counter Dashboard'}
@@ -65,7 +66,8 @@ export default function AppTopbar({
           <Search size={16} />
           <input
             type="search"
-            placeholder="Search by customer name, mobile phone number, or ID..."
+            placeholder="Search customers"
+            aria-label="Search customers by name or mobile"
             value={globalSearch}
             onChange={(e) => setGlobalSearch(e.target.value)}
           />
@@ -108,7 +110,7 @@ export default function AppTopbar({
 
         <div className={`sync-state desktop-only ${isRemoteMode() ? 'sync-online' : ''}`}>
           <span className="sync-dot" />
-          <span>{isRemoteMode() ? 'Neon DB Active' : 'Local Storage Ready'}</span>
+          <span>{isRemoteMode() ? 'Online · Synced' : 'Offline demo mode'}</span>
         </div>
 
         {adminUser ? (
