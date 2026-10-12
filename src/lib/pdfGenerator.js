@@ -57,7 +57,7 @@ export function generateThermalReceiptPdf({
     footer: settings?.receiptFooter || 'Thank you for choosing Clean Clear Dry Cleaning! Goods not collected within 30 days are not store liability.',
   };
 
-  const items = Array.isArray(order.items) ? order.items : [];
+  const items = (Array.isArray(order.items) ? order.items : []).filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge');
   const isWeight = order.type === 'weight';
 
   // Calculate dynamic receipt height based on lines
@@ -286,13 +286,6 @@ export function generateThermalReceiptPdf({
     y += 3.6;
   }
 
-  if (order.expressAmount > 0) {
-    const expressLabel = order.expressLabel ? `${order.expressLabel.slice(0, 24)}:` : `Early Delivery (+${order.expressPercent}%):`;
-    doc.text(expressLabel, 40, y, { align: 'right' });
-    doc.text(`+${formatMoneyPdf(order.expressAmount)}`, rightX, y, { align: 'right' });
-    y += 3.6;
-  }
-
   if (store.taxEnabled && tax > 0) {
     if (store.splitGst) {
       const halfRate = (store.taxPercent / 2).toFixed(1);
@@ -421,7 +414,7 @@ export function generateStandardInvoicePdf({
   const taxEnabled = settings?.taxEnabled !== false;
   const expressPercent = Number(settings?.expressDeliveryPercent ?? 25);
 
-  const items = Array.isArray(order.items) ? order.items : [];
+  const items = (Array.isArray(order.items) ? order.items : []).filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge');
   const isWeight = order.type === 'weight';
   const orderNo = order.orderNo || order.id || 'W1235';
 
@@ -629,21 +622,6 @@ export function generateStandardInvoicePdf({
     });
   }
 
-  // Early Delivery row
-  if (expressAmount > 0) {
-    y += 4;
-    doc.setFont('helvetica', 'bold');
-    doc.text(`⚡ ${order.expressLabel || 'Early Delivery Surcharge'}`.slice(0, 32), 10, y);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Turnaround Surcharge', 65, y);
-    doc.text('1', 120, y, { align: 'center' });
-    doc.text(expressAmount.toFixed(0), 138, y, { align: 'right' });
-    doc.text(expressAmount.toFixed(2), 158, y, { align: 'right' });
-    doc.text('0.00', 178, y, { align: 'right' });
-    doc.setFont('helvetica', 'bold');
-    doc.text(expressAmount.toFixed(2), 200, y, { align: 'right' });
-  }
-
   y += 2;
   doc.line(10, y, 200, y);
 
@@ -818,7 +796,7 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
     }
   } else if (Array.isArray(order.items)) {
     text += `*ITEMS:*\n`;
-    order.items.forEach((item) => {
+    order.items.filter((item) => !item.isSurcharge && item.category !== 'Service Surcharge').forEach((item) => {
       const addonExtra = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
       const lineUnit = Number(item.unitPrice || 0) + addonExtra;
       const lineTot = item.quantity * lineUnit;
@@ -837,9 +815,6 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
   text += `Gross Amount: ₹${order.grossAmount?.toFixed(2) || '0.00'}\n`;
   if (order.discountAmount > 0) {
     text += `Discount (${order.discountName || `${order.discountPercent}%`}): -₹${order.discountAmount.toFixed(2)}\n`;
-  }
-  if (order.expressAmount > 0) {
-    text += `⚡ ${order.expressLabel || `Early Delivery (+${order.expressPercent}%)`}: +₹${order.expressAmount.toFixed(2)}\n`;
   }
   if (settings?.taxEnabled !== false && order.taxAmount > 0) {
     text += `Tax (${settings?.taxLabel || 'GST'} ${settings?.taxPercent || 18}%): ₹${order.taxAmount.toFixed(2)}\n`;

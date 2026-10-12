@@ -416,28 +416,57 @@ export default function PosRegister({
 
   const handleSwitchTab = (tab) => {
     setMobilePosTab(tab);
-    // FreshFold scrolls via .main-shell, not window
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       const mainShell = document.querySelector('.main-shell');
       if (mainShell) {
         mainShell.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
-
       if (tab === 'ticket') {
         const ticketPanel = document.getElementById('pos-ticket-panel');
         if (ticketPanel) {
           ticketPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       }
-    });
+    }, 40);
   };
+
+  // Ensure main shell scrolls cleanly to top when tab changes
+  useEffect(() => {
+    const mainShell = document.querySelector('.main-shell');
+    if (mainShell) {
+      mainShell.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [mobilePosTab]);
 
   return (
     <div className="pos-register-container">
-      {/* Top Header & Customer Selector Bar */}
-      <div className="pos-register-header-bar">
+      {/* Mobile-Only Tab Switcher at the VERY TOP */}
+      <div className="pos-mobile-nav-tabs">
+        <button
+          type="button"
+          className={mobilePosTab === 'catalog' ? 'active' : ''}
+          onClick={() => handleSwitchTab('catalog')}
+        >
+          <Shirt size={15} /> <span>Clothes & Services</span>
+        </button>
+        <button
+          type="button"
+          className={mobilePosTab === 'ticket' ? 'active' : ''}
+          onClick={() => handleSwitchTab('ticket')}
+        >
+          <ReceiptText size={15} /> <span>Ticket & Checkout</span>
+          {((orderType === 'pieces' && cartItems.length > 0) || (orderType === 'weight' && Number(weightKg) > 0)) && (
+            <span className="pos-tab-badge">
+              {orderType === 'pieces' ? cartItems.reduce((s, it) => s + it.quantity, 0) : '1'}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Top Header & Customer Selector Bar (Hidden on Mobile Ticket View) */}
+      <div className={`pos-register-header-bar ${mobilePosTab === 'ticket' ? 'hidden-mobile' : ''}`}>
         <div className="pos-header-top-row">
           <div className="pos-header-title-group">
             {onBack && (
@@ -596,29 +625,6 @@ export default function PosRegister({
             )}
           </div>
         )}
-      </div>
-
-      {/* Mobile-Only Tab Switcher (Catalog vs Order Ticket) */}
-      <div className="pos-mobile-nav-tabs">
-        <button
-          type="button"
-          className={mobilePosTab === 'catalog' ? 'active' : ''}
-          onClick={() => handleSwitchTab('catalog')}
-        >
-          <Shirt size={15} /> <span>Clothes & Services</span>
-        </button>
-        <button
-          type="button"
-          className={mobilePosTab === 'ticket' ? 'active' : ''}
-          onClick={() => handleSwitchTab('ticket')}
-        >
-          <ReceiptText size={15} /> <span>Ticket & Checkout</span>
-          {((orderType === 'pieces' && cartItems.length > 0) || (orderType === 'weight' && Number(weightKg) > 0)) && (
-            <span className="pos-tab-badge">
-              {orderType === 'pieces' ? cartItems.reduce((s, it) => s + it.quantity, 0) : '1'}
-            </span>
-          )}
-        </button>
       </div>
 
       {/* Main 2-Column POS Layout: Intake on Left, Live Cart Ticket on Right */}

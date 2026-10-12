@@ -81,8 +81,8 @@ export default function ThermalReceiptModal({
 
   if (!isOpen || !order) return null;
 
-  const isWeight = order.type === 'weight';
-  const items = Array.isArray(order.items) ? order.items : [];
+  const rawItems = Array.isArray(order.items) ? order.items : [];
+  const items = rawItems.filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge');
   const gross = Number(order.grossAmount || 0);
   const discount = Number(order.discountAmount || 0);
   const taxable = gross - discount;
@@ -928,13 +928,6 @@ export default function ThermalReceiptModal({
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748b' }}>{settings?.taxEnabled ? 'Taxable Subtotal:' : 'Subtotal:'}</span>
                   <strong>{formatMoney(taxable)}</strong>
-                </div>
-              )}
-
-              {order.expressAmount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b45309' }}>
-                  <span>⚡ {order.expressLabel || `Early Delivery (+${order.expressPercent}%)`}:</span>
-                  <strong>+{formatMoney(order.expressAmount)}</strong>
                 </div>
               )}
 

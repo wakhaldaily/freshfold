@@ -19,7 +19,7 @@ import {
 } from '../src/lib/packageDiscountEngine.js';
 
 import { createInitialData, initialPackageCatalog } from '../src/data.js';
-import { generateThermalReceiptPdf } from '../src/lib/pdfGenerator.js';
+import { generateThermalReceiptPdf, getReceiptShareText } from '../src/lib/pdfGenerator.js';
 
 test('1. Full Customer Profile creation with all 15+ fields & persistence', async () => {
   let store = createInitialData();
@@ -489,6 +489,15 @@ test('9. Early Delivery Surcharge calculation (e.g. 25%) and invoice verificatio
   assert.equal(order.expressAmount, 200, 'Express surcharge must be 25% of taxable subtotal (800 * 0.25 = 200)');
   assert.equal(order.taxAmount, 180, 'GST 18% on 1000 = 180');
   assert.equal(order.totalAmount, 1180, 'Grand total must equal 1000 subtotal + 180 tax = 1180');
+
+  const shareText = getReceiptShareText({
+    order,
+    customer,
+    settings: store.settings,
+    payments: [],
+  });
+  assert.equal(shareText.includes('⚡ Early Delivery'), false, 'Receipt share text must not display separate Early Delivery line');
+  assert.equal(shareText.includes('*NET TOTAL: ₹1180.00*'), true, 'Receipt share text must include full total with surcharge');
 });
 
 test('10. GST is completely suppressed across tickets, orders and persistence when disabled by admin', async () => {

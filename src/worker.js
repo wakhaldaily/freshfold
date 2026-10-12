@@ -370,19 +370,6 @@ async function handleApi(request, env) {
       const expressLabel = body.expressLabel || (expressPercent > 0 ? `Early Delivery (+${expressPercent}%)` : '');
       const subtotal = subtotalBeforeExpress + expressAmount;
 
-      if (expressAmount > 0 && Array.isArray(items)) {
-        items.push({
-          id: id('surcharge'),
-          name: expressLabel || 'Early Delivery Surcharge',
-          category: 'Service Surcharge',
-          service: serviceName,
-          unitPrice: expressAmount,
-          quantity: 1,
-          isSurcharge: true,
-          status: 'Applied',
-        });
-      }
-
       // Tax engine (strictly respects store settings and payload flag)
       const settingsRows = await sql`SELECT config FROM store_settings WHERE id = 'current' LIMIT 1`.catch(() => []);
       const currentSettings = { ...fallbackSettings, ...(settingsRows[0]?.config || {}) };

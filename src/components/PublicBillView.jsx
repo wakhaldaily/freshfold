@@ -316,7 +316,7 @@ export default function PublicBillView({ billParam, tokenParam, localData }) {
               </div>
             ) : (
               <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
-                {(order.items || []).map((item, idx) => {
+                {(order.items || []).filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge').map((item, idx) => {
                   const addonExtra = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
                   const lineTotal = item.quantity * (Number(item.unitPrice || 0) + addonExtra);
                   const tags = [item.brand ? `Brand: ${item.brand}` : '', item.color ? `Color: ${item.color}` : '', ...(item.defects || [])].filter(Boolean);
@@ -370,13 +370,6 @@ export default function PublicBillView({ billParam, tokenParam, localData }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#16a34a', marginBottom: '6px' }}>
                   <span>Discount ({order.discountName || `${order.discountPercent}%`})</span>
                   <span>-{formatMoney(order.discountAmount)}</span>
-                </div>
-              )}
-
-              {order.expressAmount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#d97706', marginBottom: '6px' }}>
-                  <span>⚡ {order.expressLabel || `Early Delivery (+${order.expressPercent}%)`}</span>
-                  <span>+{formatMoney(order.expressAmount)}</span>
                 </div>
               )}
 

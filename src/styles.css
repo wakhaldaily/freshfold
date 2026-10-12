@@ -2816,6 +2816,11 @@ select, .styled-select {
 
 /* Tablet & Mobile Breakpoints for POS */
 @media (max-width: 980px) {
+  /* On mobile POS, let topbar scroll off so POS tabs & controls stick to top: 0 */
+  .topbar {
+    position: static !important;
+  }
+
   .pos-register-layout {
     grid-template-columns: 1fr !important;
   }
@@ -2924,23 +2929,29 @@ select, .styled-select {
     box-shadow: 0 2px 6px rgba(37, 99, 235, 0.4) !important;
   }
 
-  /* Navigation Tabs: Sticky under Topbar */
+  /* Navigation Tabs: Sticky at VERY TOP (top: 0) on Mobile */
   .pos-mobile-nav-tabs {
     display: flex !important;
     gap: 6px !important;
-    margin-bottom: 0 !important;
-    background: #f8fafc !important;
-    padding: 6px 4px !important;
-    border-radius: 8px 8px 0 0 !important;
+    margin: -6px -4px 6px -4px !important;
+    background: #ffffff !important;
+    padding: 4px 6px !important;
+    border-radius: 0 !important;
     position: sticky !important;
-    top: 48px !important;
-    z-index: 50 !important;
+    top: 0 !important;
+    z-index: 60 !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    max-height: 42px !important;
+    box-sizing: border-box !important;
+    border-bottom: 1px solid #e2e8f0 !important;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
   }
 
   .pos-mobile-nav-tabs button {
     flex: 1 !important;
-    min-height: 38px !important;
+    min-height: 34px !important;
+    height: 34px !important;
     border: none !important;
     background: transparent !important;
     border-radius: 6px !important;
@@ -2956,24 +2967,54 @@ select, .styled-select {
   }
 
   .pos-mobile-nav-tabs button.active {
-    background: #ffffff !important;
+    background: #eff6ff !important;
     color: #1d4ed8 !important;
     font-weight: 700 !important;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08) !important;
   }
 
-  /* Sticky controls containing Mode, Services, Search & Categories */
+  /* Sticky controls containing Mode, Services, Search & Categories: Flush under Tabs (top: 42px) */
   .pos-catalog-sticky-controls {
     display: flex !important;
     flex-direction: column !important;
-    gap: 8px !important;
+    gap: 6px !important;
     position: sticky !important;
-    top: 92px !important;
-    z-index: 48 !important;
+    top: 42px !important;
+    z-index: 55 !important;
     background: #ffffff !important;
-    padding: 8px 6px 6px !important;
+    padding: 6px 8px 6px !important;
     border-bottom: 1px solid #e2e8f0 !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.07) !important;
+    margin: -6px -4px 8px -4px !important;
+  }
+
+  .pos-service-bar {
+    gap: 6px !important;
+    padding-bottom: 0 !important;
+  }
+
+  .pos-mode-row {
+    margin-bottom: 0 !important;
+  }
+
+  .pos-mode-tabs {
+    gap: 4px !important;
+  }
+
+  .pos-mode-btn {
+    min-height: 28px !important;
+    padding: 3px 10px !important;
+    font-size: 11.5px !important;
+  }
+
+  .pos-service-pills {
+    gap: 4px !important;
+  }
+
+  .pos-service-pill {
+    min-height: 28px !important;
+    padding: 3px 10px !important;
+    font-size: 11.5px !important;
   }
 
   .pos-header-customer-badges {
@@ -2992,17 +3033,41 @@ select, .styled-select {
   .pos-filter-search-row {
     flex-direction: column !important;
     align-items: stretch !important;
-    gap: 8px !important;
+    gap: 6px !important;
     margin-bottom: 0 !important;
   }
 
   .pos-garment-search-box {
     width: 100% !important;
     min-width: 100% !important;
+    height: 34px !important;
+    padding: 4px 10px !important;
+    box-sizing: border-box !important;
   }
 
   .pos-category-scroll-strip {
+    gap: 4px !important;
     width: 100% !important;
+  }
+
+  .pos-cat-pill {
+    min-height: 26px !important;
+    padding: 3px 9px !important;
+    font-size: 11px !important;
+  }
+
+  .pos-register-header-bar {
+    padding: 8px 10px !important;
+    gap: 6px !important;
+    border-radius: 8px !important;
+  }
+
+  .pos-header-top-row {
+    gap: 6px !important;
+  }
+
+  .pos-page-title {
+    font-size: 15px !important;
   }
 
   .pos-garment-grid {
@@ -3057,7 +3122,14 @@ select, .styled-select {
   [data-theme="dark"] .pos-mobile-nav-tabs,
   body.dark-mode .pos-mobile-nav-tabs {
     background: #0f172a !important;
+    border-bottom-color: #1e293b !important;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  [data-theme="dark"] .pos-mobile-nav-tabs button.active,
+  body.dark-mode .pos-mobile-nav-tabs button.active {
+    background: #1e293b !important;
+    color: #60a5fa !important;
   }
 
   [data-theme="dark"] .pos-catalog-sticky-controls,
@@ -3091,7 +3163,13 @@ select, .styled-select {
 
   .pos-mobile-nav-tabs {
     background: #0f172a !important;
+    border-bottom-color: #1e293b !important;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .pos-mobile-nav-tabs button.active {
+    background: #1e293b !important;
+    color: #60a5fa !important;
   }
 
   .pos-catalog-sticky-controls {

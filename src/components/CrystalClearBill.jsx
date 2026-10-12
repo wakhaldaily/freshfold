@@ -103,7 +103,8 @@ export default function CrystalClearBill({
   const createdAtMeta = formatDayAndDate(order.createdAt || new Date().toISOString());
   const dueMeta = formatDayAndDate(order.dueDate || new Date().toISOString());
 
-  const items = Array.isArray(order.items) ? order.items : [];
+  const rawItems = Array.isArray(order.items) ? order.items : [];
+  const items = rawItems.filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge');
   const isWeight = order.type === 'weight';
 
   // Total pieces
@@ -438,22 +439,6 @@ export default function CrystalClearBill({
             })
           )}
 
-          {/* Early Delivery Surcharge Row if applied */}
-          {expressAmount > 0 && (
-            <tr>
-              <td style={{ padding: '6px 4px', fontWeight: 700, color: '#000000' }}>
-                ⚡ {order.expressLabel || `Early Delivery (+${order.expressPercent}%)`}
-              </td>
-              <td style={{ padding: '6px 4px' }}>
-                Priority Turnaround
-              </td>
-              <td style={{ padding: '6px 4px', textAlign: 'center' }}>1</td>
-              <td style={{ padding: '6px 4px', textAlign: 'right' }}>{expressAmount.toFixed(0)}</td>
-              <td style={{ padding: '6px 4px', textAlign: 'right' }}>{expressAmount.toFixed(2)}</td>
-              <td style={{ padding: '6px 4px', textAlign: 'right' }}>0.00</td>
-              <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 600 }}>{expressAmount.toFixed(2)}</td>
-            </tr>
-          )}
         </tbody>
       </table>
 
