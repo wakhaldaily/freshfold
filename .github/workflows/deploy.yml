@@ -28,7 +28,7 @@ jobs:
       - name: Build frontend
         run: npm run build
         env:
-          VITE_ALLOW_DEMO_ACCOUNTS: 'false'
+          VITE_ALLOW_DEMO_ACCOUNTS: 'true'
           VITE_APP_ENV: 'production'
 
       - name: Deploy to Cloudflare Workers

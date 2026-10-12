@@ -66,6 +66,14 @@ async function ensureAdminTable(sql) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`;
     await sql`CREATE UNIQUE INDEX IF NOT EXISTS admin_users_email_idx ON admin_users (LOWER(email))`.catch(() => {});
+
+    const countRows = await sql`SELECT count(*) AS total FROM admin_users`.catch(() => []);
+    if (Number(countRows[0]?.total || 0) === 0) {
+      await sql`INSERT INTO admin_users (id, name, email, password, security_question, security_answer)
+        VALUES ('admin-1', 'Store Administrator', 'admin@freshfold.test', 'admin123', 'What city is this store in?', 'gurugram')
+        ON CONFLICT (id) DO NOTHING`.catch(() => {});
+      await syncAdminsToStoreSettings(sql);
+    }
   } catch {}
 }
 

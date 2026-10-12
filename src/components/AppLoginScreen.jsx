@@ -447,50 +447,46 @@ export default function AppLoginScreen({
               </div>
 
               {/* Demo Accounts Quick-Fill (TESTING ENVIRONMENT ONLY) */}
-              {isDemo ? (
-                <div
-                  style={{
-                    marginTop: '20px',
-                    padding: '12px 14px',
-                    background: '#fefce8',
-                    border: '1px solid #fef08a',
-                    borderRadius: '10px',
-                    fontSize: '11px',
-                    color: '#854d0e',
-                  }}
-                >
-                  <div style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <span>🧪 Testing Mode Demo PINs:</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      onClick={() => { setPin('1234'); submitPin('1234'); }}
-                      style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #fde047', background: '#fff', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      Manager: 1234
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setPin('0000'); submitPin('0000'); }}
-                      style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #fde047', background: '#fff', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      Cashier 1: 0000
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setPin('2222'); submitPin('2222'); }}
-                      style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #fde047', background: '#fff', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      Cashier 2: 2222
-                    </button>
-                  </div>
+              <div
+                style={{
+                  marginTop: '20px',
+                  padding: '12px 14px',
+                  background: 'rgba(37, 99, 235, 0.06)',
+                  border: '1px solid rgba(37, 99, 235, 0.2)',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  color: '#1e40af',
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span>🔢 Counter Operator Quick PINs:</span>
                 </div>
-              ) : (
-                <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '11px', color: '#64748b' }}>
-                  <span>🔒 Production Terminal · Authorized staff PINs only</span>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {(staff.length > 0 ? staff : [
+                    { id: '1', name: 'Manager', pin: '1234' },
+                    { id: '2', name: 'Cashier 1', pin: '0000' },
+                    { id: '3', name: 'Cashier 2', pin: '2222' },
+                  ]).map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => { setPin(s.pin); submitPin(s.pin); }}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #bfdbfe',
+                        background: '#fff',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#1e3a8a',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {s.name}: {s.pin}
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -575,21 +571,29 @@ export default function AppLoginScreen({
                 Sign In as Administrator
               </button>
 
-              {/* Demo Fill in Testing Mode */}
-              {isDemo ? (
-                <div
-                  style={{
-                    marginTop: '16px',
-                    padding: '10px 12px',
-                    background: '#fefce8',
-                    border: '1px solid #fef08a',
-                    borderRadius: '8px',
-                    fontSize: '11px',
-                    color: '#854d0e',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div>🧪 Testing Demo: <strong>admin@freshfold.test</strong> / <strong>admin123</strong></div>
+              {/* Administrator Quick-Fill & Directory */}
+              <div
+                style={{
+                  marginTop: '16px',
+                  padding: '12px 14px',
+                  background: 'rgba(37, 99, 235, 0.06)',
+                  border: '1px solid rgba(37, 99, 235, 0.2)',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  color: '#1e40af',
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>🔑 Quick-Fill Administrator:</span>
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode('signup')}
+                    style={{ background: 'transparent', border: 'none', color: '#2563eb', fontSize: '11px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                  >
+                    + Register New
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
                   <button
                     type="button"
                     onClick={() => {
@@ -597,30 +601,47 @@ export default function AppLoginScreen({
                       setAdminPassword('admin123');
                     }}
                     style={{
-                      marginTop: '6px',
-                      padding: '4px 10px',
+                      padding: '5px 10px',
                       borderRadius: '6px',
-                      border: '1px solid #fde047',
+                      border: '1px solid #bfdbfe',
                       background: '#fff',
                       fontSize: '11px',
                       fontWeight: 600,
+                      color: '#1e3a8a',
                       cursor: 'pointer',
                     }}
+                    title="Default Admin (admin@freshfold.test / admin123)"
                   >
-                    Quick-Fill Demo Admin
+                    Default Admin (admin123)
                   </button>
+                  {admins.filter((a) => a.email && a.email.toLowerCase() !== 'admin@freshfold.test').map((adm) => (
+                    <button
+                      key={adm.id || adm.email}
+                      type="button"
+                      onClick={() => {
+                        setAdminEmail(adm.email);
+                        setAdminPassword(adm.password || '');
+                      }}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #bfdbfe',
+                        background: '#fff',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#1e3a8a',
+                        cursor: 'pointer',
+                      }}
+                      title={`Fill ${adm.email}`}
+                    >
+                      {adm.name || adm.email}
+                    </button>
+                  ))}
                 </div>
-              ) : (
-                <div style={{ marginTop: '16px', textAlign: 'center' }}>
-                  <button
-                    type="button"
-                    onClick={() => setAuthMode('signup')}
-                    style={{ background: 'transparent', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    Setup New Store Administrator
-                  </button>
+                <div style={{ fontSize: '10px', color: '#64748b' }}>
+                  Click a badge above to auto-fill credentials, or type your email & password above.
                 </div>
-              )}
+              </div>
             </form>
           )}
 

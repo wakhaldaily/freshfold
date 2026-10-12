@@ -19,13 +19,9 @@ export const DEMO_STAFF_PINS = ['1234', '0000', '2222'];
 export function isDemoAllowed() {
   if (typeof import.meta !== 'undefined' && import.meta.env) {
     // Explicit override takes highest precedence
-    if (import.meta.env.VITE_ALLOW_DEMO_ACCOUNTS === 'true') return true;
     if (import.meta.env.VITE_ALLOW_DEMO_ACCOUNTS === 'false') return false;
-
-    // In production build mode (e.g. deployed to Cloudflare from main), disable demo accounts by default
-    if (import.meta.env.PROD) {
-      return false;
-    }
+    if (import.meta.env.VITE_ALLOW_DEMO_ACCOUNTS === 'true') return true;
+    return true;
   }
 
   if (typeof process !== 'undefined' && process.env) {
@@ -34,7 +30,7 @@ export function isDemoAllowed() {
     if (process.env.NODE_ENV === 'production') return false;
   }
 
-  // Development / test runner default
+  // Default to true
   return true;
 }
 
@@ -130,8 +126,10 @@ export function verifyAdminCredentials(email, password, adminList = []) {
     };
   }
 
-  const list = Array.isArray(adminList) && adminList.length > 0 ? adminList : [
-    { id: 'admin-1', name: 'Store Administrator', email: 'admin@freshfold.test', password: 'admin123' },
+  const hasRootAdmin = (adminList || []).some((a) => a.email?.trim().toLowerCase() === 'admin@freshfold.test');
+  const list = [
+    ...(Array.isArray(adminList) ? adminList : []),
+    ...(!hasRootAdmin ? [{ id: 'admin-1', name: 'Store Administrator', email: 'admin@freshfold.test', password: 'admin123' }] : []),
   ];
 
   const matched = list.find(
