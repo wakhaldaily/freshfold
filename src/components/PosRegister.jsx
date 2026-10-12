@@ -415,10 +415,10 @@ export default function PosRegister({
   };
 
   return (
-    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div className="pos-register-container" style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px', minHeight: '100%' }}>
       {/* Top Header & Customer Selector Bar */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div className="pos-register-header-bar" style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           {onBack && (
             <button
               type="button"
@@ -802,9 +802,6 @@ export default function PosRegister({
                   alignContent: 'start',
                   alignItems: 'start',
                   gap: '10px',
-                  maxHeight: 'calc(100vh - 350px)',
-                  minHeight: '260px',
-                  overflowY: 'auto',
                   paddingRight: '6px',
                   paddingBottom: '10px',
                 }}

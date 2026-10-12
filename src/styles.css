@@ -1978,6 +1978,17 @@ select, .styled-select {
   display: none;
 }
 
+.pos-mobile-nav-tabs {
+  display: none;
+}
+
+/* Garment grid default styling */
+.pos-garment-grid {
+  max-height: calc(100vh - 350px);
+  min-height: 280px;
+  overflow-y: auto;
+}
+
 @media (max-width: 980px) {
   .mobile-cart-float-bar {
     display: flex;
@@ -2043,6 +2054,22 @@ select, .styled-select {
     color: #1d4ed8;
     font-weight: 700;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  }
+
+  /* On tablet & mobile, hidden-mobile hides the non-active tab completely */
+  .hidden-mobile {
+    display: none !important;
+  }
+
+  /* Remove fixed/constrained desktop maxHeight on mobile so cards take full height */
+  .pos-garment-grid {
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
+
+  .pos-column-catalog {
+    min-height: calc(100vh - 160px);
+    min-height: calc(100dvh - 160px);
   }
 }
 
@@ -2405,6 +2432,29 @@ select, .styled-select {
   .responsive-page-card {
     padding: 10px 6px !important;
     border-radius: 8px !important;
+  }
+
+  .pos-column-catalog {
+    padding: 10px 8px !important;
+    border-radius: 8px !important;
+  }
+
+  .pos-register-header-bar {
+    padding: 10px 8px !important;
+    border-radius: 8px !important;
+  }
+}
+
+/* Ensure POS Register container expands smoothly to full available viewport */
+.pos-register-container {
+  min-height: calc(100vh - 120px);
+  min-height: calc(100dvh - 120px);
+}
+
+@media (max-width: 768px) {
+  .pos-register-container {
+    min-height: calc(100vh - 80px);
+    min-height: calc(100dvh - 80px);
   }
 }
 
