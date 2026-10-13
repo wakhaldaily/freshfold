@@ -371,8 +371,8 @@ export default function PublicBillView({ billParam, tokenParam }) {
                 </div>
               )}
 
-              {/* The early/express delivery surcharge is intentionally not itemised here,
-                  matching the thermal receipt; it is already included in the Grand Total. */}
+              {/* The early/express delivery surcharge and checkout discount are intentionally not itemised here,
+                  matching the thermal receipt; their effect is already included in the Grand Total. */}
 
               {/* Tax is shown whenever it was actually charged on this order, so the total always adds up.
                   The rate comes from the order itself, not today's settings. */}

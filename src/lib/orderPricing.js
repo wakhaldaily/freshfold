@@ -114,6 +114,8 @@ export function computeTotals({
   expressAmount = 0,
   taxEnabled = true,
   taxPercent = 0,
+  manualCheckoutDiscountPercent = 0,
+  manualCheckoutDiscountAmount = 0,
 }) {
   const gross = Math.max(0, toPaise(grossAmount));
   const discount = Math.min(gross, Math.max(0, toPaise(discountAmount)));
@@ -128,6 +130,17 @@ export function computeTotals({
   const effectiveTaxPercent = taxEnabled ? clamp(taxPercent || 0, 0, 100) : 0;
   const tax = Math.round((taxableSubtotal * effectiveTaxPercent) / 100);
 
+  let totalPaise = taxableSubtotal + tax;
+  const manualPct = Math.round(clamp(manualCheckoutDiscountPercent || 0, 0, 100));
+  let manualAmtPaise = 0;
+  if (manualPct > 0) {
+    manualAmtPaise = Math.round((totalPaise * manualPct) / 100);
+  } else {
+    manualAmtPaise = Math.max(0, toPaise(manualCheckoutDiscountAmount));
+  }
+  if (manualAmtPaise > totalPaise) manualAmtPaise = totalPaise;
+  totalPaise = Math.max(0, totalPaise - manualAmtPaise);
+
   return {
     grossAmount: fromPaise(gross),
     discountAmount: fromPaise(discount),
@@ -138,7 +151,9 @@ export function computeTotals({
     taxEnabled: Boolean(taxEnabled),
     taxPercent: effectiveTaxPercent,
     taxAmount: fromPaise(tax),
-    totalAmount: fromPaise(taxableSubtotal + tax),
+    manualCheckoutDiscountPercent: manualPct,
+    manualCheckoutDiscountAmount: fromPaise(manualAmtPaise),
+    totalAmount: fromPaise(totalPaise),
   };
 }
 
@@ -257,8 +272,11 @@ export function priceOrder(input = {}, context = {}) {
     grossAmount,
     discountAmount: discount.discountAmount,
     expressPercent: input.expressPercent,
+    expressAmount: input.expressAmount,
     taxEnabled: storeSettings.taxEnabled ?? true,
     taxPercent: storeSettings.taxPercent ?? 18,
+    manualCheckoutDiscountPercent: input.manualCheckoutDiscountPercent,
+    manualCheckoutDiscountAmount: input.manualCheckoutDiscountAmount,
   });
 
   return {

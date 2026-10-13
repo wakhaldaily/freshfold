@@ -92,7 +92,8 @@ function mapCustomer(row) {
 
 const ORDER_NUMERIC = [
   'weightKg', 'grossAmount', 'discountAmount', 'discountPercent', 'expressPercent', 'expressAmount',
-  'taxAmount', 'taxPercent', 'totalAmount', 'paidAmount', 'balanceAmount',
+  'taxAmount', 'taxPercent', 'manualCheckoutDiscountPercent', 'manualCheckoutDiscountAmount',
+  'totalAmount', 'paidAmount', 'balanceAmount',
 ];
 
 function mapOrder(row) {
@@ -226,6 +227,8 @@ function orderExtra(body, priced) {
     weightClothesCount: Math.min(100000, Math.max(0, Math.floor(Number(body.weightClothesCount) || 0))),
     weightGarments: priced.type === 'weight' ? garments : [],
     weightAddons: priced.weightAddons,
+    manualCheckoutDiscountPercent: priced.manualCheckoutDiscountPercent || 0,
+    manualCheckoutDiscountAmount: priced.manualCheckoutDiscountAmount || 0,
   };
 }
 

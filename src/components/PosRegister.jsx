@@ -289,10 +289,68 @@ export default function PosRegister({
     : Number(activeExpressOption?.percent || 0);
 
   const taxEnabled = settings?.taxEnabled ?? true;
+  const [checkoutDiscountPercent, setCheckoutDiscountPercent] = useState('');
+  const checkoutDiscountPct = Math.round(Math.max(0, Math.min(100, Number(checkoutDiscountPercent) || 0)));
+
+  const handleCheckoutDiscountChange = (e) => {
+    const raw = e.target.value;
+    if (raw === '') {
+      setCheckoutDiscountPercent('');
+      return;
+    }
+    // Block fractions/decimals: extract only whole integer digits
+    let digits = String(raw).replace(/\D/g, '');
+    if (!digits) {
+      setCheckoutDiscountPercent('');
+      return;
+    }
+    // Ignore initial 0 and replace with newly entered number (e.g. "05" -> "5")
+    if (digits.length > 1 && digits.startsWith('0')) {
+      digits = digits.replace(/^0+/, '') || '0';
+    }
+    const intVal = parseInt(digits, 10);
+    if (isNaN(intVal)) {
+      setCheckoutDiscountPercent('');
+    } else if (intVal > 100) {
+      setCheckoutDiscountPercent(100);
+    } else if (intVal < 0) {
+      setCheckoutDiscountPercent(0);
+    } else {
+      setCheckoutDiscountPercent(intVal);
+    }
+  };
+
+  const handleCheckoutDiscountKeyDown = (e) => {
+    // Block fraction decimal point (.), comma (,), sign keys (+, -), and exponent (e, E)
+    if (e.key === '.' || e.key === ',' || e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
+      e.preventDefault();
+      return;
+    }
+    // If the input is currently 0 and user types another digit (1-9), ignore initial 0 and replace it
+    if ((checkoutDiscountPercent === 0 || checkoutDiscountPercent === '0') && /^[1-9]$/.test(e.key)) {
+      e.preventDefault();
+      setCheckoutDiscountPercent(parseInt(e.key, 10));
+    }
+  };
+
+  const handleCheckoutDiscountFocus = (e) => {
+    // Auto-select text on focus so typing immediately overwrites initial 0
+    e.target.select();
+  };
+
+  const handleCheckoutDiscountBlur = () => {
+    if (checkoutDiscountPercent === '' || isNaN(Number(checkoutDiscountPercent))) {
+      setCheckoutDiscountPercent('');
+    } else {
+      setCheckoutDiscountPercent(Math.round(Number(checkoutDiscountPercent)));
+    }
+  };
+
   const {
     expressAmount,
     taxPercent,
     taxAmount,
+    manualCheckoutDiscountAmount: checkoutDiscountAmount,
     totalAmount: grandTotal,
   } = computeTotals({
     grossAmount,
@@ -300,6 +358,7 @@ export default function PosRegister({
     expressPercent,
     taxEnabled,
     taxPercent: settings?.taxPercent ?? 18,
+    manualCheckoutDiscountPercent: checkoutDiscountPct,
   });
 
   const handleSelectExpress = (optId) => {
@@ -367,10 +426,15 @@ export default function PosRegister({
         taxEnabled: Boolean(taxEnabled),
         taxAmount,
         taxPercent,
+        manualCheckoutDiscountPercent: checkoutDiscountPct,
+        manualCheckoutDiscountAmount: checkoutDiscountAmount,
         totalAmount: grandTotal,
         dueDate,
       };
       await onCompleteOrder(payload);
+
+      // Reset checkout discount for next order
+      setCheckoutDiscountPercent('');
 
       // Auto-advance sequence for the next order intake! (e.g. #w123 -> #w124)
       const nextSequenceNo = getNextOrderNo(activeOrderNo);
@@ -1745,6 +1809,73 @@ export default function PosRegister({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b', minWidth: 0 }}>
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{settings?.taxLabel || 'GST'} ({taxPercent}%):</span>
                 <span style={{ flexShrink: 0, fontWeight: 600 }}>+{formatMoney(taxAmount)}</span>
+              </div>
+            )}
+
+            {/* Checkout Discount Input (capped up to 100%) */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '12px',
+                color: '#334155',
+                minWidth: 0,
+                padding: '5px 0',
+                borderTop: '1px dashed #e2e8f0',
+              }}
+            >
+              <label
+                htmlFor="checkout-discount-input"
+                style={{
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Discount (%):
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                <input
+                  id="checkout-discount-input"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="0"
+                  value={checkoutDiscountPercent}
+                  onChange={handleCheckoutDiscountChange}
+                  onKeyDown={handleCheckoutDiscountKeyDown}
+                  onFocus={handleCheckoutDiscountFocus}
+                  onBlur={handleCheckoutDiscountBlur}
+                  style={{
+                    width: '64px',
+                    padding: '3px 6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    textAlign: 'right',
+                    outline: 'none',
+                  }}
+                  title="Enter whole discount percentage (0 to 100%, no fractions)"
+                />
+                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 700 }}>%</span>
+              </div>
+            </div>
+
+            {checkoutDiscountAmount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#16a34a', fontWeight: 600, minWidth: 0, paddingBottom: '2px' }}>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Discount ({checkoutDiscountPct}%):
+                </span>
+                <span style={{ flexShrink: 0 }}>-{formatMoney(checkoutDiscountAmount)}</span>
               </div>
             )}
 

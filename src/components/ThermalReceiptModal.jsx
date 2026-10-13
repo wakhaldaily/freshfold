@@ -913,6 +913,7 @@ export default function ThermalReceiptModal({
                 <strong>{formatMoney(gross)}</strong>
               </div>
 
+              {/* Checkout discount label is intentionally hidden on receipts; its deduction is reflected in Net Total */}
               {discount > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
                   <span>Discount ({order.discountName || `${order.discountPercent}%`}):</span>

@@ -99,6 +99,8 @@ function normalize(data, { remote = false } = {}) {
       expressAmount: number(row.expressAmount),
       taxAmount: number(row.taxAmount),
       taxPercent: number(row.taxPercent ?? (row.taxAmount > 0 ? 18 : 0)),
+      manualCheckoutDiscountPercent: number(row.manualCheckoutDiscountPercent),
+      manualCheckoutDiscountAmount: number(row.manualCheckoutDiscountAmount),
       totalAmount: number(row.totalAmount),
       paidAmount: number(row.paidAmount),
       balanceAmount: number(row.balanceAmount),
@@ -764,6 +766,8 @@ export async function createOrder(order, current) {
     expressAmount,
     taxPercent,
     taxAmount,
+    manualCheckoutDiscountPercent,
+    manualCheckoutDiscountAmount,
     totalAmount,
   } = computeTotals({
     grossAmount: order.grossAmount,
@@ -772,6 +776,8 @@ export async function createOrder(order, current) {
     expressAmount: order.expressAmount,
     taxEnabled: isTaxEnabled,
     taxPercent: settings.taxPercent || 0,
+    manualCheckoutDiscountPercent: order.manualCheckoutDiscountPercent,
+    manualCheckoutDiscountAmount: order.manualCheckoutDiscountAmount,
   });
   const expressLabel = order.expressLabel || (expressPercent > 0 ? `Early Delivery (+${expressPercent}%)` : '');
 
@@ -798,6 +804,8 @@ export async function createOrder(order, current) {
     expressLabel,
     taxAmount,
     taxPercent,
+    manualCheckoutDiscountPercent: manualCheckoutDiscountPercent || 0,
+    manualCheckoutDiscountAmount: manualCheckoutDiscountAmount || 0,
     totalAmount,
     paidAmount,
     balanceAmount,
