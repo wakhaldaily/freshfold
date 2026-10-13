@@ -12,6 +12,7 @@
     "deploy": "npm run build && wrangler deploy",
     "db:setup": "node scripts/setup-db.mjs",
     "db:schema": "node scripts/export-schema.mjs",
+    "clear:data": "node scripts/clear-production-data.mjs",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

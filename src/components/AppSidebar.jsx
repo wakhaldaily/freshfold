@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, Clock3, KeyRound, LayoutDashboard, Lock, Megaphone, Package, Settings, ShieldCheck, Shirt, ShoppingBag, Sparkles, UserRound, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock3, KeyRound, LayoutDashboard, Lock, Megaphone, Package, Settings, Share2, ShieldCheck, Shirt, ShoppingBag, Sparkles, UserRound, Users, X } from 'lucide-react';
 import { onActivateKey } from '../lib/a11y.js';
 
 export default function AppSidebar({
@@ -130,6 +130,19 @@ export default function AppSidebar({
         >
           <Megaphone size={18} />
           <span>Store Pamphlet</span>
+        </button>
+
+        <button
+          type="button"
+          className="nav-item"
+          onClick={() => {
+            setMobileMenuOpen(false);
+            setModal({ type: 'share-price-list' });
+          }}
+          data-tooltip="Share Customer Price List"
+        >
+          <Share2 size={18} />
+          <span>Price List & Link</span>
         </button>
 
         <button

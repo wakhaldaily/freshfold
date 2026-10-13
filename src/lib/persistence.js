@@ -5,7 +5,7 @@ import {
 import { getNextOrderNo, formatOrderNo } from './orderNumbers.js';
 import { computeTotals } from './orderPricing.js';
 import { buildPublicBillUrl } from './billSecurity.js';
-import { verifyAdminCredentials, verifyStaffPin } from './authConfig.js';
+import { clearActiveSession, isDemoAllowed, verifyAdminCredentials, verifyStaffPin } from './authConfig.js';
 
 export { getNextOrderNo, formatOrderNo };
 
@@ -14,6 +14,12 @@ const SESSION_STAFF_KEY = 'freshfold-current-staff';
 const SESSION_ADMIN_KEY = 'freshfold-admin-session';
 const AUTH_TOKEN_KEY = 'freshfold-auth-token';
 export const UNAUTHORIZED_EVENT = 'freshfold:unauthorized';
+
+export function clearStaffSession() {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(SESSION_STAFF_KEY);
+  } catch {}
+}
 
 // `remoteMode` is true when the Worker API reports a configured database.
 // In remote mode the server is the source of truth: nothing silently falls back to
@@ -35,33 +41,54 @@ function readStoredData() {
   }
 }
 
+export function isPackageExpired(expiresAt, refDate = new Date()) {
+  if (!expiresAt) return false;
+  const todayStr = refDate instanceof Date
+    ? refDate.toISOString().slice(0, 10)
+    : String(refDate).slice(0, 10);
+  return String(expiresAt).slice(0, 10) < todayStr;
+}
+
+export function deductWalletFromPackages(customerPackages, customerId, amount, newWalletBalance) {
+  let remainingToDeduct = amount;
+  return (customerPackages || []).map((cp) => {
+    if (cp.customerId !== customerId) return cp;
+    if (isPackageExpired(cp.expiresAt)) {
+      return { ...cp, status: 'disabled' };
+    }
+    if (cp.kind !== 'wallet' || cp.status === 'disabled') {
+      return cp;
+    }
+    const currentRem = cp.remainingCredit !== undefined && cp.remainingCredit !== null
+      ? Number(cp.remainingCredit)
+      : Number(cp.walletCredit || 0);
+    const take = Math.min(currentRem, Math.max(0, remainingToDeduct));
+    remainingToDeduct -= take;
+    const newRem = Math.max(0, currentRem - take);
+    const shouldDisable = newRem <= 0 || (newWalletBalance !== undefined && newWalletBalance <= 0);
+    return {
+      ...cp,
+      remainingCredit: newRem,
+      status: shouldDisable ? 'disabled' : cp.status,
+    };
+  });
+}
+
 function normalize(data, { remote = false } = {}) {
   const currentOrders = Array.isArray(data.orders) ? data.orders : [];
   const latestOrderNo = currentOrders[0]?.orderNo;
-  const initialNextOrderNo = data.settings?.nextOrderNo || (latestOrderNo ? getNextOrderNo(latestOrderNo) : 'B6164');
+  const initialNextOrderNo = data.settings?.nextOrderNo || (latestOrderNo ? getNextOrderNo(latestOrderNo) : 'B0001');
 
   let resolvedAdmins;
   if (remote) {
     // Server-provided directory only (never contains credentials).
     resolvedAdmins = Array.isArray(data.admins) ? data.admins : [];
+  } else if (Array.isArray(data.admins)) {
+    resolvedAdmins = data.admins;
+  } else if (Array.isArray(data.settings?.admins)) {
+    resolvedAdmins = data.settings.admins;
   } else {
-    const storedAdmins = readStoredData()?.admins;
-    const existingAdmins = Array.isArray(storedAdmins) ? storedAdmins : [];
-    const dataAdmins = Array.isArray(data.admins) && data.admins.length > 0
-      ? data.admins
-      : (Array.isArray(data.settings?.admins) ? data.settings.admins : []);
-    if (dataAdmins.length > 0) {
-      resolvedAdmins = [...dataAdmins];
-      for (const localAdm of existingAdmins) {
-        if (localAdm.email && !resolvedAdmins.some((a) => a.email?.toLowerCase() === localAdm.email?.toLowerCase())) {
-          resolvedAdmins.push(localAdm);
-        }
-      }
-    } else if (existingAdmins.length > 0) {
-      resolvedAdmins = existingAdmins;
-    } else {
-      resolvedAdmins = [...initialAdmins];
-    }
+    resolvedAdmins = isDemoAllowed() ? [...initialAdmins] : [];
   }
 
   const { admins: _settingsAdmins, ...settingsWithoutAdmins } = data.settings || {};
@@ -77,13 +104,14 @@ function normalize(data, { remote = false } = {}) {
   return {
     ...(remote && data.me ? { me: data.me } : {}),
     settings,
-    staff: Array.isArray(data.staff) && data.staff.length ? data.staff : (remote ? [] : [...defaultStaff]),
+    staff: Array.isArray(data.staff) ? data.staff : (isDemoAllowed() && !remote ? [...defaultStaff] : []),
     admins: resolvedAdmins,
     packages: (Array.isArray(data.packages) && data.packages.length > 0 ? data.packages : [...initialPackageCatalog]).map((pkg) => {
       const defaultMatch = initialPackageCatalog.find((d) => d.id === pkg.id);
       return {
         ...(defaultMatch || {}),
         ...pkg,
+        durationDays: pkg.durationDays !== undefined && pkg.durationDays !== null ? (Number(pkg.durationDays) > 0 ? Math.floor(Number(pkg.durationDays)) : null) : (defaultMatch?.durationDays || null),
         targetGarments: Array.isArray(pkg.targetGarments) ? pkg.targetGarments : (defaultMatch?.targetGarments || []),
         targetKeywords: pkg.targetKeywords || defaultMatch?.targetKeywords || [],
       };
@@ -105,13 +133,27 @@ function normalize(data, { remote = false } = {}) {
       paidAmount: number(row.paidAmount),
       balanceAmount: number(row.balanceAmount),
     })),
-    customerPackages: (data.customerPackages || []).map((row) => ({
-      ...row,
-      walletCredit: number(row.walletCredit),
-      discountPercent: number(row.discountPercent),
-      paidAmount: number(row.paidAmount),
-      expiresAt: row.expiresAt || null,
-    })),
+    customerPackages: (data.customerPackages || []).map((row) => {
+      const walletCredit = number(row.walletCredit);
+      const remainingCredit = row.remainingCredit !== undefined && row.remainingCredit !== null
+        ? number(row.remainingCredit)
+        : (row.kind === 'wallet' ? walletCredit : null);
+      const isExpired = isPackageExpired(row.expiresAt);
+      const customer = (data.customers || []).find((c) => c.id === row.customerId);
+      const isCreditDepleted = row.kind === 'wallet' && (remainingCredit <= 0 || (customer && Number(customer.walletBalance) <= 0));
+      const status = row.status === 'disabled' || isExpired || isCreditDepleted ? 'disabled' : (row.status || 'active');
+
+      return {
+        ...row,
+        walletCredit,
+        remainingCredit,
+        durationDays: row.durationDays ? Number(row.durationDays) : null,
+        discountPercent: number(row.discountPercent),
+        paidAmount: number(row.paidAmount),
+        expiresAt: row.expiresAt || null,
+        status,
+      };
+    }),
     payments: (data.payments || []).map((p) => ({ ...p, amount: number(p.amount) })),
     packageSales: (data.packageSales || []).map((s) => ({ ...s, amount: number(s.amount) })),
     walletTransactions: (data.walletTransactions || []).map((t) => ({ ...t, amount: number(t.amount) })),
@@ -134,7 +176,7 @@ export function loadLocal() {
   } catch (error) {
     console.warn('Could not read saved demo data.', error);
   }
-  const initial = createInitialData();
+  const initial = createInitialData({ demo: isDemoAllowed() });
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
   }
@@ -380,7 +422,7 @@ export function getCurrentStaff(allStaff = defaultStaff) {
       if (matched) return matched;
     }
   } catch {}
-  return allStaff[0] || defaultStaff[0];
+  return (allStaff && allStaff[0]) || (isDemoAllowed() ? defaultStaff[0] : null);
 }
 
 export function setCurrentStaff(staffMember) {
@@ -395,7 +437,8 @@ export async function saveStaff(newStaffList, current) {
     const staff = newStaffList.map(({ id, name, role, pin }) => ({ id, name, role, ...(pin ? { pin: String(pin) } : {}) }));
     return finishRemoteMutation('/api/staff', 'PUT', { staff });
   }
-  return saveLocal({ ...current, staff: newStaffList });
+  const base = loadLocal() || current || {};
+  return saveLocal({ ...base, staff: newStaffList });
 }
 
 // --- ADMIN SESSION & MANAGEMENT ---
@@ -471,7 +514,7 @@ export async function deleteAdmin(adminId, current) {
   }
   const currentAdmins = Array.isArray(current?.admins) && current.admins.length > 0
     ? current.admins
-    : [...initialAdmins];
+    : (isDemoAllowed() ? [...initialAdmins] : []);
   if (currentAdmins.length <= 1) {
     throw new Error('Cannot remove the last administrator. The shop must have at least one active administrator.');
   }
@@ -526,9 +569,10 @@ export async function updateAdminProfile(adminId, updates, current) {
     return finishRemoteMutation(`/api/admins/${encodeURIComponent(adminId)}`, 'PATCH', patchPayload);
   }
 
-  const currentAdmins = Array.isArray(current?.admins) && current.admins.length > 0
-    ? current.admins
-    : [...initialAdmins];
+  const base = current || loadLocal() || {};
+  const currentAdmins = Array.isArray(base?.admins) && base.admins.length > 0
+    ? base.admins
+    : (Array.isArray(current?.admins) && current.admins.length > 0 ? current.admins : (isDemoAllowed() ? [...initialAdmins] : []));
   let found = false;
   const nextAdmins = currentAdmins.map((admin) => {
     if (admin.id === adminId || (!adminId && currentAdmins.length === 1)) {
@@ -540,10 +584,10 @@ export async function updateAdminProfile(adminId, updates, current) {
   if (!found) throw new Error('Administrator not found.');
 
   return saveLocal({
-    ...current,
+    ...base,
     admins: nextAdmins,
     settings: {
-      ...(current?.settings || {}),
+      ...(base?.settings || {}),
       admins: nextAdmins,
     },
   });
@@ -555,15 +599,53 @@ export async function saveSettings(newSettings, current) {
     const { admins, ...settings } = newSettings || {};
     return finishRemoteMutation('/api/settings', 'PATCH', settings);
   }
+  const base = current || loadLocal() || {};
   const mergedSettings = {
-    ...(current?.settings || {}),
+    ...(base?.settings || {}),
     ...newSettings,
-    admins: (current?.admins && current.admins.length > 0)
-      ? current.admins
-      : (newSettings?.admins || current?.settings?.admins),
+    admins: (base?.admins && base.admins.length > 0)
+      ? base.admins
+      : (newSettings?.admins || base?.settings?.admins),
   };
-  return saveLocal({ ...current, settings: mergedSettings });
+  return saveLocal({ ...base, settings: mergedSettings });
 }
+
+// --- DATA MANAGEMENT & PRODUCTION RESET ---
+/**
+ * Clears all previous customer accounts, orders, payments, customer packages,
+ * package sales, wallet transactions, counter staff profiles, and admin accounts
+ * for clean live production use. Returns the store to First-Run Setup mode.
+ * Preserves store settings (address, tax, surcharges) and catalog pricing.
+ */
+export async function clearAllCustomerAndOrderData(current) {
+  clearAuthToken();
+  clearActiveSession();
+  clearStaffSession();
+  clearAdminSession();
+  if (remoteMode) {
+    const res = await post('/api/maintenance/clear-data', {});
+    return res;
+  }
+  const base = current || loadLocal() || {};
+  const cleaned = {
+    ...base,
+    customers: [],
+    orders: [],
+    customerPackages: [],
+    payments: [],
+    packageSales: [],
+    walletTransactions: [],
+    staff: [],
+    admins: [],
+    settings: {
+      ...(base?.settings || {}),
+      nextOrderNo: 'B0001',
+    },
+  };
+  return saveLocal(cleaned);
+}
+
+export const clearProductionData = clearAllCustomerAndOrderData;
 
 // --- DIGITAL BILL LINKS ---
 /**
@@ -578,6 +660,53 @@ export async function getShareableBillUrl(order, customer) {
     return `${origin}/?bill=${encodeURIComponent(orderNo || order.orderNo)}&token=${token}`;
   }
   return buildPublicBillUrl(order, customer);
+}
+
+// --- SHAREABLE PRICE LIST LINKS ---
+export function normalizeWhatsAppNumber(rawPhone, defaultNumber = '917005728774') {
+  if (!rawPhone) return defaultNumber;
+  const digits = String(rawPhone).replace(/\D/g, '');
+  if (!digits) return defaultNumber;
+  // If 10 digits (standard Indian mobile e.g. 9876543210), prepend 91
+  if (digits.length === 10) {
+    return `91${digits}`;
+  }
+  // If 11 digits starting with 0 (e.g. 09876543210), strip 0 and prepend 91
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return `91${digits.slice(1)}`;
+  }
+  // If 12 digits starting with 91 (e.g. 919876543210), already has country code
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits;
+  }
+  // If starts with 91 and >= 12 digits
+  if (digits.startsWith('91') && digits.length >= 12) {
+    return digits;
+  }
+  // If other international number with country code (>= 10 digits)
+  if (digits.length >= 10) {
+    return digits;
+  }
+  return defaultNumber;
+}
+
+export function getShareablePriceListUrl(customer = null) {
+  const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+  const params = new URLSearchParams({ prices: '1' });
+  if (customer?.name) {
+    params.set('name', customer.name);
+  }
+  if (customer?.mobile) {
+    params.set('phone', customer.mobile);
+  }
+  return `${origin}/?${params.toString()}`;
+}
+
+export function getSharePriceListWhatsAppText(settings, customer = null) {
+  const storeName = settings?.storeName || 'Clean Clear Dry Cleaning';
+  const url = getShareablePriceListUrl(customer);
+  const greeting = customer?.name ? `Hello ${customer.name}! ` : 'Hello! ';
+  return `${greeting}Here is the complete price list and laundry catalog for *${storeName}*:\n\n🔗 ${url}\n\nTap the link to view our dry cleaning, steam press, per-kg laundry, and package rates. You can also select garments directly on the page and send us a pickup request via WhatsApp!`;
 }
 
 // --- CUSTOMERS ---
@@ -608,8 +737,13 @@ export async function deleteCustomer(id, current) {
   });
 }
 
-// --- PACKAGE TEMPLATES CRUD (CREATE, EDIT, DELETE - NO VALIDITY) ---
+// --- PACKAGE TEMPLATES CRUD (CREATE, EDIT, DELETE) ---
 export async function createPackage(pkgData, current) {
+  const rawDuration = pkgData.durationDays ?? pkgData.duration_days;
+  const durationDays = (rawDuration !== undefined && rawDuration !== null && rawDuration !== '' && Number(rawDuration) > 0)
+    ? Math.floor(Number(rawDuration))
+    : null;
+
   const newPkg = {
     id: pkgData.id || `pkg-${crypto.randomUUID().slice(0, 8)}`,
     name: pkgData.name.trim(),
@@ -618,6 +752,7 @@ export async function createPackage(pkgData, current) {
     price: Number(pkgData.price || 0),
     walletCredit: pkgData.kind === 'wallet' ? Number(pkgData.walletCredit || 0) : 0,
     discountPercent: pkgData.kind === 'discount' ? Number(pkgData.discountPercent || 0) : 0,
+    durationDays,
     applicableService: pkgData.applicableService || 'all',
     applicableOrderType: pkgData.applicableOrderType || 'all',
     applicableCategory: pkgData.applicableCategory || 'all',
@@ -630,7 +765,7 @@ export async function createPackage(pkgData, current) {
     minQty: Number(pkgData.minQty || 0),
     buyQty: Number(pkgData.buyQty || 0),
     freeQty: Number(pkgData.freeQty || 0),
-    validity: pkgData.validity?.trim() || 'Active Plan',
+    validity: pkgData.validity?.trim() || (durationDays ? `${durationDays} Days Validity` : 'Active Plan'),
     accent: pkgData.accent || 'violet',
   };
 
@@ -644,12 +779,19 @@ export async function createPackage(pkgData, current) {
 }
 
 export async function updatePackage(id, pkgData, current) {
+  const cleanData = { ...pkgData };
+  if (pkgData.durationDays !== undefined || pkgData.duration_days !== undefined) {
+    const rawDuration = pkgData.durationDays ?? pkgData.duration_days;
+    cleanData.durationDays = (rawDuration !== undefined && rawDuration !== null && rawDuration !== '' && Number(rawDuration) > 0)
+      ? Math.floor(Number(rawDuration))
+      : null;
+  }
   if (remoteMode) {
-    return finishRemoteMutation(`/api/package-templates/${encodeURIComponent(id)}`, 'PATCH', pkgData);
+    return finishRemoteMutation(`/api/package-templates/${encodeURIComponent(id)}`, 'PATCH', cleanData);
   }
   return saveLocal({
     ...current,
-    packages: (current.packages || []).map((pkg) => (pkg.id === id ? { ...pkg, ...pkgData } : pkg)),
+    packages: (current.packages || []).map((pkg) => (pkg.id === id ? { ...pkg, ...cleanData } : pkg)),
   });
 }
 
@@ -663,12 +805,21 @@ export async function deletePackage(id, current) {
   });
 }
 
-// --- PACKAGE ASSIGNMENT (NO EXPIRATION) ---
+// --- PACKAGE ASSIGNMENT (WITH EXPIRY & CREDIT TRACKING) ---
 export async function assignPackage(customerId, templateId, paymentMethod, current) {
   if (remoteMode) return finishRemoteMutation('/api/packages', 'POST', { customerId, templateId, paymentMethod });
   const template = (current.packages || initialPackageCatalog).find((item) => item.id === templateId);
   if (!template) throw new Error('This package is not available.');
   const now = new Date();
+  const rawDuration = template.durationDays ?? template.duration_days;
+  const durationDays = (rawDuration !== undefined && rawDuration !== null && rawDuration !== '' && Number(rawDuration) > 0)
+    ? Math.floor(Number(rawDuration))
+    : null;
+  let expiresAt = null;
+  if (durationDays > 0) {
+    const expDate = new Date(now.getTime() + durationDays * 86400000);
+    expiresAt = expDate.toISOString().slice(0, 10);
+  }
   const assigned = {
     id: `cp-${crypto.randomUUID()}`,
     customerId,
@@ -676,7 +827,9 @@ export async function assignPackage(customerId, templateId, paymentMethod, curre
     name: template.name,
     kind: template.kind,
     walletCredit: Number(template.walletCredit || 0),
+    remainingCredit: template.kind === 'wallet' ? Number(template.walletCredit || 0) : null,
     discountPercent: Number(template.discountPercent || 0),
+    durationDays,
     applicableService: template.applicableService || 'all',
     applicableOrderType: template.applicableOrderType || 'all',
     applicableCategory: template.applicableCategory || 'all',
@@ -685,9 +838,9 @@ export async function assignPackage(customerId, templateId, paymentMethod, curre
     minQty: Number(template.minQty || 0),
     buyQty: Number(template.buyQty || 0),
     freeQty: Number(template.freeQty || 0),
-    validity: template.validity || 'Active Plan',
+    validity: template.validity || (durationDays ? `${durationDays} Days Validity` : 'Active Plan'),
     startsAt: now.toISOString().slice(0, 10),
-    expiresAt: null, // Lifetime validity - NO expiration
+    expiresAt,
     paidAmount: Number(template.price || 0),
     status: 'active',
   };
@@ -814,6 +967,7 @@ export async function createOrder(order, current) {
   };
 
   let customers = current.customers;
+  let customerPackages = current.customerPackages || [];
   let payments = current.payments || [];
   let walletTransactions = current.walletTransactions || [];
 
@@ -823,6 +977,10 @@ export async function createOrder(order, current) {
         ? { ...c, walletBalance: Math.max(0, c.walletBalance - autoDeduct) }
         : c
     );
+    const updatedCust = customers.find((c) => c.id === order.customerId);
+    const nextBal = updatedCust ? updatedCust.walletBalance : 0;
+    customerPackages = deductWalletFromPackages(customerPackages, order.customerId, autoDeduct, nextBal);
+
     const payment = {
       id: `pay-${crypto.randomUUID()}`,
       orderId: id,
@@ -844,6 +1002,13 @@ export async function createOrder(order, current) {
       createdAt,
     };
     walletTransactions = [transaction, ...walletTransactions];
+  } else {
+    customerPackages = (customerPackages || []).map((cp) => {
+      if (isPackageExpired(cp.expiresAt)) {
+        return { ...cp, status: 'disabled' };
+      }
+      return cp;
+    });
   }
 
   return saveLocal({
@@ -851,6 +1016,7 @@ export async function createOrder(order, current) {
     orders: [newOrder, ...current.orders],
     settings: updatedSettings,
     customers,
+    customerPackages,
     payments,
     walletTransactions,
   });
@@ -883,11 +1049,15 @@ export async function recordPayment(orderId, amount, method, current) {
     balanceAmount: Math.max(0, item.balanceAmount - amount),
   } : item);
   let customers = current.customers;
+  let customerPackages = current.customerPackages || [];
   let walletTransactions = current.walletTransactions;
   if (method === 'wallet') {
     customers = current.customers.map((item) => item.id === customer.id
       ? { ...item, walletBalance: Math.max(0, item.walletBalance - amount) }
       : item);
+    const updatedCust = customers.find((c) => c.id === customer.id);
+    const nextBal = updatedCust ? updatedCust.walletBalance : 0;
+    customerPackages = deductWalletFromPackages(customerPackages, customer.id, amount, nextBal);
     walletTransactions = [{
       id: `wt-${crypto.randomUUID()}`,
       customerId: customer.id,
@@ -898,8 +1068,15 @@ export async function recordPayment(orderId, amount, method, current) {
       description: `Payment for ${order.orderNo}`,
       createdAt: payment.createdAt,
     }, ...walletTransactions];
+  } else {
+    customerPackages = (customerPackages || []).map((cp) => {
+      if (isPackageExpired(cp.expiresAt)) {
+        return { ...cp, status: 'disabled' };
+      }
+      return cp;
+    });
   }
-  return saveLocal({ ...current, orders, customers, payments: [payment, ...current.payments], walletTransactions });
+  return saveLocal({ ...current, orders, customers, customerPackages, payments: [payment, ...current.payments], walletTransactions });
 }
 
 export async function updateOrderStatus(orderId, status, current) {

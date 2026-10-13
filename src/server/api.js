@@ -10,7 +10,7 @@
  * statements (data-modifying CTEs) so they are atomic, and rows are locked with
  * FOR UPDATE where concurrent requests could otherwise double-spend.
  */
-import { defaultSettings, initialAddons, initialBrands, initialColors, initialDefects } from '../data.js';
+import { defaultSettings, garmentCatalog, initialAddons, initialBrands, initialColors, initialDefects, services, weightServices } from '../data.js';
 import { getNextOrderNo } from '../lib/orderNumbers.js';
 import { mergePackageTemplates, PricingError, priceOrder, roundMoney } from '../lib/orderPricing.js';
 import {
@@ -191,11 +191,21 @@ function cleanTemplate(body, { partial = false } = {}) {
       out[key] = roundMoney(n);
     }
   }
+  if (!partial || body.durationDays !== undefined || body.duration_days !== undefined) {
+    const rawDays = body.durationDays ?? body.duration_days;
+    if (rawDays === null || rawDays === '' || rawDays === undefined) {
+      out.durationDays = null;
+    } else {
+      const n = Math.floor(Number(rawDays));
+      if (!Number.isFinite(n) || n < 0 || n > 36500) throw new HttpError(400, 'Invalid validity duration.');
+      out.durationDays = n > 0 ? n : null;
+    }
+  }
   if (!partial || body.accent !== undefined) out.accent = text(body.accent || 'violet', 30);
 
   const rules = pickTemplateRules(body);
-  for (const key of ['minQty', 'buyQty', 'freeQty']) {
-    if (rules[key] !== undefined) rules[key] = Math.min(1000, Math.max(0, Math.floor(Number(rules[key]) || 0)));
+  for (const key of ['minQty', 'buyQty', 'freeQty', 'durationDays']) {
+    if (rules[key] !== undefined) rules[key] = Math.min(10000, Math.max(0, Math.floor(Number(rules[key]) || 0)));
   }
   if (rules.targetGarments !== undefined) {
     rules.targetGarments = (Array.isArray(rules.targetGarments) ? rules.targetGarments : []).map((g) => text(g, 80)).filter(Boolean).slice(0, 200);
@@ -377,7 +387,21 @@ async function bootstrap({ sql, user }) {
   const [customers, orders, customerPackages, payments, packageSales, walletTransactions, packages, settings, catalog, staff, admins] = await Promise.all([
     sql`SELECT id, name, mobile, email, address, notes, wallet_balance AS "walletBalance", profile, created_at AS "createdAt" FROM customers ORDER BY created_at DESC`,
     sql.query(`SELECT ${ORDER_COLUMNS} FROM orders ORDER BY created_at DESC`, []),
-    sql`SELECT id, customer_id AS "customerId", template_id AS "templateId", name, kind, wallet_credit AS "walletCredit", discount_percent AS "discountPercent", to_char(starts_at, 'YYYY-MM-DD') AS "startsAt", to_char(expires_at, 'YYYY-MM-DD') AS "expiresAt", paid_amount AS "paidAmount", payment_method AS "paymentMethod", status, created_at AS "createdAt" FROM customer_packages ORDER BY created_at DESC`,
+    sql`SELECT id, customer_id AS "customerId", template_id AS "templateId", name, kind,
+      wallet_credit AS "walletCredit",
+      COALESCE(remaining_credit, wallet_credit) AS "remainingCredit",
+      discount_percent AS "discountPercent",
+      to_char(starts_at, 'YYYY-MM-DD') AS "startsAt",
+      to_char(expires_at, 'YYYY-MM-DD') AS "expiresAt",
+      paid_amount AS "paidAmount", payment_method AS "paymentMethod",
+      CASE
+        WHEN status = 'disabled' THEN 'disabled'
+        WHEN expires_at IS NOT NULL AND expires_at < CURRENT_DATE THEN 'disabled'
+        WHEN kind = 'wallet' AND (COALESCE(remaining_credit, wallet_credit) <= 0 OR (SELECT wallet_balance FROM customers WHERE id = customer_packages.customer_id) <= 0) THEN 'disabled'
+        ELSE status
+      END AS status,
+      created_at AS "createdAt"
+    FROM customer_packages ORDER BY created_at DESC`,
     sql`SELECT id, order_id AS "orderId", customer_id AS "customerId", amount, method, created_at AS "createdAt" FROM payments ORDER BY created_at DESC`,
     sql`SELECT id, customer_id AS "customerId", customer_package_id AS "packageId", template_id AS "templateId", name, amount, method, created_at AS "createdAt" FROM package_sales ORDER BY created_at DESC`,
     sql`SELECT id, customer_id AS "customerId", customer_package_id AS "packageId", order_id AS "orderId", kind, amount, description, created_at AS "createdAt" FROM wallet_transactions ORDER BY created_at DESC`,
@@ -394,7 +418,7 @@ async function bootstrap({ sql, user }) {
     me: publicUser(user),
     customers: customers.map(mapCustomer),
     orders: orders.map(mapOrder),
-    customerPackages: customerPackages.map((r) => numbers(r, ['walletCredit', 'discountPercent', 'paidAmount'])),
+    customerPackages: customerPackages.map((r) => numbers(r, ['walletCredit', 'remainingCredit', 'discountPercent', 'paidAmount'])),
     payments: payments.map((r) => numbers(r, ['amount'])),
     packageSales: packageSales.map((r) => numbers(r, ['amount'])),
     walletTransactions: walletTransactions.map((r) => numbers(r, ['amount'])),
@@ -501,6 +525,37 @@ async function insertPricedOrder(sql, { orderId, orderNo, customerId, priced, bo
       INSERT INTO wallet_transactions (id, customer_id, order_id, kind, amount, description)
       SELECT ${wtId}, ${customerId}, o.id, 'debit', o.paid_amount, ${`Payment for ${orderNo}`} FROM new_order o WHERE o.paid_amount > 0
       RETURNING id
+    ), active_wallets AS (
+      SELECT cp.id,
+        COALESCE(cp.remaining_credit, cp.wallet_credit) AS rem,
+        COALESCE(SUM(COALESCE(cp.remaining_credit, cp.wallet_credit)) OVER (
+          ORDER BY cp.created_at ASC, cp.id ASC
+          ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+        ), 0) AS prior_sum
+      FROM customer_packages cp
+      WHERE cp.customer_id = ${customerId}
+        AND cp.kind = 'wallet'
+        AND cp.status = 'active'
+    ), pkg_spend AS (
+      UPDATE customer_packages cp
+      SET
+        remaining_credit = GREATEST(0, aw.rem - LEAST(aw.rem, GREATEST(0, o.paid_amount - aw.prior_sum))),
+        status = CASE
+          WHEN (aw.rem - LEAST(aw.rem, GREATEST(0, o.paid_amount - aw.prior_sum))) <= 0 THEN 'disabled'
+          WHEN (SELECT wallet_balance FROM customers WHERE id = ${customerId}) - o.paid_amount <= 0 THEN 'disabled'
+          ELSE cp.status
+        END
+      FROM new_order o, active_wallets aw
+      WHERE cp.id = aw.id AND o.paid_amount > 0
+      RETURNING cp.id
+    ), expire_old AS (
+      UPDATE customer_packages
+      SET status = 'disabled'
+      WHERE customer_id = ${customerId}
+        AND status = 'active'
+        AND expires_at IS NOT NULL
+        AND expires_at < CURRENT_DATE
+      RETURNING id
     ), next_no AS (
       UPDATE store_settings SET config = jsonb_set(config, '{nextOrderNo}', to_jsonb(${nextOrderNo}::text))
       WHERE id = 'current' AND EXISTS (SELECT 1 FROM new_order)
@@ -516,7 +571,17 @@ async function createOrderRoute({ sql, request, user }) {
 
   const [customerRows, customerPackages, packageTemplates, settings, catalog, latest] = await Promise.all([
     sql`SELECT id, name, mobile, profile FROM customers WHERE id = ${customerId}`,
-    sql`SELECT id, customer_id AS "customerId", template_id AS "templateId", name, kind, wallet_credit AS "walletCredit", discount_percent AS "discountPercent", to_char(expires_at, 'YYYY-MM-DD') AS "expiresAt", status FROM customer_packages WHERE customer_id = ${customerId} AND status = 'active'`,
+    sql`SELECT id, customer_id AS "customerId", template_id AS "templateId", name, kind,
+      wallet_credit AS "walletCredit",
+      COALESCE(remaining_credit, wallet_credit) AS "remainingCredit",
+      discount_percent AS "discountPercent",
+      to_char(expires_at, 'YYYY-MM-DD') AS "expiresAt",
+      status
+    FROM customer_packages
+    WHERE customer_id = ${customerId}
+      AND status = 'active'
+      AND (expires_at IS NULL OR expires_at >= CURRENT_DATE)
+      AND (kind != 'wallet' OR (COALESCE(remaining_credit, wallet_credit) > 0 AND (SELECT wallet_balance FROM customers WHERE id = ${customerId}) > 0))`,
     loadTemplates(sql, { enabledOnly: false }),
     loadSettings(sql),
     loadCatalog(sql),
@@ -527,7 +592,7 @@ async function createOrderRoute({ sql, request, user }) {
 
   const priced = priceOrder(body, {
     customer,
-    customerPackages: customerPackages.map((r) => numbers(r, ['walletCredit', 'discountPercent'])),
+    customerPackages: customerPackages.map((r) => numbers(r, ['walletCredit', 'remainingCredit', 'discountPercent'])),
     packageTemplates,
     settings,
     addonCatalog: catalog.addons,
@@ -599,6 +664,37 @@ async function recordPayment({ sql, request, params }) {
       ), ledger AS (
         INSERT INTO wallet_transactions (id, customer_id, order_id, kind, amount, description)
         SELECT ${transactionId}, customer_id, order_id, 'debit', ${amount}, 'Payment for ' || order_no FROM ok RETURNING id
+      ), active_wallets AS (
+        SELECT cp.id,
+          COALESCE(cp.remaining_credit, cp.wallet_credit) AS rem,
+          COALESCE(SUM(COALESCE(cp.remaining_credit, cp.wallet_credit)) OVER (
+            ORDER BY cp.created_at ASC, cp.id ASC
+            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+          ), 0) AS prior_sum
+        FROM customer_packages cp, ok
+        WHERE cp.customer_id = ok.customer_id
+          AND cp.kind = 'wallet'
+          AND cp.status = 'active'
+      ), pkg_spend AS (
+        UPDATE customer_packages cp
+        SET
+          remaining_credit = GREATEST(0, aw.rem - LEAST(aw.rem, GREATEST(0, ${amount}::numeric - aw.prior_sum))),
+          status = CASE
+            WHEN (aw.rem - LEAST(aw.rem, GREATEST(0, ${amount}::numeric - aw.prior_sum))) <= 0 THEN 'disabled'
+            WHEN (SELECT wallet_balance FROM customers WHERE id = (SELECT customer_id FROM ok)) <= 0 THEN 'disabled'
+            ELSE cp.status
+          END
+        FROM active_wallets aw
+        WHERE cp.id = aw.id
+        RETURNING cp.id
+      ), expire_old AS (
+        UPDATE customer_packages
+        SET status = 'disabled'
+        WHERE customer_id = (SELECT customer_id FROM ok)
+          AND status = 'active'
+          AND expires_at IS NOT NULL
+          AND expires_at < CURRENT_DATE
+        RETURNING id
       ), upd AS (
         UPDATE orders SET paid_amount = paid_amount + ${amount}::numeric, balance_amount = balance_amount - ${amount}::numeric
         WHERE id = (SELECT order_id FROM ok) RETURNING id
@@ -612,6 +708,14 @@ async function recordPayment({ sql, request, params }) {
       ), pay AS (
         INSERT INTO payments (id, order_id, customer_id, amount, method)
         SELECT ${paymentId}, id, customer_id, ${amount}, ${method} FROM ok RETURNING id
+      ), expire_old AS (
+        UPDATE customer_packages
+        SET status = 'disabled'
+        WHERE customer_id = (SELECT customer_id FROM ok)
+          AND status = 'active'
+          AND expires_at IS NOT NULL
+          AND expires_at < CURRENT_DATE
+        RETURNING id
       ), upd AS (
         UPDATE orders SET paid_amount = paid_amount + ${amount}::numeric, balance_amount = balance_amount - ${amount}::numeric
         WHERE id = (SELECT id FROM ok) RETURNING id
@@ -646,9 +750,17 @@ async function sellPackage({ sql, request }) {
     ), c AS (
       SELECT id FROM customers WHERE id = ${text(body.customerId, 80)} FOR UPDATE
     ), new_package AS (
-      INSERT INTO customer_packages (id, customer_id, template_id, name, kind, wallet_credit, discount_percent, starts_at, expires_at, paid_amount, payment_method, status)
-      SELECT ${customerPackageId}, c.id, t.id, t.name, t.kind, t.wallet_credit, t.discount_percent, CURRENT_DATE,
-        CASE WHEN t.duration_days IS NULL THEN NULL ELSE CURRENT_DATE + t.duration_days END, t.price, ${method}, 'active'
+      INSERT INTO customer_packages (id, customer_id, template_id, name, kind, wallet_credit, remaining_credit, discount_percent, starts_at, expires_at, paid_amount, payment_method, status)
+      SELECT ${customerPackageId}, c.id, t.id, t.name, t.kind, t.wallet_credit,
+        CASE WHEN t.kind = 'wallet' THEN t.wallet_credit ELSE NULL END,
+        t.discount_percent, CURRENT_DATE,
+        CASE
+          WHEN COALESCE(${body.durationDays !== undefined && body.durationDays !== null ? Math.floor(Number(body.durationDays)) : null}, t.duration_days) IS NOT NULL
+               AND COALESCE(${body.durationDays !== undefined && body.durationDays !== null ? Math.floor(Number(body.durationDays)) : null}, t.duration_days) > 0
+          THEN CURRENT_DATE + COALESCE(${body.durationDays !== undefined && body.durationDays !== null ? Math.floor(Number(body.durationDays)) : null}, t.duration_days)
+          ELSE NULL
+        END,
+        t.price, ${method}, 'active'
       FROM t, c
       RETURNING *
     ), wallet_update AS (
@@ -673,7 +785,7 @@ async function createTemplate({ sql, request }) {
   const t = cleanTemplate(await readJson(request));
   const id = newId('pkg');
   await sql`INSERT INTO package_templates (id, name, description, kind, price, wallet_credit, discount_percent, duration_days, accent, enabled, rules)
-    VALUES (${id}, ${t.name}, ${t.description}, ${t.kind}, ${t.price}, ${t.walletCredit}, ${t.discountPercent}, NULL, ${t.accent}, true, ${JSON.stringify(t.rules)}::jsonb)`;
+    VALUES (${id}, ${t.name}, ${t.description}, ${t.kind}, ${t.price}, ${t.walletCredit}, ${t.discountPercent}, ${t.durationDays ?? null}, ${t.accent}, true, ${JSON.stringify(t.rules)}::jsonb)`;
   return json({ id }, 201);
 }
 
@@ -686,6 +798,7 @@ async function updateTemplate({ sql, request, params }) {
     price = COALESCE(${t.price ?? null}, price),
     wallet_credit = COALESCE(${t.walletCredit ?? null}, wallet_credit),
     discount_percent = COALESCE(${t.discountPercent ?? null}, discount_percent),
+    duration_days = CASE WHEN ${t.durationDays !== undefined} THEN ${t.durationDays ?? null} ELSE duration_days END,
     accent = COALESCE(${t.accent ?? null}, accent),
     rules = rules || ${JSON.stringify(t.rules)}::jsonb
     WHERE id = ${params.id} RETURNING id`;
@@ -855,6 +968,24 @@ async function deleteAdminRoute({ sql, params }) {
   return json({ id: params.id, success: true });
 }
 
+// --- Clear Production Customer, Order, Admin & Cashier Data (Admin only) ---
+async function clearProductionDataRoute({ sql }) {
+  await sql.transaction([
+    sql`DELETE FROM sessions`,
+    sql`DELETE FROM payments`,
+    sql`DELETE FROM package_sales`,
+    sql`DELETE FROM wallet_transactions`,
+    sql`DELETE FROM orders`,
+    sql`DELETE FROM customer_packages`,
+    sql`DELETE FROM customers`,
+    sql`DELETE FROM staff_members`,
+    sql`DELETE FROM admin_users`,
+    sql`DELETE FROM auth_attempts`,
+    sql`UPDATE store_settings SET config = jsonb_set(config, '{nextOrderNo}', '"B0001"') WHERE id = 'current'`,
+  ]);
+  return json({ ok: true, cleared: true, setupRequired: true, message: 'All customer, order, staff, and admin records have been cleared. First-run setup is now required.' });
+}
+
 // --- Public bill (no session; unguessable per-order token) ---
 async function publicBill({ sql, url, params, ip }) {
   const token = String(url.searchParams.get('token') || '').trim().toLowerCase();
@@ -878,14 +1009,41 @@ async function publicBill({ sql, url, params, ip }) {
   const customer = customerRows[0] || { name: 'Valued Customer', mobile: '' };
   const mobile = String(customer.mobile || '');
   const publicSettings = {};
-  for (const key of ['storeName', 'tagline', 'phone', 'address', 'taxEnabled', 'taxLabel', 'taxPercent', 'taxNumber', 'splitGst', 'receiptFooter', 'currency']) {
-    publicSettings[key] = settings[key];
+  for (const key of ['storeName', 'tagline', 'phone', 'adminMobile', 'adminPhone', 'whatsappPhone', 'address', 'taxEnabled', 'taxLabel', 'taxPercent', 'taxNumber', 'splitGst', 'receiptFooter', 'currency']) {
+    if (settings[key] !== undefined) {
+      publicSettings[key] = settings[key];
+    }
   }
   return json({
     order,
     customer: { name: customer.name, mobile: mobile.length > 4 ? `${'•'.repeat(mobile.length - 4)}${mobile.slice(-4)}` : mobile },
     settings: publicSettings,
     payments: payments.map((p) => numbers(p, ['amount'])),
+  });
+}
+
+// --- Public prices catalog (no session) ---
+async function publicPrices({ sql, ip }) {
+  const bucket = `prices:${ip}`;
+  await assertNotRateLimited(sql, bucket, 120);
+  const [settings, catalog, templates] = await Promise.all([
+    loadSettings(sql),
+    loadCatalog(sql),
+    loadTemplates(sql, { enabledOnly: true }),
+  ]);
+  const publicSettings = {};
+  for (const key of ['storeName', 'tagline', 'phone', 'adminMobile', 'adminPhone', 'whatsappPhone', 'address', 'taxEnabled', 'taxLabel', 'taxPercent', 'taxNumber', 'splitGst', 'receiptFooter', 'currency']) {
+    if (settings[key] !== undefined) {
+      publicSettings[key] = settings[key];
+    }
+  }
+  return json({
+    settings: publicSettings,
+    services,
+    weightServices,
+    garmentCatalog,
+    addons: catalog.addons,
+    packages: templates,
   });
 }
 
@@ -900,6 +1058,7 @@ const routes = [
   ['POST', '/api/auth/recover', recoverQuestion, 'public'],
   ['POST', '/api/auth/reset', resetWithAnswer, 'public'],
   ['GET', '/api/public-bill/:id', publicBill, 'public'],
+  ['GET', '/api/public-prices', publicPrices, 'public'],
 
   ['GET', '/api/auth/me', me, 'user'],
   ['POST', '/api/auth/logout', logout, 'user'],
@@ -925,6 +1084,7 @@ const routes = [
   ['POST', '/api/admins', createAdminRoute, 'admin'],
   ['PATCH', '/api/admins/:id', updateAdminRoute, 'admin'],
   ['DELETE', '/api/admins/:id', deleteAdminRoute, 'admin'],
+  ['POST', '/api/maintenance/clear-data', clearProductionDataRoute, 'admin'],
 ].map(([method, pattern, handler, access]) => ({
   method,
   handler,

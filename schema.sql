@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS customer_packages (
   name TEXT NOT NULL,
   kind TEXT NOT NULL,
   wallet_credit NUMERIC(12,2) NOT NULL DEFAULT 0,
+  remaining_credit NUMERIC(12,2) NULL,
   discount_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
   starts_at DATE NOT NULL,
   expires_at DATE NULL,
@@ -85,6 +86,8 @@ CREATE TABLE IF NOT EXISTS customer_packages (
   status TEXT NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE customer_packages ADD COLUMN IF NOT EXISTS remaining_credit NUMERIC(12,2) NULL;
 
 CREATE INDEX IF NOT EXISTS customer_packages_customer_idx ON customer_packages (customer_id, expires_at);
 

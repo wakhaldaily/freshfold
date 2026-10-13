@@ -166,7 +166,19 @@ export default function PublicBillView({ billParam, tokenParam }) {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9', padding: '20px 12px 60px', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div
+      className="public-page-viewport"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+        background: '#f1f5f9',
+        padding: '20px 12px 60px',
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+    >
       <div style={{ maxWidth: '860px', margin: '0 auto' }}>
 
         {/* Top Actions Floating Bar */}

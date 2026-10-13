@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, UserPlus, X } from 'lucide-react';
+import { Search, Share2, UserPlus, X } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { onActivateKey } from '../lib/a11y.js';
 import { CustomerAccordionList } from '../components/MobileLists.jsx';
@@ -54,6 +54,16 @@ export default function CustomersView({
 
           <button
             type="button"
+            className="button button-quiet"
+            onClick={() => setModal({ type: 'share-price-list' })}
+            style={{ color: '#0284c7', borderColor: '#bae6fd' }}
+            title="Share store price list link"
+          >
+            <Share2 size={14} /> Share Price List
+          </button>
+
+          <button
+            type="button"
             className="button button-primary"
             onClick={() => setModal({ type: 'customer-new' })}
           >
@@ -77,7 +87,20 @@ export default function CustomersView({
             </tr>
           </thead>
           <tbody>
-            {visibleCustomers.map((c) => {
+            {visibleCustomers.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '48px 20px', color: '#64748b' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>👥</div>
+                  <strong style={{ display: 'block', fontSize: '15px', color: '#1e293b', marginBottom: '4px' }}>
+                    {q ? 'No customers match your search.' : 'No customer records found'}
+                  </strong>
+                  <span style={{ fontSize: '12px' }}>
+                    {q ? 'Try clearing your search query.' : 'Click "Add New Customer" above to register your first customer.'}
+                  </span>
+                </td>
+              </tr>
+            ) : (
+              visibleCustomers.map((c) => {
                 const custOrders = data.orders.filter((o) => o.customerId === c.id);
                 const due = custOrders.reduce((sum, o) => sum + (Number(o.balanceAmount) || 0), 0);
                 return (
@@ -96,21 +119,32 @@ export default function CustomersView({
                     </td>
                     <td data-label="Orders Count">{custOrders.length} {custOrders.length === 1 ? 'order' : 'orders'}</td>
                     <td data-label="Workspace" style={{ textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        className="button button-quiet"
-                        style={{ minHeight: '30px', padding: '0 10px', fontSize: '11px' }}
-                        onClick={() => {
-                          setSelectedCustomerId(c.id);
-                          setView('customer-detail');
-                        }}
-                      >
-                        Open Profile →
-                      </button>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          type="button"
+                          className="button button-quiet"
+                          style={{ minHeight: '30px', padding: '0 8px', fontSize: '11px', color: '#0284c7' }}
+                          onClick={() => setModal({ type: 'share-price-list', customer: c })}
+                          title={`Share price list with ${c.name}`}
+                        >
+                          <Share2 size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-quiet"
+                          style={{ minHeight: '30px', padding: '0 10px', fontSize: '11px' }}
+                          onClick={() => {
+                            setSelectedCustomerId(c.id);
+                            setView('customer-detail');
+                          }}
+                        >
+                          Open Profile →
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
-              })}
+              }))}
           </tbody>
         </table>
       </div>
@@ -121,6 +155,7 @@ export default function CustomersView({
           customers={visibleCustomers}
           orders={data.orders}
           onOpenProfile={openProfile}
+          onSharePriceList={(c) => setModal({ type: 'share-price-list', customer: c })}
           emptyText={q ? 'No customers match your search.' : 'No customers yet.'}
         />
       </div>

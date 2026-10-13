@@ -40,6 +40,29 @@ html, body, #root {
   overflow: hidden;
   background: var(--canvas);
 }
+
+/* Public standalone mobile viewports (Price list, digital bills) */
+body.has-public-page,
+body.has-public-page #root {
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 100% !important;
+}
+
+.public-page-viewport {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  width: 100dvw;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  background: #f8fafc;
+}
 button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }

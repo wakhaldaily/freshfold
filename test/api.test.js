@@ -381,6 +381,57 @@ test('admin management: last admin is protected and passwords are re-hashed', as
   assert.equal((await api.del(`/api/admins/${created.data.id}`, { token })).status, 200);
 });
 
+test('POST /api/maintenance/clear-data wipes customer, order, staff and admin records and enables first-run setup', async () => {
+  const { api } = await freshApi();
+  const token = await setupStore(api);
+
+  // Create a customer
+  await createCustomer(api, token, { name: 'Customer To Clear', mobile: '9123456780' });
+  const beforeBootstrap = await api.get('/api/bootstrap', { token });
+  assert.equal(beforeBootstrap.status, 200);
+  assert.equal(beforeBootstrap.data.customers.length, 1);
+
+  // Non-admins cannot invoke maintenance clear
+  await addStaff(api, token, [{ id: 'staff-cleaner', name: 'Cleaner Staff', pin: '8899', role: 'cashier' }]);
+  const cashierToken = await pinLogin(api, '8899');
+  const forbiddenRes = await api.post('/api/maintenance/clear-data', {}, { token: cashierToken });
+  assert.equal(forbiddenRes.status, 403);
+
+  // Admin executes clear
+  const clearRes = await api.post('/api/maintenance/clear-data', {}, { token });
+  assert.equal(clearRes.status, 200);
+  assert.equal(clearRes.data.cleared, true);
+  assert.equal(clearRes.data.setupRequired, true);
+
+  // Health endpoint indicates setupRequired: true
+  const healthRes = await api.get('/api/health');
+  assert.equal(healthRes.data.setupRequired, true);
+
+  // First-run setup can now be completed by the store owner
+  const newSetupRes = await api.post('/api/auth/setup', {
+    name: 'Real Store Owner',
+    email: 'realowner@example.com',
+    password: 'RealOwnerPassword123!',
+    securityQuestion: 'What city is this store in?',
+    securityAnswer: 'Bengaluru',
+    storeName: 'Clean Clear Flagship',
+  });
+  assert.equal(newSetupRes.status, 201);
+  const newAdminToken = newSetupRes.data.token;
+
+  // Check state after setup
+  const afterBootstrap = await api.get('/api/bootstrap', { token: newAdminToken });
+  assert.equal(afterBootstrap.status, 200);
+  assert.equal(afterBootstrap.data.customers.length, 0);
+  assert.equal(afterBootstrap.data.orders.length, 0);
+  assert.equal(afterBootstrap.data.payments.length, 0);
+  assert.equal(afterBootstrap.data.customerPackages.length, 0);
+  assert.equal(afterBootstrap.data.staff.length, 0);
+  assert.equal(afterBootstrap.data.admins.length, 1);
+  assert.equal(afterBootstrap.data.admins[0].email, 'realowner@example.com');
+  assert.equal(afterBootstrap.data.settings.nextOrderNo, 'B0001');
+});
+
 test('rejects non-JSON bodies and unknown routes cleanly', async () => {
   const { sql } = await createTestDatabase();
   const { handleApi } = await import('../src/server/api.js');

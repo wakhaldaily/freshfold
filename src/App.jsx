@@ -1,8 +1,8 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Store } from 'lucide-react';
 
 import {
-  assignPackage, clearAdminSession, createAdmin, createCustomer, createOrder,
+  assignPackage, clearAdminSession, clearAllCustomerAndOrderData, clearAuthToken, createAdmin, createCustomer, createOrder,
   createPackage, deleteAdmin, deleteCustomer, deletePackage, getAdminSession, isRemoteMode,
   loadLocal, loadStore, recordPayment, saveSettings, saveStaff, setAdminSession,
   updateAdminProfile, updateCustomer, updateOrderStatus, updatePackage,
@@ -26,6 +26,7 @@ import PaymentModal from './components/PaymentModal.jsx';
 import CustomerModal from './components/CustomerModal.jsx';
 import PosRegister from './components/PosRegister.jsx';
 import PublicBillView from './components/PublicBillView.jsx';
+import PublicPriceListView from './components/PublicPriceListView.jsx';
 import AppLoginScreen from './components/AppLoginScreen.jsx';
 import { AppSkeleton } from './components/SkeletonLoader.jsx';
 import AppSidebar from './components/AppSidebar.jsx';
@@ -48,12 +49,14 @@ import PackagesView from './views/PackagesView.jsx';
 // so those screens load on demand instead of in the initial bundle.
 const ThermalReceiptModal = lazy(() => import('./components/ThermalReceiptModal.jsx'));
 const PamphletModal = lazy(() => import('./components/PamphletModal.jsx'));
+const SharePriceListModal = lazy(() => import('./components/SharePriceListModal.jsx'));
 const SettingsModal = lazy(() => import('./components/SettingsModal.jsx'));
 
 export default function App() {
   const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const billParam = urlParams?.get('bill');
   const tokenParam = urlParams?.get('token');
+  const isPricesParam = Boolean(urlParams?.has('prices') || urlParams?.has('price-list') || (typeof window !== 'undefined' && window.location?.pathname === '/prices'));
 
   const [data, setData] = useState(null);
   const [view, setView] = useState('dashboard'); // 'dashboard' | 'new-order' | 'customers' | 'customer-detail' | 'orders' | 'packages'
@@ -114,7 +117,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (billParam) return undefined;
+    if (billParam || isPricesParam) return undefined;
     let cancelled = false;
     (async () => {
       const info = await detectBackend();
@@ -173,13 +176,20 @@ export default function App() {
 
   const showToast = (msg) => setToast(msg);
 
-  // Mutation helper
+  // Mutation helper with synchronous ref tracking to prevent stale state overwrites
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
   const runMutation = async (operation, successMessage) => {
-    if (!data || busy) return null;
+    const currentData = dataRef.current || data;
+    if (!currentData) return null;
     setBusy(true);
     try {
-      const nextData = await operation(data);
-      setData(nextData);
+      const nextData = await operation(currentData);
+      if (nextData) {
+        dataRef.current = nextData;
+        setData(nextData);
+      }
       if (successMessage) showToast(successMessage);
       return nextData;
     } catch (err) {
@@ -438,6 +448,11 @@ export default function App() {
     return <PublicBillView billParam={billParam} tokenParam={tokenParam} />;
   }
 
+  // Public customer price list never loads the store or requires a session.
+  if (isPricesParam) {
+    return <PublicPriceListView />;
+  }
+
   if (!backend || (!backend.database && !data)) {
     return <AppSkeleton />;
   }
@@ -451,9 +466,9 @@ export default function App() {
         storeName={data?.settings?.storeName || backend.storeName || 'Clean Clear Dry Cleaning'}
         tagline={data?.settings?.tagline || backend.tagline || 'Counter & Store Management System'}
         showDemoHints={demoMode}
-        setupRequired={remote && Boolean(backend.setupRequired)}
+        setupRequired={remote ? Boolean(backend.setupRequired) : (!data?.admins || data.admins.length === 0)}
         // Remote: anyone may only create the *first* administrator; later admins are added in Settings.
-        allowSignup={remote ? Boolean(backend.setupRequired) : true}
+        allowSignup={remote ? Boolean(backend.setupRequired) : (!data?.admins || data.admins.length === 0)}
         onPinLogin={async (pin) => {
           const user = await loginStaff(pin, data);
           await handleAuthenticated(user);
@@ -729,6 +744,34 @@ export default function App() {
             onCreateAdmin={async (newAdmin) => {
               await runMutation((cur) => createAdmin(newAdmin, cur), 'Administrator registered.');
             }}
+            customerCount={data.customers?.length || 0}
+            orderCount={data.orders?.length || 0}
+            onClearProductionData={async () => {
+              await clearAllCustomerAndOrderData(data);
+              clearAuthToken();
+              clearActiveSession();
+              setAdminSession(null);
+              setAuthSession(null);
+              setAdminUserState(null);
+              setModal(null);
+              setBackend((prev) => ({ ...prev, setupRequired: true }));
+              setData((prev) => ({
+                ...(prev || {}),
+                customers: [],
+                orders: [],
+                customerPackages: [],
+                payments: [],
+                packageSales: [],
+                walletTransactions: [],
+                admins: [],
+                staff: [],
+                settings: {
+                  ...(prev?.settings || {}),
+                  nextOrderNo: 'B0001',
+                },
+              }));
+              showToast('All customer, order, staff, and admin records have been cleared. Ready for First-Run Setup.');
+            }}
             onToast={showToast}
           />
         </Suspense>
@@ -840,6 +883,19 @@ export default function App() {
             settings={data.settings}
             packages={data.packages}
             services={data.services}
+            onToast={showToast}
+          />
+        </Suspense>
+      )}
+
+      {/* 9b. SHARE PRICE LIST MODAL */}
+      {modal?.type === 'share-price-list' && (
+        <Suspense fallback={null}>
+          <SharePriceListModal
+            isOpen
+            onClose={() => setModal(null)}
+            customer={modal.customer || null}
+            settings={data.settings}
             onToast={showToast}
           />
         </Suspense>

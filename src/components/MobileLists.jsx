@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, Phone, ReceiptText, UserRound } from 'lucide-react';
+import { ChevronDown, Phone, ReceiptText, Share2, UserRound } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { formatDate } from '../lib/dateFormat.js';
 
@@ -66,7 +66,7 @@ export function OrderAccordionList({ orders, customers, setModal, showCustomer =
   );
 }
 
-export function CustomerAccordionList({ customers, orders, onOpenProfile, emptyText = 'No customers to show.' }) {
+export function CustomerAccordionList({ customers, orders, onOpenProfile, onSharePriceList, emptyText = 'No customers to show.' }) {
   if (!customers.length) return <p className="m-list-empty">{emptyText}</p>;
   return (
     <ul className="m-list" aria-label="Customers">
@@ -102,6 +102,11 @@ export function CustomerAccordionList({ customers, orders, onOpenProfile, emptyT
                   <a className="button button-quiet" href={`tel:+91${String(c.mobile).replace(/\D/g, '').slice(-10)}`}>
                     <Phone size={14} /> Call
                   </a>
+                  {onSharePriceList && (
+                    <button type="button" className="button button-quiet" onClick={() => onSharePriceList(c)}>
+                      <Share2 size={14} /> Share Price List
+                    </button>
+                  )}
                   <button type="button" className="button button-primary" onClick={() => onOpenProfile(c.id)}>
                     <UserRound size={14} /> Open Profile
                   </button>

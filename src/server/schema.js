@@ -23,7 +23,7 @@ const legacyTemplates = [
 
 const RULE_KEYS = [
   'applicableService', 'applicableOrderType', 'applicableCategory', 'targetGarments',
-  'targetKeywords', 'minQty', 'buyQty', 'freeQty', 'validity',
+  'targetKeywords', 'minQty', 'buyQty', 'freeQty', 'validity', 'durationDays',
 ];
 
 export function pickTemplateRules(pkg = {}) {
@@ -93,6 +93,7 @@ export const SCHEMA_STATEMENTS = [
   name TEXT NOT NULL,
   kind TEXT NOT NULL,
   wallet_credit NUMERIC(12,2) NOT NULL DEFAULT 0,
+  remaining_credit NUMERIC(12,2) NULL,
   discount_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
   starts_at DATE NOT NULL,
   expires_at DATE NULL,
@@ -101,6 +102,7 @@ export const SCHEMA_STATEMENTS = [
   status TEXT NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 )`),
+  ddl(`ALTER TABLE customer_packages ADD COLUMN IF NOT EXISTS remaining_credit NUMERIC(12,2) NULL`),
   ddl(`CREATE INDEX IF NOT EXISTS customer_packages_customer_idx ON customer_packages (customer_id, expires_at)`),
 
   // --- Orders ---

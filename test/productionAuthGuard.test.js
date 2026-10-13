@@ -557,5 +557,57 @@ describe('Production & Testing Environment Authentication Guard', () => {
       delete global.localStorage;
     }
   });
+
+  it('15. clearAllCustomerAndOrderData clears all customer, order, staff, and admin records for production setup', async () => {
+    const { clearAllCustomerAndOrderData } = await import('../src/lib/persistence.js');
+    const { createInitialData } = await import('../src/data.js');
+    const storageMap = new Map();
+    global.localStorage = {
+      getItem: (key) => storageMap.get(key) || null,
+      setItem: (key, val) => storageMap.set(key, String(val)),
+      removeItem: (key) => storageMap.delete(key),
+      clear: () => storageMap.clear(),
+    };
+
+    try {
+      // Production initial data defaults to empty staff and empty admins
+      const freshProd = createInitialData({ demo: false });
+      assert.strictEqual(freshProd.customers.length, 0);
+      assert.strictEqual(freshProd.orders.length, 0);
+      assert.strictEqual(freshProd.staff.length, 0);
+      assert.strictEqual(freshProd.admins.length, 0);
+
+      const busyStore = {
+        settings: { storeName: 'Clean Clear Galleria', taxPercent: 18, nextOrderNo: 'B8900' },
+        admins: [{ id: 'admin-1', name: 'Store Owner', email: 'owner@freshfold.test' }],
+        staff: [{ id: 'staff-1', name: 'Ravi', pin: '4567', role: 'cashier' }],
+        customers: [{ id: 'cus-1', name: 'Old Customer', mobile: '9000000001' }],
+        orders: [{ id: 'ord-1', orderNo: 'B8899', customerId: 'cus-1', totalAmount: 500 }],
+        customerPackages: [{ id: 'cp-1', customerId: 'cus-1', name: 'Gold' }],
+        payments: [{ id: 'pay-1', orderId: 'ord-1', amount: 500 }],
+        packageSales: [{ id: 'ps-1', customerId: 'cus-1', amount: 3000 }],
+        walletTransactions: [{ id: 'wt-1', customerId: 'cus-1', amount: 3000 }],
+      };
+
+      const cleanStore = await clearAllCustomerAndOrderData(busyStore);
+
+      // Customer, order, staff & admin records are completely cleared
+      assert.strictEqual(cleanStore.customers.length, 0);
+      assert.strictEqual(cleanStore.orders.length, 0);
+      assert.strictEqual(cleanStore.customerPackages.length, 0);
+      assert.strictEqual(cleanStore.payments.length, 0);
+      assert.strictEqual(cleanStore.packageSales.length, 0);
+      assert.strictEqual(cleanStore.walletTransactions.length, 0);
+      assert.strictEqual(cleanStore.staff.length, 0);
+      assert.strictEqual(cleanStore.admins.length, 0);
+      assert.strictEqual(cleanStore.settings.nextOrderNo, 'B0001');
+
+      // Store settings and profile configuration are 100% preserved
+      assert.strictEqual(cleanStore.settings.storeName, 'Clean Clear Galleria');
+      assert.strictEqual(cleanStore.settings.taxPercent, 18);
+    } finally {
+      delete global.localStorage;
+    }
+  });
 });
 

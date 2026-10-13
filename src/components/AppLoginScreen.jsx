@@ -74,6 +74,11 @@ export default function AppLoginScreen({
   };
 
   const submitPin = async (pinToSubmit = pin) => {
+    if (setupRequired) {
+      setPinError('No staff registered yet. Please complete Store Setup first.');
+      setPin('');
+      return;
+    }
     setSubmitting(true);
     try {
       const user = await onPinLogin(pinToSubmit);
@@ -89,6 +94,10 @@ export default function AppLoginScreen({
   // --- ADMIN LOGIN HANDLER ---
   const handleAdminSubmit = async (e) => {
     e.preventDefault();
+    if (setupRequired) {
+      setAdminError('No administrator accounts registered yet. Please click Store Setup to configure this store.');
+      return;
+    }
     setAdminError('');
     setSubmitting(true);
     try {
@@ -230,13 +239,36 @@ export default function AppLoginScreen({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
+              gridTemplateColumns: setupRequired ? '1.2fr 1fr 1fr' : '1fr 1fr',
               background: 'rgba(255, 255, 255, 0.08)',
               borderRadius: '10px',
               padding: '3px',
               marginTop: '18px',
             }}
           >
+            {setupRequired && (
+              <button
+                type="button"
+                onClick={() => setAuthMode('signup')}
+                style={{
+                  padding: '8px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: authMode === 'signup' ? '#ffffff' : 'transparent',
+                  color: authMode === 'signup' ? '#0f172a' : '#94a3b8',
+                  fontSize: '12px',
+                  fontWeight: authMode === 'signup' ? 700 : 500,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Sparkles size={14} color={authMode === 'signup' ? '#2563eb' : '#94a3b8'} /> Store Setup
+              </button>
+            )}
             <button
               type="button"
               onClick={() => { setAuthMode('pin'); setPinError(''); }}

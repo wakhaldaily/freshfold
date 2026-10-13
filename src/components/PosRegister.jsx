@@ -102,10 +102,22 @@ export default function PosRegister({
   // Active customer
   const currentCustomer = customers.find((c) => c.id === selectedCustomerId) || customers[0] || null;
 
-  // Active customer packages
+  // Active customer packages (filters out expired validity and depleted wallet packages)
   const customerActivePackages = useMemo(() => {
     if (!currentCustomer) return [];
-    return customerPackages.filter((cp) => cp.customerId === currentCustomer.id && cp.status === 'active');
+    const today = new Date().toISOString().slice(0, 10);
+    return customerPackages.filter((cp) => {
+      if (cp.customerId !== currentCustomer.id) return false;
+      if (cp.status === 'disabled') return false;
+      if (cp.expiresAt && String(cp.expiresAt).slice(0, 10) < today) return false;
+      if (cp.kind === 'wallet') {
+        const rem = cp.remainingCredit !== undefined && cp.remainingCredit !== null
+          ? Number(cp.remainingCredit)
+          : Number(cp.walletCredit || 0);
+        if (rem <= 0 || Number(currentCustomer.walletBalance || 0) <= 0) return false;
+      }
+      return cp.status === 'active';
+    });
   }, [customerPackages, currentCustomer]);
 
   // Current active service label and object

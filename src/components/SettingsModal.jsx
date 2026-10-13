@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  AlertTriangle,
   BadgePercent,
   Building2,
   Calculator,
@@ -8,6 +9,7 @@ import {
   Clock,
   Coins,
   Copy,
+  Database,
   Edit2,
   ExternalLink,
   Eye,
@@ -56,6 +58,9 @@ export default function SettingsModal({
   onUpdateAdmin,
   onDeleteAdmin,
   onCreateAdmin,
+  onClearProductionData,
+  customerCount = 0,
+  orderCount = 0,
   onToast,
 }) {
   const [activeTab, setActiveTab] = useState('store');
@@ -69,6 +74,13 @@ export default function SettingsModal({
   const [editingStaffPin, setEditingStaffPin] = useState('');
   const [testAmount, setTestAmount] = useState(1000);
   const [saving, setSaving] = useState(false);
+
+  // Production Data Reset State
+  const [isClearingData, setIsClearingData] = useState(false);
+  const [dataClearedSuccess, setDataClearedSuccess] = useState(false);
+  const [showConfirmClear, setShowConfirmClear] = useState(false);
+  const [confirmClearText, setConfirmClearText] = useState('');
+  const [clearError, setClearError] = useState('');
 
   // New Admin Registration State
   const [showAddAdmin, setShowAddAdmin] = useState(false);
@@ -173,23 +185,37 @@ export default function SettingsModal({
     if (e) e.preventDefault();
     setSaving(true);
     try {
+      // 1. Always save store settings
       await onSaveSettings(formData);
-      if (onSaveStaff) {
+
+      // 2. Only save staff if staff list has actual modifications
+      const initialStaffPins = (staffList || []).map((s) => `${s.id}:${s.name}:${s.role}:${s.pin || ''}`).join(',');
+      const currentStaffPins = (staff || []).map((s) => `${s.id}:${s.name}:${s.role}:${s.pin || ''}`).join(',');
+      if (onSaveStaff && initialStaffPins !== currentStaffPins) {
         await onSaveStaff(staff);
       }
-      if (onUpdateAdmin && (adminName.trim() || adminEmail.trim())) {
+
+      // 3. Only update administrator if admin profile fields were changed
+      const adminNameChanged = adminName.trim() && adminName.trim() !== (primaryAdmin?.name || '');
+      const adminEmailChanged = adminEmail.trim() && adminEmail.trim().toLowerCase() !== (primaryAdmin?.email || '').toLowerCase();
+      const adminPassChanged = Boolean(adminPassword.trim());
+      const adminAnswerChanged = Boolean(adminSecurityAnswer.trim());
+      const adminQuestionChanged = adminSecurityQuestion !== (primaryAdmin?.securityQuestion || 'What city is this store in?');
+
+      if (onUpdateAdmin && primaryAdmin?.id && (adminNameChanged || adminEmailChanged || adminPassChanged || adminAnswerChanged || adminQuestionChanged)) {
         const cleanPass = adminPassword.trim();
         if (cleanPass && cleanPass.length < 6) throw new Error('Password must be at least 6 characters.');
         const adminPayload = {
           name: adminName.trim() || primaryAdmin.name,
           email: adminEmail.trim().toLowerCase(),
           securityQuestion: adminSecurityQuestion,
-          ...(adminSecurityAnswer.trim() ? { securityAnswer: adminSecurityAnswer.trim() } : {}),
+          ...(adminAnswerChanged ? { securityAnswer: adminSecurityAnswer.trim() } : {}),
           ...(cleanPass ? { password: cleanPass } : {}),
         };
-        if (primaryAdmin?.id) await onUpdateAdmin(primaryAdmin.id, adminPayload);
+        await onUpdateAdmin(primaryAdmin.id, adminPayload);
       }
-      onToast?.('Store, tax, and administrator settings saved successfully.');
+
+      onToast?.('Store settings saved successfully.');
       onClose();
     } catch (err) {
       onToast?.(err.message || 'Failed to save settings.');
@@ -272,6 +298,29 @@ export default function SettingsModal({
       } catch (err) {
         onToast?.(err.message || 'Failed to remove administrator.');
       }
+    }
+  };
+
+  const handleExecuteClearData = async () => {
+    if (confirmClearText.trim().toUpperCase() !== 'CLEAR' && confirmClearText.trim().toUpperCase() !== 'RESET') {
+      setClearError('Please type CLEAR to confirm.');
+      return;
+    }
+    setClearError('');
+    setIsClearingData(true);
+    try {
+      if (onClearProductionData) {
+        await onClearProductionData();
+      }
+      setDataClearedSuccess(true);
+      setShowConfirmClear(false);
+      setConfirmClearText('');
+      onToast?.('All customer records and order history have been cleared for production.');
+    } catch (err) {
+      setClearError(err.message || 'Failed to clear records.');
+      onToast?.(err.message || 'Failed to clear records.');
+    } finally {
+      setIsClearingData(false);
     }
   };
 
@@ -513,6 +562,23 @@ export default function SettingsModal({
                     </span>
                   </button>
                 </div>
+
+                {/* Section 3: Data & Production */}
+                <div className="settings-sidebar-section">
+                  <div className="settings-sidebar-heading">Data & Production</div>
+                  <button
+                    type="button"
+                    className={`settings-sidebar-btn ${activeTab === 'data' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('data')}
+                  >
+                    <div className="settings-sidebar-item-left">
+                      <div className="settings-sidebar-icon">
+                        <Database size={15} />
+                      </div>
+                      <span className="settings-sidebar-title">Data Management</span>
+                    </div>
+                  </button>
+                </div>
               </div>
 
               {/* Sidebar Footer User Widget */}
@@ -539,7 +605,7 @@ export default function SettingsModal({
               <div className="settings-tab-header">
                 <div>
                   <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#3b82f6', marginBottom: '3px' }}>
-                    {activeTab === 'admin' || activeTab === 'staff' ? 'Personnel & Security' : 'Store Configuration'}
+                    {activeTab === 'admin' || activeTab === 'staff' ? 'Personnel & Security' : (activeTab === 'data' ? 'Maintenance & Reset' : 'Store Configuration')}
                   </div>
                   <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--settings-text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {activeTab === 'store' && <><Building2 size={20} color="#3b82f6" /> Store Profile & Branding</>}
@@ -548,6 +614,7 @@ export default function SettingsModal({
                     {activeTab === 'whatsapp' && <><MessageSquare size={20} color="#3b82f6" /> WhatsApp Dispatch</>}
                     {activeTab === 'admin' && <><ShieldCheck size={20} color="#3b82f6" /> Shop Admins & Personnel</>}
                     {activeTab === 'staff' && <><Users size={20} color="#3b82f6" /> Counter Operators & Staff</>}
+                    {activeTab === 'data' && <><Database size={20} color="#3b82f6" /> Data Management & Production Reset</>}
                   </h2>
                   <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--settings-text-muted)' }}>
                     {activeTab === 'store' && 'Configure store contact information, receipt header/footer notes, winter campaign pamphlet, and ticket printer branding.'}
@@ -556,6 +623,7 @@ export default function SettingsModal({
                     {activeTab === 'whatsapp' && 'Manage customer order updates, ready-for-pickup notifications, and web vs desktop app dispatch modes.'}
                     {activeTab === 'admin' && 'Manage store administrators, credentials, login emails, passwords, and sensitive operations access.'}
                     {activeTab === 'staff' && 'Manage counter staff profiles, employee IDs, shift assignments, and intake operator roles.'}
+                    {activeTab === 'data' && 'Clear previous customer, order, staff, and admin records to prepare FreshFold for live production store operations.'}
                   </p>
                 </div>
               </div>
@@ -625,12 +693,16 @@ export default function SettingsModal({
 
                     <div className="settings-grid-2-phone-code">
                       <label className="field-group">
-                        <span className="field-label">Contact Phone</span>
+                        <span className="field-label">Admin Mobile / WhatsApp Receiver Number</span>
                         <div style={{ position: 'relative' }}>
                           <input
                             type="text"
-                            value={formData.phone}
-                            onChange={(e) => handleChange('phone', e.target.value)}
+                            value={formData.phone || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              handleChange('phone', val);
+                              handleChange('adminMobile', val);
+                            }}
                             placeholder="e.g. +91 70057 28774"
                             style={{ paddingLeft: '34px' }}
                           />
@@ -645,6 +717,9 @@ export default function SettingsModal({
                             }}
                           />
                         </div>
+                        <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                          Receives WhatsApp pickup & order requests sent by clients from the public price list.
+                        </span>
                       </label>
 
                       <div className="field-group">
@@ -666,11 +741,11 @@ export default function SettingsModal({
                     </div>
 
                     <label className="field-group">
-                      <span className="field-label">Physical Address / Store Website</span>
+                      <span className="field-label">Physical Address / Store Location</span>
                       <div style={{ position: 'relative' }}>
                         <textarea
                           rows={2}
-                          value={formData.address}
+                          value={formData.address || ''}
                           onChange={(e) => handleChange('address', e.target.value)}
                           placeholder="Shop 14, Galleria Market, Sector 28, Gurugram"
                           style={{ paddingLeft: '34px' }}
@@ -685,6 +760,9 @@ export default function SettingsModal({
                           }}
                         />
                       </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                        Reflects automatically on the customer public price list and printed receipts.
+                      </span>
                     </label>
                   </div>
 
@@ -1679,7 +1757,51 @@ export default function SettingsModal({
             {/* ========================================================= */}
             {activeTab === 'whatsapp' && (
               <div className="settings-section-animate">
-                {/* 1. Dispatch Mode Selection */}
+                {/* 1. Admin WhatsApp Order Receiver Mobile Number */}
+                <div className="settings-card" style={{ marginBottom: '18px' }}>
+                  <div className="settings-card-header">
+                    <div>
+                      <div className="settings-card-title">
+                        <Phone size={16} /> Public Price List WhatsApp Order Receiver Number
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                        When clients select clothes on the mobile price list and tap &quot;Send via WhatsApp&quot;, orders are delivered to this number
+                      </span>
+                    </div>
+                  </div>
+
+                  <label className="field-group">
+                    <span className="field-label">Admin / Store WhatsApp Number</span>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        value={formData.phone || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          handleChange('phone', val);
+                          handleChange('adminMobile', val);
+                        }}
+                        placeholder="e.g. +91 70057 28774"
+                        style={{ paddingLeft: '34px' }}
+                      />
+                      <Phone
+                        size={15}
+                        style={{
+                          position: 'absolute',
+                          left: '11px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          color: 'var(--settings-placeholder)',
+                        }}
+                      />
+                    </div>
+                    <span style={{ fontSize: '11px', color: 'var(--settings-text-muted)' }}>
+                      This mobile number receives itemized pickup requests with customer name, mobile, address, and selected garments.
+                    </span>
+                  </label>
+                </div>
+
+                {/* 2. Dispatch Mode Selection */}
                 <div className="settings-card" style={{ marginBottom: '18px' }}>
                   <div className="settings-card-header">
                     <div>
@@ -2377,6 +2499,172 @@ export default function SettingsModal({
 
                       <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(37, 99, 235, 0.08)', border: '1px solid rgba(37, 99, 235, 0.2)', fontSize: '11px', color: '#1d4ed8', lineHeight: 1.5 }}>
                         💡 When you update your email and password here, you can immediately lock the terminal or log out and log back in using your new credentials.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'data' && (
+              <div className="settings-tab-pane">
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: '20px' }}>
+                  {/* Left Column: Danger Zone / Production Reset */}
+                  <div style={{ display: 'grid', gap: '20px' }}>
+                    <div className="settings-card" style={{ border: '1px solid #fecaca', background: '#fff' }}>
+                      <div className="settings-card-header" style={{ borderBottom: '1px solid #fee2e2' }}>
+                        <div className="settings-card-title" style={{ color: '#b91c1c' }}>
+                          <AlertTriangle size={18} color="#dc2626" /> Production Reset · Clear Customer, Order, Staff & Admin Data
+                        </div>
+                        <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '999px', background: '#fee2e2', color: '#b91c1c', fontWeight: 700 }}>
+                          DANGER ZONE
+                        </span>
+                      </div>
+
+                      <div style={{ padding: '4px 0', fontSize: '13px', lineHeight: 1.6, color: '#334155' }}>
+                        <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#1e293b' }}>
+                          Prepare FreshFold for live production store operations:
+                        </p>
+                        <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '12px' }}>
+                          Before launch, remove all previous test customer profiles, order transactions, counter cashiers, and administrator credentials. This leaves your store completely clean and prompts the First-Run Setup screen for the real store owner.
+                        </p>
+
+                        <div style={{ padding: '12px', borderRadius: '8px', background: '#fef2f2', border: '1px solid #fecaca', marginBottom: '16px', fontSize: '12px' }}>
+                          <strong style={{ color: '#991b1b', display: 'block', marginBottom: '6px' }}>What will be permanently cleared:</strong>
+                          <ul style={{ margin: 0, paddingLeft: '18px', color: '#7f1d1d' }}>
+                            <li>All customer accounts and address profiles ({customerCount} registered)</li>
+                            <li>All orders and workshop processing queue items ({orderCount} recorded)</li>
+                            <li>All digital receipts, bill payment records, and package sales</li>
+                            <li>All customer prepaid wallet credits and deduction transactions</li>
+                            <li>All cashier and counter staff member accounts and PIN codes</li>
+                            <li>All previous store administrator accounts and passwords</li>
+                            <li>Order number counter resets back to starting sequence (B0001)</li>
+                          </ul>
+                        </div>
+
+                        <div style={{ padding: '12px', borderRadius: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', marginBottom: '16px', fontSize: '12px' }}>
+                          <strong style={{ color: '#166534', display: 'block', marginBottom: '6px' }}>What is safely preserved:</strong>
+                          <ul style={{ margin: 0, paddingLeft: '18px', color: '#14532d' }}>
+                            <li>Store profile name, contact address, phone & helpline numbers</li>
+                            <li>Tax & GST percentages, compliance numbers (GSTIN/VAT)</li>
+                            <li>Early delivery surcharge configurations & WhatsApp dispatch settings</li>
+                            <li>Garment price catalog, services, categories & package offers</li>
+                            <li>Custom add-ons, tags, garment brands, colors, and defect options</li>
+                          </ul>
+                        </div>
+
+                        <div style={{ padding: '12px', borderRadius: '8px', background: '#eff6ff', border: '1px solid #bfdbfe', marginBottom: '16px', fontSize: '12px', color: '#1e40af' }}>
+                          <strong style={{ display: 'block', marginBottom: '4px' }}>ℹ️ First-Run Setup:</strong>
+                          After clearing data, you will be automatically redirected to the First-Run Setup screen to register your official administrator account. You can then register counter cashiers under Settings.
+                        </div>
+
+                        {dataClearedSuccess && (
+                          <div style={{ padding: '12px', borderRadius: '8px', background: '#dcfce7', border: '1px solid #86efac', color: '#15803d', fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                            <CheckCircle2 size={18} color="#16a34a" />
+                            All customer, order, staff, and admin records have been cleared. Ready for First-Run Setup!
+                          </div>
+                        )}
+
+                        {clearError && (
+                          <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', fontSize: '12px', marginBottom: '16px' }}>
+                            {clearError}
+                          </div>
+                        )}
+
+                        {!showConfirmClear ? (
+                          <button
+                            type="button"
+                            className="button"
+                            onClick={() => {
+                              setShowConfirmClear(true);
+                              setDataClearedSuccess(false);
+                              setClearError('');
+                            }}
+                            style={{ background: '#dc2626', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 700, fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                          >
+                            <Trash2 size={16} /> Clear All Records for Production
+                          </button>
+                        ) : (
+                          <div style={{ padding: '14px', borderRadius: '8px', background: '#fff1f2', border: '1px solid #fda4af' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 700, color: '#9f1239', display: 'block', marginBottom: '8px' }}>
+                              Type <code>CLEAR</code> below to confirm permanent deletion:
+                            </span>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <input
+                                type="text"
+                                placeholder="Type CLEAR"
+                                value={confirmClearText}
+                                onChange={(e) => setConfirmClearText(e.target.value)}
+                                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #f43f5e', fontSize: '13px', fontWeight: 700, width: '130px', textTransform: 'uppercase' }}
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                className="button"
+                                onClick={handleExecuteClearData}
+                                disabled={isClearingData}
+                                style={{ background: '#b91c1c', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 700, fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                              >
+                                {isClearingData ? 'Clearing...' : 'Confirm Clear Data'}
+                              </button>
+                              <button
+                                type="button"
+                                className="button button-quiet"
+                                onClick={() => {
+                                  setShowConfirmClear(false);
+                                  setConfirmClearText('');
+                                  setClearError('');
+                                }}
+                                style={{ padding: '8px 12px', fontSize: '12px' }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Current Store Footprint */}
+                  <div style={{ display: 'grid', gap: '16px', alignContent: 'start' }}>
+                    <div className="settings-card" style={{ background: 'var(--settings-card-alt-bg, #f8fafc)' }}>
+                      <div className="settings-card-header">
+                        <div className="settings-card-title">
+                          <Database size={16} color="#3b82f6" /> Current Store Footprint
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: '13px', display: 'grid', gap: '12px', padding: '6px 0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+                          <span style={{ color: 'var(--settings-text-muted)' }}>Customer Directory</span>
+                          <strong style={{ fontSize: '14px', color: customerCount > 0 ? '#b91c1c' : '#16a34a' }}>
+                            {customerCount} {customerCount === 1 ? 'account' : 'accounts'}
+                          </strong>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+                          <span style={{ color: 'var(--settings-text-muted)' }}>Order Transactions</span>
+                          <strong style={{ fontSize: '14px', color: orderCount > 0 ? '#b91c1c' : '#16a34a' }}>
+                            {orderCount} {orderCount === 1 ? 'order' : 'orders'}
+                          </strong>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+                          <span style={{ color: 'var(--settings-text-muted)' }}>Starting Order #</span>
+                          <strong style={{ fontSize: '14px', color: '#2563eb' }}>
+                            {formData.nextOrderNo || 'B0001'}
+                          </strong>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ color: 'var(--settings-text-muted)' }}>Catalog Pricing</span>
+                          <strong style={{ fontSize: '14px', color: '#16a34a' }}>Ready & Preserved</strong>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: '14px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(37, 99, 235, 0.08)', border: '1px solid rgba(37, 99, 235, 0.2)', fontSize: '11px', color: '#1d4ed8', lineHeight: 1.5 }}>
+                        💡 You can also run <code>npm run clear:data</code> from the terminal to clean the remote database directly before deployment.
                       </div>
                     </div>
                   </div>

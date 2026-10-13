@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mail, MapPin, Megaphone, Package, PackagePlus, Pencil, Phone, Plus, ReceiptText, Tag, Wallet } from 'lucide-react';
+import { Mail, MapPin, Megaphone, Package, PackagePlus, Pencil, Phone, Plus, ReceiptText, Share2, Tag, Wallet } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { formatDate, formatDateTime } from '../lib/dateFormat.js';
 import { OrderAccordionList } from '../components/MobileLists.jsx';
@@ -71,6 +71,15 @@ export default function CustomerDetailView({
         </div>
 
         <div className="identity-actions" style={{ gap: '10px' }}>
+          <button
+            type="button"
+            className="button button-quiet"
+            onClick={() => setModal({ type: 'share-price-list', customer: currentDetailCustomer })}
+            style={{ color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
+            title="Share price list & garment order link with customer"
+          >
+            <Share2 size={14} /> Share Price List
+          </button>
           <button
             type="button"
             className="button button-primary"
@@ -257,26 +266,73 @@ export default function CustomerDetailView({
               <p className="muted-copy">Enroll in an Everyday Wallet or discount plan.</p>
             </div>
           ) : (
-            customerPackages.map((cp) => (
-              <div key={cp.id} className="detail-card">
-                <div className="card-heading">
-                  <div>
-                    <h3>{cp.name}</h3>
-                    <p>Enrolled: {formatDate(cp.startsAt)}</p>
+            customerPackages.map((cp) => {
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const isExpired = Boolean(cp.expiresAt && String(cp.expiresAt).slice(0, 10) < todayStr);
+              const remaining = cp.remainingCredit !== undefined && cp.remainingCredit !== null
+                ? Number(cp.remainingCredit)
+                : Number(cp.walletCredit || 0);
+              const isCreditFinished = cp.kind === 'wallet' && (remaining <= 0 || (currentDetailCustomer && Number(currentDetailCustomer.walletBalance || 0) <= 0));
+              const isDisabled = cp.status === 'disabled' || isExpired || isCreditFinished;
+
+              let badgeText = 'Active · Lifetime (No Expiry)';
+              let badgeBg = '#eff6ff';
+              let badgeColor = '#1d4ed8';
+
+              if (isDisabled) {
+                if (isExpired) {
+                  badgeText = `Disabled · Expired on ${formatDate(cp.expiresAt)}`;
+                  badgeBg = '#fee2e2';
+                  badgeColor = '#b91c1c';
+                } else if (isCreditFinished) {
+                  badgeText = 'Disabled · Credit Finished';
+                  badgeBg = '#fef3c7';
+                  badgeColor = '#b45309';
+                } else {
+                  badgeText = 'Disabled';
+                  badgeBg = '#f3f4f6';
+                  badgeColor = '#6b7280';
+                }
+              } else if (cp.expiresAt) {
+                badgeText = `Active · Valid till ${formatDate(cp.expiresAt)}`;
+                badgeBg = '#ecfdf5';
+                badgeColor = '#047857';
+              }
+
+              return (
+                <div
+                  key={cp.id}
+                  className="detail-card"
+                  style={{
+                    opacity: isDisabled ? 0.78 : 1,
+                    borderColor: isDisabled ? '#e2e8f0' : undefined,
+                    background: isDisabled ? '#fafafa' : '#fff',
+                  }}
+                >
+                  <div className="card-heading">
+                    <div>
+                      <h3 style={{ textDecoration: isDisabled ? 'line-through' : 'none', color: isDisabled ? '#64748b' : undefined }}>{cp.name}</h3>
+                      <p>Enrolled: {formatDate(cp.startsAt)}</p>
+                    </div>
+                    <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: badgeBg, color: badgeColor }}>
+                      {badgeText}
+                    </span>
                   </div>
-                  <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#eff6ff', color: '#1d4ed8' }}>
-                    Lifetime · No Expiry
-                  </span>
-                </div>
-                <div style={{ marginTop: '12px', fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
-                  {cp.kind === 'wallet'
-                    ? `Prepaid Credit: ${formatMoney(cp.walletCredit)}`
-                    : (cp.kind === 'buy_x_get_y'
+                  <div style={{ marginTop: '12px', fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
+                    {cp.kind === 'wallet' ? (
+                      <div>
+                        <span>Prepaid Credit: {formatMoney(cp.walletCredit)}</span>
+                        <div style={{ marginTop: '4px', fontSize: '12px', fontWeight: 600, color: isCreditFinished ? '#b45309' : '#047857' }}>
+                          Remaining: {formatMoney(Math.max(0, remaining))}
+                        </div>
+                      </div>
+                    ) : (cp.kind === 'buy_x_get_y'
                       ? `Pay for ${cp.buyQty || 5}, Get ${cp.freeQty || 1} Free`
                       : `${cp.discountPercent}% Off Eligible Orders`)}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}

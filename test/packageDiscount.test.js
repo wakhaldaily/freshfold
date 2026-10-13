@@ -422,8 +422,9 @@ test('8. End-to-end custom package creation, assignment, and order verification'
   assert.equal(customPkg.discountPercent, 30);
   assert.equal(customPkg.minQty, 3);
 
-  // Assign to customer
-  const customerId = store.customers[0].id;
+  // Create & Assign to customer
+  store = await createCustomer({ name: 'Rahul Test', mobile: '9888877772' }, store);
+  const customerId = store.customers.find((c) => c.mobile === '9888877772').id;
   store = await assignPackage(customerId, customPkg.id, 'cash', store);
 
   const assigned = store.customerPackages.find((cp) => cp.templateId === customPkg.id && cp.customerId === customerId);

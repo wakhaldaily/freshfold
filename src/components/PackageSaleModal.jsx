@@ -102,8 +102,20 @@ export default function PackageSaleModal({
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <strong style={{ fontSize: '13px' }}>{pkg.name}</strong>
-                          <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '6px', background: '#eff6ff', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            {pkg.validity || 'Active Plan'}
+                          <span
+                            style={{
+                              fontSize: '9px',
+                              fontWeight: 700,
+                              padding: '1px 6px',
+                              borderRadius: '6px',
+                              background: pkg.durationDays ? '#fef3c7' : '#eff6ff',
+                              color: pkg.durationDays ? '#b45309' : '#1d4ed8',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '2px',
+                            }}
+                          >
+                            {pkg.durationDays ? `${pkg.durationDays} Days Validity` : (pkg.validity || 'Lifetime · No Expiry')}
                           </span>
                         </div>
                         <small style={{ color: '#666', fontSize: '11px' }}>{pkg.description}</small>

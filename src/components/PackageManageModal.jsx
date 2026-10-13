@@ -29,6 +29,7 @@ export default function PackageManageModal({
     applicableOrderType: 'all',
     applicableCategory: 'all',
     targetKeywords: '',
+    durationDays: '',
     validity: '',
     accent: 'violet',
   });
@@ -53,6 +54,7 @@ export default function PackageManageModal({
       applicableOrderType: 'all',
       applicableCategory: 'all',
       targetKeywords: '',
+      durationDays: '',
       validity: '',
       accent: 'violet',
     });
@@ -82,6 +84,7 @@ export default function PackageManageModal({
       targetKeywords: Array.isArray(pkg.targetKeywords)
         ? pkg.targetKeywords.join(', ')
         : (pkg.targetKeywords || ''),
+      durationDays: pkg.durationDays !== undefined && pkg.durationDays !== null ? String(pkg.durationDays) : (pkg.duration_days !== undefined && pkg.duration_days !== null ? String(pkg.duration_days) : ''),
       validity: pkg.validity || '',
       accent: pkg.accent || 'violet',
     });
@@ -114,6 +117,11 @@ export default function PackageManageModal({
       return;
     }
 
+    const rawDays = formData.durationDays;
+    const durationDays = rawDays !== '' && rawDays !== null && !isNaN(Number(rawDays)) && Number(rawDays) > 0
+      ? Math.floor(Number(rawDays))
+      : null;
+
     const payload = {
       name: formData.name.trim(),
       description: formData.description.trim(),
@@ -121,6 +129,7 @@ export default function PackageManageModal({
       price: priceNum,
       walletCredit: formData.kind === 'wallet' ? Number(formData.walletCredit) : 0,
       discountPercent: formData.kind === 'discount' ? Number(formData.discountPercent) : 0,
+      durationDays,
       buyQty: formData.kind === 'buy_x_get_y' ? Number(formData.buyQty) : 0,
       freeQty: formData.kind === 'buy_x_get_y' ? Number(formData.freeQty) : 0,
       minQty: Number(formData.minQty || 0) || (formData.kind === 'buy_x_get_y' ? (Number(formData.buyQty) + Number(formData.freeQty)) : 0),
@@ -130,7 +139,7 @@ export default function PackageManageModal({
       targetKeywords: formData.targetKeywords
         ? formData.targetKeywords.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
         : [],
-      validity: formData.validity.trim() || 'Active Plan',
+      validity: formData.validity.trim() || (durationDays ? `${durationDays} Days Validity` : 'Active Plan'),
       accent: formData.accent,
     };
 
@@ -429,16 +438,72 @@ export default function PackageManageModal({
                   </div>
                 )}
 
-                {/* 5. Validity text */}
-                <label className="field-group">
-                  <span className="field-label">Validity Label (e.g. Winter Special, 1 year validity, 2 months validity)</span>
-                  <input
-                    type="text"
-                    placeholder="e.g. Winter Special / 1 year validity / Special Season"
-                    value={formData.validity}
-                    onChange={(e) => setFormData({ ...formData, validity: e.target.value })}
-                  />
-                </label>
+                {/* 5. Validity settings */}
+                <div className="pkg-manage-grid-2">
+                  <label className="field-group">
+                    <span className="field-label">Validity Duration (in Days)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="e.g. 30, 90, 365 (0 or blank = Lifetime)"
+                      value={formData.durationDays}
+                      onChange={(e) => setFormData({ ...formData, durationDays: e.target.value })}
+                    />
+                    <span style={{ fontSize: '11px', color: '#666' }}>
+                      Leave blank or 0 for Lifetime (No Expiry). Once expired, the package automatically disables.
+                    </span>
+                  </label>
+
+                  <label className="field-group">
+                    <span className="field-label">Validity Label</span>
+                    <input
+                      type="text"
+                      placeholder="e.g. 30 Days Validity / Winter Special / 1 Year"
+                      value={formData.validity}
+                      onChange={(e) => setFormData({ ...formData, validity: e.target.value })}
+                    />
+                    <span style={{ fontSize: '11px', color: '#666' }}>
+                      Display label shown on receipts and package cards.
+                    </span>
+                  </label>
+                </div>
+
+                {/* Quick presets for validity days */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '-4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>Quick Presets:</span>
+                  {[
+                    { days: '30', label: '30 Days (1 Mo)' },
+                    { days: '60', label: '60 Days (2 Mo)' },
+                    { days: '90', label: '90 Days (3 Mo)' },
+                    { days: '180', label: '180 Days (6 Mo)' },
+                    { days: '365', label: '365 Days (1 Yr)' },
+                    { days: '', label: 'Lifetime (No Expiry)' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      className="button button-quiet"
+                      style={{
+                        fontSize: '11px',
+                        padding: '2px 8px',
+                        minHeight: '26px',
+                        background: formData.durationDays === preset.days ? '#e0e7ff' : '#f1f5f9',
+                        color: formData.durationDays === preset.days ? '#3730a3' : '#334155',
+                        borderColor: formData.durationDays === preset.days ? '#a5b4fc' : '#e2e8f0',
+                      }}
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          durationDays: preset.days,
+                          validity: preset.days ? `${preset.days} Days Validity` : 'Lifetime Plan',
+                        });
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
                   <button type="button" className="button button-quiet" onClick={resetForm}>
@@ -495,11 +560,11 @@ export default function PackageManageModal({
                             fontWeight: 700,
                             padding: '2px 8px',
                             borderRadius: '12px',
-                            background: '#eff6ff',
-                            color: '#1d4ed8',
+                            background: pkg.durationDays ? '#fef3c7' : '#eff6ff',
+                            color: pkg.durationDays ? '#b45309' : '#1d4ed8',
                           }}
                         >
-                          {pkg.validity || 'Active Plan'}
+                          {pkg.durationDays ? `${pkg.durationDays} Days Validity` : (pkg.validity || 'Lifetime · No Expiry')}
                         </span>
                         {pkg.applicableService && pkg.applicableService !== 'all' && (
                           <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: '#f1f5f9', color: '#475569' }}>
