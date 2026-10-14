@@ -181,7 +181,7 @@ export default function CustomerModal({
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     const cleanMobile = normalizeMobile(formData.mobile);
     const email = formData.email.trim();
     const pinCode = formData.pinCode.trim();
@@ -194,10 +194,6 @@ export default function CustomerModal({
     }
     if (cleanMobile.length !== 10) {
       onToast?.('Enter a valid 10-digit mobile number.');
-      return;
-    }
-    if (!formData.address.trim()) {
-      onToast?.('Street address is required for pickup & delivery.');
       return;
     }
     if (email && !EMAIL_PATTERN.test(email)) {
@@ -238,8 +234,10 @@ export default function CustomerModal({
         notes: formData.notes.trim(),
       };
 
-      await onSave(payload, activeCustomer?.id);
-      onClose();
+      const result = await onSave(payload, activeCustomer?.id);
+      if (result !== false && result !== null) {
+        onClose();
+      }
     } catch (err) {
       onToast?.(err.message || 'Failed to save customer.');
     } finally {
@@ -881,7 +879,7 @@ export default function CustomerModal({
                       gap: '4px',
                     }}
                   >
-                    Street Address / Flat No. <span style={{ color: '#dc2626' }}>*</span>
+                    Street Address / Flat No. <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal', textTransform: 'none' }}>(Optional)</span>
                   </label>
                   <input
                     id="cust-address"
@@ -890,7 +888,6 @@ export default function CustomerModal({
                     placeholder="e.g. Flat 402, Tower B, Palm Grove"
                     value={formData.address}
                     onChange={(e) => updateField('address', e.target.value)}
-                    required
                     style={{
                       height: '40px',
                       background: '#ffffff',
@@ -1383,6 +1380,7 @@ export default function CustomerModal({
             <button
               type="submit"
               form="customer-form"
+              onClick={handleSubmit}
               disabled={isSubmitting}
               style={{
                 background: '#2563eb',

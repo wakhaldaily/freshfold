@@ -857,7 +857,7 @@ export default function App() {
         customer={modal?.type === 'customer-edit' ? modal.customer : null}
         allCustomers={data.customers}
         onSave={async (fields, editingId) => {
-          await runMutation(
+          return await runMutation(
             (cur) => editingId ? updateCustomer(editingId, fields, cur) : createCustomer(fields, cur),
             editingId ? 'Customer details updated.' : 'Customer created.',
           );

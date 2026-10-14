@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   CalendarDays, Check, ChevronDown, ChevronRight, Clock, Edit3, Filter, Minus, Plus,
   ReceiptText, RotateCcw, Scale, Search, Shirt, Sparkles, Sun, Tag, Trash2, UserPlus,
@@ -33,6 +33,17 @@ export default function PosRegister({
   onToast,
 }) {
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomer?.id || customers[0]?.id || '');
+
+  // Auto-select newly created or first customer
+  const prevCustomerCountRef = useRef(customers.length);
+  useEffect(() => {
+    if (!selectedCustomerId && customers.length > 0) {
+      setSelectedCustomerId(customers[0].id);
+    } else if (customers.length > prevCustomerCountRef.current && customers[0]?.id) {
+      setSelectedCustomerId(customers[0].id);
+    }
+    prevCustomerCountRef.current = customers.length;
+  }, [customers, selectedCustomerId]);
   const [orderType, setOrderType] = useState(initialOrderType); // 'pieces' or 'weight'
 
   // Default next order number based on store settings or latest order in sequence
