@@ -467,8 +467,7 @@ export default function App() {
         tagline={data?.settings?.tagline || backend.tagline || 'Counter & Store Management System'}
         showDemoHints={demoMode}
         setupRequired={remote ? Boolean(backend.setupRequired) : (!data?.admins || data.admins.length === 0)}
-        // Remote: anyone may only create the *first* administrator; later admins are added in Settings.
-        allowSignup={remote ? Boolean(backend.setupRequired) : (!data?.admins || data.admins.length === 0)}
+        allowSignup={true}
         onPinLogin={async (pin) => {
           const user = await loginStaff(pin, data);
           await handleAuthenticated(user);

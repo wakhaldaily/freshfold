@@ -16,7 +16,7 @@ export default function AppLoginScreen({
   storeName = 'Clean Clear Dry Cleaning',
   tagline = 'Counter & Store Management System',
   showDemoHints = false,
-  allowSignup = false,
+  allowSignup = true,
   setupRequired = false,
   onPinLogin,
   onAdminLogin,
@@ -24,7 +24,7 @@ export default function AppLoginScreen({
   onToast,
 }) {
   // First visit to an unconfigured store goes straight to setup; otherwise admin sign in.
-  const [authMode, setAuthMode] = useState(setupRequired && allowSignup ? 'signup' : 'admin'); // 'admin' | 'pin' | 'signup'
+  const [authMode, setAuthMode] = useState(setupRequired ? 'signup' : 'admin'); // 'admin' | 'pin' | 'signup'
   const [submitting, setSubmitting] = useState(false);
 
   // Staff PIN State
@@ -239,14 +239,14 @@ export default function AppLoginScreen({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: setupRequired ? '1.2fr 1fr 1fr' : '1fr 1fr',
+              gridTemplateColumns: (setupRequired || allowSignup) ? '1.2fr 1fr 1fr' : '1fr 1fr',
               background: 'rgba(255, 255, 255, 0.08)',
               borderRadius: '10px',
               padding: '3px',
               marginTop: '18px',
             }}
           >
-            {setupRequired && (
+            {(setupRequired || allowSignup) && (
               <button
                 type="button"
                 onClick={() => setAuthMode('signup')}
@@ -266,7 +266,7 @@ export default function AppLoginScreen({
                   transition: 'all 0.15s ease',
                 }}
               >
-                <Sparkles size={14} color={authMode === 'signup' ? '#2563eb' : '#94a3b8'} /> Store Setup
+                <Sparkles size={14} color={authMode === 'signup' ? '#2563eb' : '#94a3b8'} /> {setupRequired ? 'Store Setup' : 'Register'}
               </button>
             )}
             <button
@@ -507,6 +507,18 @@ export default function AppLoginScreen({
                 </div>
               </div>
               )}
+
+              {(allowSignup || setupRequired) && (
+                <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode('signup')}
+                    style={{ background: 'transparent', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    {setupRequired ? '🏪 First time? Set up this store (first administrator)' : '+ Register or set up administrator'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -648,7 +660,7 @@ export default function AppLoginScreen({
           {/* ========================================================= */}
           {/* MODE 3: FIRST-TIME / NEW ADMIN SIGNUP & STORE SETUP      */}
           {/* ========================================================= */}
-          {authMode === 'signup' && allowSignup && (
+          {authMode === 'signup' && (allowSignup || setupRequired) && (
             <form onSubmit={handleSignupSubmit}>
               <div style={{ marginBottom: '14px', background: '#eff6ff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #bfdbfe' }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#1e3a8a', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
