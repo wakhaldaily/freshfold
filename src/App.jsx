@@ -220,18 +220,20 @@ export default function App() {
 
   // Called after any successful sign-in (PIN, admin login, setup, password reset).
   const handleAuthenticated = async (user, localData = null) => {
+    if (user) {
+      setAuthSession(user);
+      setActiveSession(user);
+      if (user.role === 'admin' || user.type === 'admin' || user.isAdmin) {
+        setAdminUserState(user.admin || user);
+        setAdminSession(user.admin || user);
+      }
+    }
     if (isRemoteMode()) {
       const loaded = await loadStore();
       applyLoadedStore(loaded);
       return;
     }
     if (localData) setData(localData);
-    setAuthSession(user);
-    setActiveSession(user);
-    if (user.role === 'admin' || user.type === 'admin') {
-      setAdminUserState(user);
-      setAdminSession(user);
-    }
   };
 
   const handleAdminLogin = async (admin) => {

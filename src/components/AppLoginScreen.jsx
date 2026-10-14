@@ -146,7 +146,14 @@ export default function AppLoginScreen({
       await onSetup(newAdmin, cleanStoreName);
       onToast?.(`Store "${cleanStoreName}" initialized! Welcome, ${newAdmin.name}!`);
     } catch (err) {
-      setSignupError(err.message || 'Could not create administrator account.');
+      if (err.message && (err.message.includes('already set up') || err.message.includes('409'))) {
+        setAdminEmail(newAdmin.email);
+        setAdminError('This store is already registered. Please sign in below with your admin credentials.');
+        setAuthMode('admin');
+        onToast?.('Store is already registered. Please sign in as administrator.');
+      } else {
+        setSignupError(err.message || 'Could not create administrator account.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -783,14 +790,15 @@ export default function AppLoginScreen({
                   padding: '12px',
                   borderRadius: '10px',
                   border: 'none',
-                  background: '#0f172a',
+                  background: submitting ? '#64748b' : '#0f172a',
                   color: '#fff',
                   fontSize: '13px',
                   fontWeight: 700,
-                  cursor: 'pointer',
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.8 : 1,
                 }}
               >
-                Create Store & Administrator Account
+                {submitting ? 'Creating Administrator & Store...' : 'Create Store & Administrator Account'}
               </button>
 
               <div style={{ marginTop: '12px', textAlign: 'center' }}>
