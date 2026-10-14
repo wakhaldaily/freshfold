@@ -18,6 +18,9 @@ export default function PosRegister({
   orders = [],
   initialCustomer = null,
   initialOrderType = 'pieces',
+  editingOrder = null,
+  onUpdateOrder = null,
+  onCancelEditing = null,
   settings = {},
   addons = [],
   brands = [],
@@ -32,7 +35,9 @@ export default function PosRegister({
   onBack,
   onToast,
 }) {
-  const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomer?.id || customers[0]?.id || '');
+  const [selectedCustomerId, setSelectedCustomerId] = useState(
+    editingOrder?.customerId || initialCustomer?.id || customers[0]?.id || ''
+  );
 
   // Auto-select newly created or first customer
   const prevCustomerCountRef = useRef(customers.length);
@@ -44,45 +49,68 @@ export default function PosRegister({
     }
     prevCustomerCountRef.current = customers.length;
   }, [customers, selectedCustomerId]);
-  const [orderType, setOrderType] = useState(initialOrderType); // 'pieces' or 'weight'
+  const [orderType, setOrderType] = useState(
+    editingOrder ? (editingOrder.orderType || (editingOrder.type === 'weight' ? 'weight' : 'pieces')) : initialOrderType
+  ); // 'pieces' or 'weight'
 
   // Default next order number based on store settings or latest order in sequence
   const defaultNextOrderNo = useMemo(() => {
+    if (editingOrder?.orderNo) return editingOrder.orderNo;
     if (settings?.nextOrderNo) return settings.nextOrderNo;
     if (orders && orders.length > 0 && orders[0]?.orderNo) {
       return getNextOrderNo(orders[0].orderNo);
     }
     return 'B6164';
-  }, [settings?.nextOrderNo, orders]);
+  }, [editingOrder?.orderNo, settings?.nextOrderNo, orders]);
 
-  const [customOrderNo, setCustomOrderNo] = useState(defaultNextOrderNo);
-  const [hasManuallyEditedOrderNo, setHasManuallyEditedOrderNo] = useState(false);
+  const [customOrderNo, setCustomOrderNo] = useState(editingOrder?.orderNo || defaultNextOrderNo);
+  const [hasManuallyEditedOrderNo, setHasManuallyEditedOrderNo] = useState(Boolean(editingOrder));
 
   // Synchronize when default sequence advances and user hasn't typed a custom override
   useEffect(() => {
-    if (!hasManuallyEditedOrderNo) {
+    if (!hasManuallyEditedOrderNo && !editingOrder) {
       setCustomOrderNo(defaultNextOrderNo);
     }
-  }, [defaultNextOrderNo, hasManuallyEditedOrderNo]);
+  }, [defaultNextOrderNo, hasManuallyEditedOrderNo, editingOrder]);
 
   // Check if chosen order number already exists in current orders
   const isDuplicateOrderNo = useMemo(() => {
     if (!customOrderNo || !customOrderNo.trim()) return false;
     const target = customOrderNo.trim().toLowerCase();
-    return (orders || []).some((o) => (o.orderNo || '').trim().toLowerCase() === target);
-  }, [customOrderNo, orders]);
+    return (orders || []).some(
+      (o) => o.id !== editingOrder?.id && (o.orderNo || '').trim().toLowerCase() === target
+    );
+  }, [customOrderNo, orders, editingOrder]);
 
   // Service Selection:
   // For pieces: 'Dry cleaning', 'Steam press', 'Premium laundry', 'Club Fresh DC', 'Club Fresh SP'
   // For weight: 'Wash and Fold', 'Wash and iron', 'DCG by Kilo', 'Drying'
-  const [selectedPieceService, setSelectedPieceService] = useState('Dry cleaning');
-  const [selectedWeightService, setSelectedWeightService] = useState('Wash and Fold');
+  const [selectedPieceService, setSelectedPieceService] = useState(
+    editingOrder?.service && (editingOrder.orderType === 'pieces' || editingOrder.type !== 'weight')
+      ? editingOrder.service
+      : 'Dry cleaning'
+  );
+  const [selectedWeightService, setSelectedWeightService] = useState(
+    editingOrder?.service && (editingOrder.orderType === 'weight' || editingOrder.type === 'weight')
+      ? editingOrder.service
+      : 'Wash and Fold'
+  );
 
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [garmentSearch, setGarmentSearch] = useState('');
 
   // Cart for Piece mode
-  const [cartItems, setCartItems] = useState([]);
+  const [cartItems, setCartItems] = useState(() => {
+    if (editingOrder?.items && Array.isArray(editingOrder.items)) {
+      return editingOrder.items.map((it) => ({
+        ...it,
+        id: it.garmentId || it.id,
+        addons: Array.isArray(it.addons) ? it.addons : [],
+        defects: Array.isArray(it.defects) ? it.defects : [],
+      }));
+    }
+    return [];
+  });
 
   // Tagging modal for a cart item
   const [taggingItemIndex, setTaggingItemIndex] = useState(null);
@@ -91,11 +119,11 @@ export default function PosRegister({
   const [carpetModalState, setCarpetModalState] = useState(null);
 
   // State for Weight mode
-  const [weightKg, setWeightKg] = useState('');
-  const [weightClothesCount, setWeightClothesCount] = useState('');
-  const [weightNote, setWeightNote] = useState('');
-  const [weightGarments, setWeightGarments] = useState([]); // itemized clothes in bag: [{ id, name, category, quantity }]
-  const [weightAddons, setWeightAddons] = useState([]); // applied add-on services: [{ id, name, price }]
+  const [weightKg, setWeightKg] = useState(editingOrder?.weightKg != null && editingOrder.weightKg > 0 ? String(editingOrder.weightKg) : '');
+  const [weightClothesCount, setWeightClothesCount] = useState(editingOrder?.weightClothesCount != null && editingOrder.weightClothesCount > 0 ? String(editingOrder.weightClothesCount) : '');
+  const [weightNote, setWeightNote] = useState(editingOrder?.weightNote || '');
+  const [weightGarments, setWeightGarments] = useState(Array.isArray(editingOrder?.weightGarments) ? editingOrder.weightGarments : []); // itemized clothes in bag: [{ id, name, category, quantity }]
+  const [weightAddons, setWeightAddons] = useState(Array.isArray(editingOrder?.weightAddons) ? editingOrder.weightAddons : []); // applied add-on services: [{ id, name, price }]
   const [showWeightGarmentList, setShowWeightGarmentList] = useState(false);
   const [weightGarmentSearch, setWeightGarmentSearch] = useState('');
   const [weightGarmentCategory, setWeightGarmentCategory] = useState('All');
@@ -106,6 +134,7 @@ export default function PosRegister({
   const [newAddonPriceWeight, setNewAddonPriceWeight] = useState('');
 
   const [dueDate, setDueDate] = useState(() => {
+    if (editingOrder?.dueDate) return String(editingOrder.dueDate).slice(0, 10);
     const d = new Date();
     d.setDate(d.getDate() + 3);
     return d.toISOString().slice(0, 10);
@@ -358,8 +387,18 @@ export default function PosRegister({
     [bestDiscount, grossAmount, currentCustomer],
   );
 
-  const [selectedExpressId, setSelectedExpressId] = useState('standard');
-  const [customExpressPercent, setCustomExpressPercent] = useState('');
+  const [selectedExpressId, setSelectedExpressId] = useState(() => {
+    if (editingOrder?.expressPercent && editingOrder.expressPercent > 0) {
+      return 'custom';
+    }
+    return 'standard';
+  });
+  const [customExpressPercent, setCustomExpressPercent] = useState(() => {
+    if (editingOrder?.expressPercent && editingOrder.expressPercent > 0) {
+      return String(editingOrder.expressPercent);
+    }
+    return '';
+  });
 
   const expressOptions = useMemo(() => {
     if (Array.isArray(settings?.expressOptions) && settings.expressOptions.length > 0) {
@@ -375,7 +414,11 @@ export default function PosRegister({
     : Number(activeExpressOption?.percent || 0);
 
   const taxEnabled = settings?.taxEnabled ?? true;
-  const [checkoutDiscountPercent, setCheckoutDiscountPercent] = useState('');
+  const [checkoutDiscountPercent, setCheckoutDiscountPercent] = useState(
+    editingOrder?.manualCheckoutDiscountPercent != null && editingOrder.manualCheckoutDiscountPercent !== 0
+      ? editingOrder.manualCheckoutDiscountPercent
+      : ''
+  );
   const checkoutDiscountPct = Math.round(Math.max(0, Math.min(100, Number(checkoutDiscountPercent) || 0)));
 
   const handleCheckoutDiscountChange = (e) => {
@@ -517,15 +560,21 @@ export default function PosRegister({
         totalAmount: grandTotal,
         dueDate,
       };
-      await onCompleteOrder(payload);
+      if (editingOrder && onUpdateOrder) {
+        await onUpdateOrder(editingOrder.id, payload);
+      } else {
+        await onCompleteOrder(payload);
+      }
 
       // Reset checkout discount for next order
       setCheckoutDiscountPercent('');
 
-      // Auto-advance sequence for the next order intake! (e.g. #w123 -> #w124)
-      const nextSequenceNo = getNextOrderNo(activeOrderNo);
-      setCustomOrderNo(nextSequenceNo);
-      setHasManuallyEditedOrderNo(false);
+      if (!editingOrder) {
+        // Auto-advance sequence for the next order intake! (e.g. #w123 -> #w124)
+        const nextSequenceNo = getNextOrderNo(activeOrderNo);
+        setCustomOrderNo(nextSequenceNo);
+        setHasManuallyEditedOrderNo(false);
+      }
     } catch (err) {
       onToast(err.message || 'Failed to place order.');
     } finally {
@@ -601,8 +650,27 @@ export default function PosRegister({
               <span className="caption-label pos-desktop-only">Clean Clear Register</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <h2 className="pos-page-title">
-                  {orderType === 'weight' ? 'Order by Weight (Bundle)' : 'New Laundry Intake'}
+                  {editingOrder
+                    ? `Edit Order #${editingOrder.orderNo}`
+                    : orderType === 'weight'
+                    ? 'Order by Weight (Bundle)'
+                    : 'New Laundry Intake'}
                 </h2>
+                {editingOrder && (
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      background: '#fef3c7',
+                      color: '#b45309',
+                      border: '1px solid #fde68a',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                    }}
+                  >
+                    Editing Mode
+                  </span>
+                )}
                 <span
                   className="pos-order-badge"
                   style={{
@@ -1367,7 +1435,12 @@ export default function PosRegister({
               disabled={submitting || (orderType === 'pieces' ? cartItems.length === 0 : !(Number(weightKg) > 0))}
               onClick={handlePlaceOrder}
             >
-              {currentCustomer?.walletBalance >= grandTotal ? (
+              {editingOrder ? (
+                <>
+                  <ReceiptText size={16} style={{ flexShrink: 0 }} />
+                  <span>{submitting ? 'Updating Order...' : `Update Order & New Bill (${formatMoney(grandTotal)})`}</span>
+                </>
+              ) : currentCustomer?.walletBalance >= grandTotal ? (
                 <>
                   <Wallet size={16} style={{ flexShrink: 0 }} />
                   <span>{submitting ? 'Placing Order...' : `Place Order & Pay with Wallet (${formatMoney(grandTotal)})`}</span>
@@ -2063,7 +2136,12 @@ export default function PosRegister({
             disabled={submitting || (orderType === 'pieces' ? cartItems.length === 0 : !(Number(weightKg) > 0))}
             onClick={handlePlaceOrder}
           >
-            {currentCustomer?.walletBalance >= grandTotal ? (
+            {editingOrder ? (
+              <>
+                <ReceiptText size={18} style={{ flexShrink: 0 }} />
+                <span>{submitting ? 'Updating Order & Generating Bill...' : `Update Order & Generate New Bill (${formatMoney(grandTotal)})`}</span>
+              </>
+            ) : currentCustomer?.walletBalance >= grandTotal ? (
               <>
                 <Wallet size={18} style={{ flexShrink: 0 }} />
                 <span>{submitting ? 'Placing Order...' : `Place Order & Pay with Wallet (${formatMoney(grandTotal)})`}</span>

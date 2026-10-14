@@ -78,6 +78,7 @@ export default function ThermalReceiptModal({
   const total = Number(order.totalAmount ?? (taxable + tax));
   const paid = Number(order.paidAmount || 0);
   const balance = Number(order.balanceAmount ?? (total - paid));
+  const roundOff = Math.round((total - (taxable + tax)) * 100) / 100;
 
   const cashierName = currentStaff?.name || 'Counter Cashier';
   const isWeight = order.type === 'weight';
@@ -957,6 +958,13 @@ export default function ThermalReceiptModal({
                     <strong>{formatMoney(tax)}</strong>
                   </div>
                 )
+              )}
+
+              {roundOff !== 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#64748b' }}>Round Off:</span>
+                  <strong>{roundOff > 0 ? `+${formatMoney(roundOff)}` : formatMoney(roundOff)}</strong>
+                </div>
               )}
 
               {/* Net Total Box */}

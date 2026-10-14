@@ -142,6 +142,12 @@ export function computeTotals({
   if (manualAmtPaise > totalPaise) manualAmtPaise = totalPaise;
   totalPaise = Math.max(0, totalPaise - manualAmtPaise);
 
+  // Ceil / Roundup overall total amount to the nearest whole rupee (e.g. 21.25 -> 22, 30.01 -> 31)
+  if (totalPaise > 0) {
+    const roundedRupees = Math.ceil(totalPaise / 100);
+    totalPaise = roundedRupees * 100;
+  }
+
   return {
     grossAmount: fromPaise(gross),
     discountAmount: fromPaise(discount),

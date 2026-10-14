@@ -3,7 +3,7 @@ import {
   initialPackageCatalog, initialAddons, initialBrands, initialColors, initialDefects,
 } from '../data.js';
 import { getNextOrderNo, formatOrderNo } from './orderNumbers.js';
-import { computeTotals } from './orderPricing.js';
+import { computeTotals, roundMoney } from './orderPricing.js';
 import { buildPublicBillUrl } from './billSecurity.js';
 import { clearActiveSession, isDemoAllowed, verifyAdminCredentials, verifyStaffPin } from './authConfig.js';
 
@@ -70,6 +70,31 @@ export function deductWalletFromPackages(customerPackages, customerId, amount, n
       ...cp,
       remainingCredit: newRem,
       status: shouldDisable ? 'disabled' : cp.status,
+    };
+  });
+}
+
+export function restoreWalletToPackages(customerPackages, customerId, amount) {
+  let remainingToRestore = amount;
+  return (customerPackages || []).map((cp) => {
+    if (cp.customerId !== customerId || cp.kind !== 'wallet' || remainingToRestore <= 0) {
+      return cp;
+    }
+    const maxCredit = Number(cp.walletCredit || 0);
+    const currentRem = cp.remainingCredit !== undefined && cp.remainingCredit !== null
+      ? Number(cp.remainingCredit)
+      : maxCredit;
+    const capacity = Math.max(0, maxCredit - currentRem);
+    if (capacity <= 0) return cp;
+
+    const restore = Math.min(capacity, remainingToRestore);
+    remainingToRestore -= restore;
+    const nextRem = currentRem + restore;
+    const isExpired = isPackageExpired(cp.expiresAt);
+    return {
+      ...cp,
+      remainingCredit: nextRem,
+      status: (!isExpired && nextRem > 0) ? 'active' : cp.status,
     };
   });
 }
@@ -916,6 +941,13 @@ export async function createOrder(order, current) {
   // Browser-only demo mode trusts the POS figures; the Worker re-prices everything server-side.
   const settings = current.settings || defaultSettings;
   const isTaxEnabled = order.taxEnabled !== undefined ? Boolean(order.taxEnabled) : Boolean(settings.taxEnabled);
+  const fallbackGross = (order.items || []).reduce(
+    (sum, it) => sum + (Number(it.lineTotal) || (Number(it.unitPrice || 0) * Number(it.quantity || 1))),
+    0
+  );
+  const rawGross = (order.grossAmount !== undefined && order.grossAmount !== null)
+    ? Number(order.grossAmount)
+    : fallbackGross;
   const {
     grossAmount: gross,
     discountAmount: discount,
@@ -927,7 +959,7 @@ export async function createOrder(order, current) {
     manualCheckoutDiscountAmount,
     totalAmount,
   } = computeTotals({
-    grossAmount: order.grossAmount,
+    grossAmount: rawGross,
     discountAmount: order.discountAmount,
     expressPercent: order.expressPercent,
     expressAmount: order.expressAmount,
@@ -1085,21 +1117,277 @@ export async function recordPayment(orderId, amount, method, current) {
 
 export async function updateOrderStatus(orderId, status, current) {
   if (remoteMode) return finishRemoteMutation(`/api/orders/${encodeURIComponent(orderId)}`, 'PATCH', { status });
+
+  const order = (current.orders || []).find((o) => o.id === orderId);
+  if (!order) throw new Error('Order not found.');
+
+  if (status === 'Cancelled') {
+    if (order.status === 'Delivered') throw new Error('Delivered orders cannot be cancelled.');
+    if (order.status === 'Cancelled') return current;
+
+    let customers = current.customers || [];
+    let customerPackages = current.customerPackages || [];
+    let walletTransactions = current.walletTransactions || [];
+
+    const walletPaid = (current.payments || [])
+      .filter((p) => p.orderId === orderId && p.method === 'wallet')
+      .reduce((s, p) => s + Number(p.amount || 0), 0);
+
+    if (walletPaid > 0) {
+      customers = customers.map((c) =>
+        c.id === order.customerId
+          ? { ...c, walletBalance: Number(c.walletBalance || 0) + walletPaid }
+          : c
+      );
+      customerPackages = restoreWalletToPackages(customerPackages, order.customerId, walletPaid);
+      walletTransactions = [
+        {
+          id: `wt-${crypto.randomUUID()}`,
+          customerId: order.customerId,
+          packageId: null,
+          orderId,
+          kind: 'credit',
+          amount: walletPaid,
+          description: `Refund for cancelled order #${order.orderNo}`,
+          createdAt: new Date().toISOString(),
+        },
+        ...walletTransactions,
+      ];
+    }
+
+    const orders = (current.orders || []).map((o) =>
+      o.id === orderId
+        ? {
+            ...o,
+            status: 'Cancelled',
+            balanceAmount: 0,
+            items: (o.items || []).map((item) => ({ ...item, status: 'Cancelled' })),
+          }
+        : o
+    );
+
+    return saveLocal({
+      ...current,
+      orders,
+      customers,
+      customerPackages,
+      walletTransactions,
+    });
+  }
+
   return saveLocal({
     ...current,
-    orders: current.orders.map((order) => order.id === orderId
-      ? { ...order, status, items: order.items.map((item) => ({ ...item, status })) }
-      : order),
+    orders: (current.orders || []).map((o) => o.id === orderId
+      ? { ...o, status, items: (o.items || []).map((item) => ({ ...item, status })) }
+      : o),
+  });
+}
+
+export async function updateOrder(orderId, orderPayload, current) {
+  if (remoteMode) return finishRemoteMutation(`/api/orders/${encodeURIComponent(orderId)}`, 'PUT', orderPayload);
+
+  const existingOrder = (current.orders || []).find((o) => o.id === orderId);
+  if (!existingOrder) throw new Error('Order not found.');
+  if (existingOrder.status === 'Delivered') throw new Error('Delivered orders cannot be edited.');
+  if (existingOrder.status === 'Cancelled') throw new Error('Cancelled orders cannot be edited.');
+
+  const settings = current.settings || defaultSettings;
+  const isTaxEnabled = orderPayload.taxEnabled !== undefined ? Boolean(orderPayload.taxEnabled) : Boolean(settings.taxEnabled);
+
+  const fallbackGross = (orderPayload.items || []).reduce(
+    (sum, it) => sum + (Number(it.lineTotal) || (Number(it.unitPrice || 0) * Number(it.quantity || 1))),
+    0
+  );
+  const rawGross = (orderPayload.grossAmount !== undefined && orderPayload.grossAmount !== null)
+    ? Number(orderPayload.grossAmount)
+    : fallbackGross;
+
+  const {
+    grossAmount: gross,
+    discountAmount: discount,
+    expressPercent,
+    expressAmount,
+    taxPercent,
+    taxAmount,
+    manualCheckoutDiscountPercent,
+    manualCheckoutDiscountAmount,
+    totalAmount,
+  } = computeTotals({
+    grossAmount: rawGross,
+    discountAmount: orderPayload.discountAmount,
+    expressPercent: orderPayload.expressPercent,
+    expressAmount: orderPayload.expressAmount,
+    taxEnabled: isTaxEnabled,
+    taxPercent: settings.taxPercent ?? 18,
+    manualCheckoutDiscountPercent: orderPayload.manualCheckoutDiscountPercent,
+    manualCheckoutDiscountAmount: orderPayload.manualCheckoutDiscountAmount,
+  });
+
+  const existingPayments = (current.payments || []).filter((p) => p.orderId === orderId);
+  const walletPaid = existingPayments.filter((p) => p.method === 'wallet').reduce((s, p) => s + Number(p.amount || 0), 0);
+  const otherPaid = existingPayments.filter((p) => p.method !== 'wallet').reduce((s, p) => s + Number(p.amount || 0), 0);
+  const totalPaidSoFar = walletPaid + otherPaid;
+
+  let customers = current.customers || [];
+  let customerPackages = current.customerPackages || [];
+  let payments = current.payments || [];
+  let walletTransactions = current.walletTransactions || [];
+
+  let finalPaidAmount = totalPaidSoFar;
+  let finalBalanceAmount = Math.max(0, totalAmount - finalPaidAmount);
+
+  if (totalAmount < totalPaidSoFar) {
+    const excess = roundMoney(totalPaidSoFar - totalAmount);
+    const refundFromWallet = Math.min(walletPaid, excess);
+    if (refundFromWallet > 0) {
+      customers = customers.map((c) =>
+        c.id === existingOrder.customerId
+          ? { ...c, walletBalance: Number(c.walletBalance || 0) + refundFromWallet }
+          : c
+      );
+      customerPackages = restoreWalletToPackages(customerPackages, existingOrder.customerId, refundFromWallet);
+      walletTransactions = [
+        {
+          id: `wt-${crypto.randomUUID()}`,
+          customerId: existingOrder.customerId,
+          packageId: null,
+          orderId,
+          kind: 'credit',
+          amount: refundFromWallet,
+          description: `Refund adjustment for edited order #${existingOrder.orderNo}`,
+          createdAt: new Date().toISOString(),
+        },
+        ...walletTransactions,
+      ];
+      const newWalletPaid = roundMoney(walletPaid - refundFromWallet);
+      if (newWalletPaid <= 0) {
+        payments = payments.filter((p) => !(p.orderId === orderId && p.method === 'wallet'));
+      } else {
+        let updated = false;
+        payments = payments.map((p) => {
+          if (!updated && p.orderId === orderId && p.method === 'wallet') {
+            updated = true;
+            return { ...p, amount: newWalletPaid };
+          }
+          return p;
+        });
+      }
+      finalPaidAmount = Math.max(0, totalPaidSoFar - refundFromWallet);
+      finalBalanceAmount = Math.max(0, totalAmount - finalPaidAmount);
+    }
+  } else if (totalAmount > totalPaidSoFar) {
+    const needed = roundMoney(totalAmount - totalPaidSoFar);
+    const cust = customers.find((c) => c.id === existingOrder.customerId);
+    const custBal = Number(cust?.walletBalance || 0);
+    const additionalDeduct = Math.min(custBal, needed);
+    if (additionalDeduct > 0) {
+      customers = customers.map((c) =>
+        c.id === existingOrder.customerId
+          ? { ...c, walletBalance: Math.max(0, Number(c.walletBalance || 0) - additionalDeduct) }
+          : c
+      );
+      const nextBal = Math.max(0, custBal - additionalDeduct);
+      customerPackages = deductWalletFromPackages(customerPackages, existingOrder.customerId, additionalDeduct, nextBal);
+      payments = [
+        {
+          id: `pay-${crypto.randomUUID()}`,
+          orderId,
+          customerId: existingOrder.customerId,
+          amount: additionalDeduct,
+          method: 'wallet',
+          createdAt: new Date().toISOString(),
+        },
+        ...payments,
+      ];
+      walletTransactions = [
+        {
+          id: `wt-${crypto.randomUUID()}`,
+          customerId: existingOrder.customerId,
+          packageId: null,
+          orderId,
+          kind: 'debit',
+          amount: additionalDeduct,
+          description: `Additional payment for edited order #${existingOrder.orderNo}`,
+          createdAt: new Date().toISOString(),
+        },
+        ...walletTransactions,
+      ];
+      finalPaidAmount = roundMoney(totalPaidSoFar + additionalDeduct);
+      finalBalanceAmount = Math.max(0, totalAmount - finalPaidAmount);
+    }
+  }
+
+  const updatedOrder = {
+    ...existingOrder,
+    orderType: orderPayload.type || existingOrder.orderType,
+    type: orderPayload.type || existingOrder.type,
+    service: orderPayload.service,
+    items: orderPayload.items || [],
+    weightKg: orderPayload.weightKg || 0,
+    weightClothesCount: orderPayload.weightClothesCount || 0,
+    weightGarments: orderPayload.weightGarments || [],
+    weightAddons: orderPayload.weightAddons || [],
+    weightNote: orderPayload.weightNote || '',
+    grossAmount: gross,
+    discountAmount: discount,
+    discountPercent: orderPayload.discountPercent,
+    discountName: orderPayload.discountName,
+    expressPercent,
+    expressAmount,
+    expressLabel: orderPayload.expressLabel || existingOrder.expressLabel,
+    taxPercent,
+    taxAmount,
+    taxEnabled: isTaxEnabled,
+    manualCheckoutDiscountPercent,
+    manualCheckoutDiscountAmount,
+    totalAmount,
+    paidAmount: finalPaidAmount,
+    balanceAmount: finalBalanceAmount,
+    dueDate: orderPayload.dueDate || existingOrder.dueDate,
+  };
+
+  const orders = (current.orders || []).map((o) => (o.id === orderId ? updatedOrder : o));
+
+  return saveLocal({
+    ...current,
+    orders,
+    customers,
+    customerPackages,
+    payments,
+    walletTransactions,
   });
 }
 
 export async function deleteOrder(orderId, current) {
   if (remoteMode) return finishRemoteMutation(`/api/orders/${encodeURIComponent(orderId)}`, 'DELETE');
+
+  const order = (current.orders || []).find((o) => o.id === orderId);
+  let customers = current.customers || [];
+  let customerPackages = current.customerPackages || [];
+  let walletTransactions = current.walletTransactions || [];
+
+  if (order && order.status !== 'Cancelled') {
+    const walletPaid = (current.payments || [])
+      .filter((p) => p.orderId === orderId && p.method === 'wallet')
+      .reduce((s, p) => s + Number(p.amount || 0), 0);
+
+    if (walletPaid > 0) {
+      customers = customers.map((c) =>
+        c.id === order.customerId
+          ? { ...c, walletBalance: Number(c.walletBalance || 0) + walletPaid }
+          : c
+      );
+      customerPackages = restoreWalletToPackages(customerPackages, order.customerId, walletPaid);
+    }
+  }
+
   return saveLocal({
     ...current,
+    customers,
+    customerPackages,
     orders: (current.orders || []).filter((order) => order.id !== orderId),
     payments: (current.payments || []).filter((payment) => payment.orderId !== orderId),
-    walletTransactions: (current.walletTransactions || []).filter((wt) => wt.orderId !== orderId),
+    walletTransactions: walletTransactions.filter((wt) => wt.orderId !== orderId),
   });
 }
 

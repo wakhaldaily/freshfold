@@ -928,6 +928,11 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
   if (settings?.taxEnabled !== false && num(order.taxAmount) > 0) {
     text += `Tax (${settings?.taxLabel || 'GST'} ${settings?.taxPercent || 18}%): ₹${num(order.taxAmount).toFixed(2)}\n`;
   }
+  const shareTaxable = Math.max(0, num(order.grossAmount) - totalDiscount) + num(order.expressAmount);
+  const shareRoundOff = Math.round((total - (shareTaxable + (settings?.taxEnabled !== false ? num(order.taxAmount) : 0))) * 100) / 100;
+  if (shareRoundOff !== 0) {
+    text += `Round Off: ${shareRoundOff > 0 ? '+' : ''}₹${shareRoundOff.toFixed(2)}\n`;
+  }
   text += `*NET TOTAL: ₹${total.toFixed(2)}*\n`;
   text += `Amount Paid: ₹${paid.toFixed(2)}\n`;
   text += `*Balance Due: ₹${balance.toFixed(2)}*\n`;

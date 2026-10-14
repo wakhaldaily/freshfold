@@ -249,8 +249,8 @@ test('express surcharge is stored and totals reconcile', async () => {
   assert.equal(order.grossAmount, 450, 'suit 400 + stain removal 50 from catalog');
   assert.equal(order.expressAmount, 112.5);
   assert.equal(order.expressLabel, 'Express (+25%)');
-  const reconciled = Math.round((order.grossAmount - order.discountAmount + order.expressAmount + order.taxAmount) * 100);
-  assert.equal(reconciled, Math.round(order.totalAmount * 100));
+  const reconciled = Math.ceil(order.grossAmount - order.discountAmount + order.expressAmount + order.taxAmount);
+  assert.equal(reconciled, order.totalAmount);
 });
 
 test('package discounts and wallet auto-deduction are applied atomically on the server', async () => {
@@ -286,17 +286,17 @@ test('payments cannot exceed the balance and wallet must cover it in full', asyn
   const order = await api.post('/api/orders', { customerId, type: 'weight', service: 'Wash and Fold', weightKg: 2 }, { token });
   assert.equal(order.status, 201, JSON.stringify(order.data));
   const { id, totalAmount } = order.data;
-  assert.equal(totalAmount, 212.4, '2kg x 90 + 18%');
+  assert.equal(totalAmount, 213, '2kg x 90 + 18% = 212.4 rounded up to 213');
 
   assert.equal((await api.post(`/api/orders/${id}/payments`, { amount: 500, method: 'cash' }, { token })).status, 409);
   assert.equal((await api.post(`/api/orders/${id}/payments`, { amount: -5, method: 'cash' }, { token })).status, 400);
   assert.equal((await api.post(`/api/orders/${id}/payments`, { amount: totalAmount, method: 'wallet' }, { token })).status, 409);
   assert.equal((await api.post(`/api/orders/${id}/payments`, { amount: 100, method: 'upi' }, { token })).status, 201);
-  assert.equal((await api.post(`/api/orders/${id}/payments`, { amount: 112.41, method: 'cash' }, { token })).status, 409);
-  assert.equal((await api.post(`/api/orders/${id}/payments`, { amount: 112.4, method: 'cash' }, { token })).status, 201);
+  assert.equal((await api.post(`/api/orders/${id}/payments`, { amount: 113.01, method: 'cash' }, { token })).status, 409);
+  assert.equal((await api.post(`/api/orders/${id}/payments`, { amount: 113, method: 'cash' }, { token })).status, 201);
   const saved = (await api.get('/api/bootstrap', { token })).data.orders[0];
   assert.equal(saved.balanceAmount, 0);
-  assert.equal(saved.paidAmount, 212.4);
+  assert.equal(saved.paidAmount, 213);
 });
 
 test('order numbers: manual duplicates are rejected, automatic numbers advance', async () => {

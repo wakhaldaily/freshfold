@@ -5,7 +5,7 @@ import {
   assignPackage, clearAdminSession, clearAllCustomerAndOrderData, clearAuthToken, createAdmin, createCustomer, createOrder,
   createPackage, deleteAdmin, deleteCustomer, deleteOrder, deletePackage, getAdminSession, isRemoteMode,
   loadLocal, loadStore, recordPayment, saveSettings, saveStaff, setAdminSession,
-  updateAdminProfile, updateCustomer, updateOrderStatus, updatePackage,
+  updateAdminProfile, updateCustomer, updateOrder, updateOrderStatus, updatePackage,
   saveCustomAddon, saveCustomBrand, saveCustomColor, saveCustomDefect,
   AuthRequiredError, UNAUTHORIZED_EVENT, detectBackend, dropAdminMode, elevateToAdmin, getAuthToken,
   getRecoveryQuestion, loginAdmin, loginStaff, logoutSession, resetPasswordWithAnswer, setupStore,
@@ -79,6 +79,7 @@ export default function App() {
   const [backend, setBackend] = useState(null); // { database, demo, setupRequired, storeName, tagline }
 
   const [modal, setModal] = useState(null);
+  const [editingOrder, setEditingOrder] = useState(null);
 
   // Collapsible sidebar state (persisted)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -101,6 +102,9 @@ export default function App() {
   };
 
   const handleNavigate = (newView) => {
+    if (newView !== 'new-order') {
+      setEditingOrder(null);
+    }
     setView(newView);
     setMobileMenuOpen(false);
   };
@@ -612,6 +616,19 @@ export default function App() {
               packages={data.packages}
               orders={data.orders}
               initialCustomer={currentDetailCustomer}
+              editingOrder={editingOrder}
+              onUpdateOrder={async (orderId, payload) => {
+                const next = await runMutation((cur) => updateOrder(orderId, payload, cur), 'Order updated successfully!');
+                setEditingOrder(null);
+                if (orderId) {
+                  // Immediately open the receipt modal with updated bill details
+                  setModal({ type: 'thermal-receipt', orderId });
+                }
+              }}
+              onCancelEditing={() => {
+                setEditingOrder(null);
+                setView('orders');
+              }}
               settings={data.settings}
               addons={data.addons}
               brands={data.brands}
@@ -629,7 +646,14 @@ export default function App() {
               onSaveDefect={async (defect) => {
                 await runMutation((cur) => saveCustomDefect(defect, cur), `Defect "${defect}" saved.`);
               }}
-              onBack={() => setView('dashboard')}
+              onBack={() => {
+                if (editingOrder) {
+                  setEditingOrder(null);
+                  setView('orders');
+                } else {
+                  setView('dashboard');
+                }
+              }}
               onOpenNewCustomerModal={() => setModal({ type: 'customer-new' })}
               onCompleteOrder={async (payload) => {
                 const next = await runMutation((cur) => createOrder(payload, cur), 'Order placed successfully!');
@@ -861,6 +885,14 @@ export default function App() {
         }}
         onOpenPayment={() => setModal({ type: 'payment', orderId: activeOrder.id })}
         onOpenReceipt={() => setModal({ type: 'thermal-receipt', orderId: activeOrder.id })}
+        onEditOrder={(orderToEdit) => {
+          setModal(null);
+          setEditingOrder(orderToEdit);
+          setView('new-order');
+        }}
+        onCancelOrder={async (orderId) => {
+          await runMutation((cur) => updateOrderStatus(orderId, 'Cancelled', cur), 'Order cancelled and wallet credit reverted.');
+        }}
         onDeleteOrder={handleDeleteOrder}
         onToast={showToast}
       />

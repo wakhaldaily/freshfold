@@ -1,11 +1,13 @@
 import React from 'react';
 import {
   ArrowRight,
+  Ban,
   CalendarDays,
   CheckCircle2,
   Clock,
   Clock3,
   CreditCard,
+  Edit3,
   FileText,
   MapPin,
   Package,
@@ -42,6 +44,8 @@ export default function OrderDetailModal({
   onUpdateStatus,
   onOpenPayment,
   onOpenReceipt,
+  onEditOrder,
+  onCancelOrder,
   onDeleteOrder,
   onToast,
 }) {
@@ -77,6 +81,35 @@ export default function OrderDetailModal({
     if (currentStepIndex >= 0 && currentStepIndex < STATUS_STEPS.length - 1) {
       handleStatusChange(STATUS_STEPS[currentStepIndex + 1].key);
     }
+  };
+
+  const canEditOrCancel = order.status !== 'Delivered' && order.status !== 'Cancelled';
+
+  const handleCancelOrder = async () => {
+    const orderLabel = order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`;
+    if (!window.confirm(`Are you sure you want to cancel order ${orderLabel}? Any wallet credit deducted for this order will be refunded back to the customer's wallet and package.`)) {
+      return;
+    }
+    try {
+      if (onCancelOrder) {
+        await onCancelOrder(order.id);
+      } else {
+        await onUpdateStatus(order.id, 'Cancelled');
+      }
+      onToast?.(`Order ${orderLabel} cancelled and wallet credit reverted.`);
+      onClose();
+    } catch (err) {
+      onToast?.(err.message || 'Failed to cancel order.');
+    }
+  };
+
+  const handleEditOrder = () => {
+    if (!canEditOrCancel) {
+      onToast?.('Only active, non-delivered orders can be edited.');
+      return;
+    }
+    onEditOrder?.(order);
+    onClose();
   };
 
   return (
@@ -715,23 +748,15 @@ export default function OrderDetailModal({
           )}
         </div>
 
-        {/* Modal Footer Actions */}
-        <div
-          className="modal-footer"
-          style={{
-            padding: '14px 22px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            borderTop: '1px solid #e2e8f0',
-            background: '#ffffff',
-          }}
-        >
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        {/* Modal Footer Actions - Responsive */}
+        <div className="order-modal-footer">
+          <div className="order-modal-footer-left">
             <button
               type="button"
-              className="button button-quiet"
+              className="button button-quiet order-modal-icon-btn"
               onClick={onOpenReceipt}
+              title="Bill & 80mm Receipt"
+              aria-label="Bill & 80mm Receipt"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -740,13 +765,57 @@ export default function OrderDetailModal({
                 fontWeight: 700,
               }}
             >
-              <ReceiptText size={16} /> Bill & 80mm Receipt
+              <ReceiptText size={16} /> <span className="order-modal-btn-label">Bill & Receipt</span>
             </button>
+
+            {canEditOrCancel && (
+              <button
+                type="button"
+                className="button button-quiet order-modal-icon-btn"
+                onClick={handleEditOrder}
+                title="Edit Order"
+                aria-label="Edit Order"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: '#0284c7',
+                  borderColor: '#bae6fd',
+                  background: '#f0f9ff',
+                }}
+              >
+                <Edit3 size={15} /> <span className="order-modal-btn-label">Edit Order</span>
+              </button>
+            )}
+
+            {canEditOrCancel && (
+              <button
+                type="button"
+                className="button button-quiet order-modal-icon-btn"
+                onClick={handleCancelOrder}
+                title="Cancel Order"
+                aria-label="Cancel Order"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: '#b45309',
+                  borderColor: '#fed7aa',
+                  background: '#fff7ed',
+                }}
+              >
+                <Ban size={15} /> <span className="order-modal-btn-label">Cancel Order</span>
+              </button>
+            )}
 
             {onDeleteOrder && (
               <button
                 type="button"
-                className="button button-quiet"
+                className="button button-quiet order-modal-icon-btn"
                 onClick={() => {
                   const orderLabel = order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`;
                   if (window.confirm(`Are you sure you want to delete order ${orderLabel} from history? This action cannot be undone.`)) {
@@ -765,17 +834,18 @@ export default function OrderDetailModal({
                   background: '#fef2f2',
                 }}
                 title="Delete this order from history"
+                aria-label="Delete this order from history"
               >
-                <Trash2 size={15} /> Delete Order
+                <Trash2 size={15} /> <span className="order-modal-btn-label">Delete</span>
               </button>
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="order-modal-footer-right">
             {balance > 0 && (
               <button
                 type="button"
-                className="button button-primary"
+                className="button button-primary order-modal-pay-btn"
                 onClick={onOpenPayment}
                 style={{
                   display: 'inline-flex',
@@ -785,17 +855,22 @@ export default function OrderDetailModal({
                   fontWeight: 700,
                 }}
               >
-                <CreditCard size={15} /> Collect Payment ({formatMoney(balance)})
+                <CreditCard size={15} />
+                <span className="order-modal-btn-label">Collect Payment ({formatMoney(balance)})</span>
+                <span className="order-modal-close-icon">Pay {formatMoney(balance)}</span>
               </button>
             )}
 
             <button
               type="button"
-              className="button button-quiet"
+              className="button button-quiet order-modal-icon-btn"
               onClick={onClose}
+              title="Close"
+              aria-label="Close"
               style={{ fontSize: '12px' }}
             >
-              Close
+              <X size={17} className="order-modal-close-icon" />
+              <span className="order-modal-btn-label">Close</span>
             </button>
           </div>
         </div>

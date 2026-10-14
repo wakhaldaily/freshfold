@@ -153,6 +153,8 @@ export default function PublicBillView({ billParam, tokenParam }) {
   const rawItems = Array.isArray(order.items) ? order.items : [];
   const items = rawItems.filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge');
   const totalDiscount = getOrderTotalDiscount(order);
+  const taxable = Math.max(0, Number(order.grossAmount || 0) - totalDiscount) + Number(order.expressAmount || 0);
+  const roundOff = Math.round((total - (taxable + taxAmount)) * 100) / 100;
   const lineDiscounts = calculateLineDiscounts(items, totalDiscount);
   const discountLabel = order.discountName
     || (order.manualCheckoutDiscountPercent ? `${order.manualCheckoutDiscountPercent}%` : '')
@@ -437,6 +439,13 @@ export default function PublicBillView({ billParam, tokenParam }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
                   <span>Tax ({settings?.taxLabel || 'GST'} {Number(order.taxPercent || settings?.taxPercent || 0)}%)</span>
                   <span>+{formatMoney(taxAmount)}</span>
+                </div>
+              )}
+
+              {roundOff !== 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
+                  <span>Round Off</span>
+                  <span>{roundOff > 0 ? `+${formatMoney(roundOff)}` : formatMoney(roundOff)}</span>
                 </div>
               )}
 

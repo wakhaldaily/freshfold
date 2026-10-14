@@ -498,7 +498,88 @@ async function deleteCustomer({ sql, params, url }) {
   return json({ id: params.id, success: true });
 }
 
+async function refundOrderWalletCredit(sql, { orderId, customerId, orderNo, amount, reason = 'Refund for cancelled order' }) {
+  const refundAmount = roundMoney(amount);
+  if (!(refundAmount > 0)) return;
+  const wtId = newId('wt');
+  await sql`UPDATE customers SET wallet_balance = wallet_balance + ${refundAmount}::numeric WHERE id = ${customerId}`;
+  await sql`INSERT INTO wallet_transactions (id, customer_id, order_id, kind, amount, description)
+    VALUES (${wtId}, ${customerId}, ${orderId}, 'credit', ${refundAmount}, ${`${reason} #${orderNo}`})`;
+  await sql`WITH pkg_candidates AS (
+    SELECT id, wallet_credit, COALESCE(remaining_credit, wallet_credit) AS rem,
+           (wallet_credit - COALESCE(remaining_credit, wallet_credit)) AS capacity,
+           COALESCE(SUM(wallet_credit - COALESCE(remaining_credit, wallet_credit)) OVER (
+             ORDER BY created_at DESC, id DESC
+             ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+           ), 0) AS prior_restored
+    FROM customer_packages
+    WHERE customer_id = ${customerId} AND kind = 'wallet'
+  )
+  UPDATE customer_packages cp
+  SET
+    remaining_credit = LEAST(pc.wallet_credit, pc.rem + GREATEST(0, LEAST(pc.capacity, ${refundAmount}::numeric - pc.prior_restored))),
+    status = CASE
+      WHEN (pc.rem + GREATEST(0, LEAST(pc.capacity, ${refundAmount}::numeric - pc.prior_restored))) > 0
+           AND (cp.expires_at IS NULL OR cp.expires_at >= CURRENT_DATE) THEN 'active'
+      ELSE cp.status
+    END
+  FROM pkg_candidates pc
+  WHERE cp.id = pc.id AND pc.capacity > 0`;
+}
+
+async function deductCustomerWallet(sql, { orderId, customerId, orderNo, amount, reason = 'Payment for' }) {
+  const deductAmount = roundMoney(amount);
+  if (!(deductAmount > 0)) return;
+  const payId = newId('pay');
+  const wtId = newId('wt');
+  await sql`UPDATE customers SET wallet_balance = wallet_balance - ${deductAmount}::numeric WHERE id = ${customerId}`;
+  await sql`INSERT INTO payments (id, order_id, customer_id, amount, method)
+    VALUES (${payId}, ${orderId}, ${customerId}, ${deductAmount}, 'wallet')`;
+  await sql`INSERT INTO wallet_transactions (id, customer_id, order_id, kind, amount, description)
+    VALUES (${wtId}, ${customerId}, ${orderId}, 'debit', ${deductAmount}, ${`${reason} ${orderNo}`})`;
+  await sql`WITH active_wallets AS (
+    SELECT cp.id,
+      COALESCE(cp.remaining_credit, cp.wallet_credit) AS rem,
+      COALESCE(SUM(COALESCE(cp.remaining_credit, cp.wallet_credit)) OVER (
+        ORDER BY cp.created_at ASC, cp.id ASC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+      ), 0) AS prior_sum
+    FROM customer_packages cp
+    WHERE cp.customer_id = ${customerId}
+      AND cp.kind = 'wallet'
+      AND cp.status = 'active'
+  )
+  UPDATE customer_packages cp
+  SET
+    remaining_credit = GREATEST(0, aw.rem - LEAST(aw.rem, GREATEST(0, ${deductAmount}::numeric - aw.prior_sum))),
+    status = CASE
+      WHEN (aw.rem - LEAST(aw.rem, GREATEST(0, ${deductAmount}::numeric - aw.prior_sum))) <= 0 THEN 'disabled'
+      WHEN (SELECT wallet_balance FROM customers WHERE id = ${customerId}) <= 0 THEN 'disabled'
+      ELSE cp.status
+    END
+  FROM active_wallets aw
+  WHERE cp.id = aw.id`;
+}
+
 async function deleteOrderRoute({ sql, params }) {
+  const existing = await sql`SELECT id, order_no, customer_id, status FROM orders WHERE id = ${params.id}`;
+  if (!existing || !existing.length) throw new HttpError(404, 'Order not found.');
+  const order = existing[0];
+
+  if (order.status !== 'Cancelled') {
+    const walletPayments = await sql`SELECT COALESCE(SUM(amount), 0) AS "walletPaid" FROM payments WHERE order_id = ${params.id} AND method = 'wallet'`;
+    const walletPaid = Number(walletPayments[0]?.walletPaid || 0);
+    if (walletPaid > 0) {
+      await refundOrderWalletCredit(sql, {
+        orderId: order.id,
+        customerId: order.customer_id,
+        orderNo: order.order_no,
+        amount: walletPaid,
+        reason: 'Refund for deleted order',
+      });
+    }
+  }
+
   const results = await sql.transaction([
     sql`DELETE FROM wallet_transactions WHERE order_id = ${params.id}`,
     sql`DELETE FROM payments WHERE order_id = ${params.id}`,
@@ -653,13 +734,180 @@ async function createOrderRoute({ sql, request, user }) {
 async function updateOrderStatus({ sql, request, params }) {
   const body = await readJson(request);
   if (!ORDER_STATUSES.includes(body.status)) throw new HttpError(400, 'Invalid order status.');
+
+  const existing = await sql`SELECT id, order_no, customer_id, status, paid_amount, balance_amount FROM orders WHERE id = ${params.id} FOR UPDATE`;
+  if (!existing.length) throw new HttpError(404, 'Order not found.');
+  const order = existing[0];
+
+  if (body.status === 'Cancelled') {
+    if (order.status === 'Delivered') {
+      throw new HttpError(400, 'Delivered orders cannot be cancelled.');
+    }
+    if (order.status !== 'Cancelled') {
+      const walletPayments = await sql`SELECT COALESCE(SUM(amount), 0) AS "walletPaid" FROM payments WHERE order_id = ${params.id} AND method = 'wallet'`;
+      const walletPaid = Number(walletPayments[0]?.walletPaid || 0);
+      if (walletPaid > 0) {
+        await refundOrderWalletCredit(sql, {
+          orderId: order.id,
+          customerId: order.customer_id,
+          orderNo: order.order_no,
+          amount: walletPaid,
+          reason: 'Refund for cancelled order',
+        });
+      }
+    }
+    await sql`UPDATE orders SET status = 'Cancelled', balance_amount = 0,
+      items = CASE WHEN order_type = 'pieces'
+        THEN COALESCE((SELECT jsonb_agg(jsonb_set(line, '{status}', to_jsonb('Cancelled'::text))) FROM jsonb_array_elements(items) AS lines(line)), items)
+        ELSE items END
+      WHERE id = ${params.id}`;
+    return json({ id: params.id, status: 'Cancelled' });
+  }
+
   const rows = await sql`UPDATE orders SET status = ${body.status},
     items = CASE WHEN order_type = 'pieces'
       THEN COALESCE((SELECT jsonb_agg(jsonb_set(line, '{status}', to_jsonb(${body.status}::text))) FROM jsonb_array_elements(items) AS lines(line)), items)
       ELSE items END
     WHERE id = ${params.id} RETURNING id`;
   if (!rows.length) throw new HttpError(404, 'Order not found.');
-  return json({ id: params.id });
+  return json({ id: params.id, status: body.status });
+}
+
+async function updateOrderRoute({ sql, request, params }) {
+  const orderId = params.id;
+  const body = await readJson(request);
+
+  const existingRows = await sql`SELECT *, to_char(due_date, 'YYYY-MM-DD') AS due_date_str FROM orders WHERE id = ${orderId} FOR UPDATE`;
+  if (!existingRows.length) throw new HttpError(404, 'Order not found.');
+  const currentOrder = existingRows[0];
+
+  if (currentOrder.status === 'Delivered') {
+    throw new HttpError(400, 'Delivered orders cannot be edited.');
+  }
+  if (currentOrder.status === 'Cancelled') {
+    throw new HttpError(400, 'Cancelled orders cannot be edited.');
+  }
+
+  const customerId = currentOrder.customer_id;
+  const [customerRows, customerPackages, packageTemplates, settings, catalog] = await Promise.all([
+    sql`SELECT id, name, mobile, profile, wallet_balance FROM customers WHERE id = ${customerId}`,
+    sql`SELECT id, customer_id AS "customerId", template_id AS "templateId", name, kind,
+      wallet_credit AS "walletCredit",
+      COALESCE(remaining_credit, wallet_credit) AS "remainingCredit",
+      discount_percent AS "discountPercent",
+      to_char(expires_at, 'YYYY-MM-DD') AS "expiresAt",
+      status
+    FROM customer_packages
+    WHERE customer_id = ${customerId}
+      AND status = 'active'
+      AND (expires_at IS NULL OR expires_at >= CURRENT_DATE)`,
+    loadTemplates(sql, { enabledOnly: false }),
+    loadSettings(sql),
+    loadCatalog(sql),
+  ]);
+  if (!customerRows.length) throw new HttpError(404, 'Customer could not be found.');
+  const customer = mapCustomer(customerRows[0]);
+
+  const priced = priceOrder(body, {
+    customer,
+    customerPackages: customerPackages.map((r) => numbers(r, ['walletCredit', 'remainingCredit', 'discountPercent'])),
+    packageTemplates,
+    settings,
+    addonCatalog: catalog.addons,
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const existingDueDate = currentOrder.due_date_str || (currentOrder.due_date instanceof Date ? currentOrder.due_date.toISOString().slice(0, 10) : today);
+  const dueDate = body.dueDate ? validDate(body.dueDate) : existingDueDate;
+  if (!dueDate) throw new HttpError(400, 'Enter a valid promised date.');
+  const extra = orderExtra(body, priced);
+  const items = priced.items.map((item, index) => ({
+    ...item,
+    garmentId: item.id,
+    id: item.lineId || newId('line'),
+    barcode: `${currentOrder.order_no}-${index + 1}`,
+    status: currentOrder.status,
+  }));
+  const expressLabel = priced.expressPercent > 0 ? (text(body.expressLabel, 120) || priced.expressLabel) : '';
+
+  // Calculate payments reconciliation
+  const existingPayments = await sql`SELECT id, amount, method FROM payments WHERE order_id = ${orderId}`;
+  const walletPaid = existingPayments.filter((p) => p.method === 'wallet').reduce((sum, p) => sum + Number(p.amount), 0);
+  const otherPaid = existingPayments.filter((p) => p.method !== 'wallet').reduce((sum, p) => sum + Number(p.amount), 0);
+  const totalPaidSoFar = walletPaid + otherPaid;
+
+  let finalPaidAmount = totalPaidSoFar;
+  let finalBalanceAmount = Math.max(0, priced.totalAmount - finalPaidAmount);
+
+  if (priced.totalAmount < totalPaidSoFar) {
+    const excess = roundMoney(totalPaidSoFar - priced.totalAmount);
+    const refundFromWallet = Math.min(walletPaid, excess);
+    if (refundFromWallet > 0) {
+      await refundOrderWalletCredit(sql, {
+        orderId,
+        customerId,
+        orderNo: currentOrder.order_no,
+        amount: refundFromWallet,
+        reason: 'Refund adjustment for edited order',
+      });
+      const newWalletPaid = roundMoney(walletPaid - refundFromWallet);
+      if (newWalletPaid <= 0) {
+        await sql`DELETE FROM payments WHERE order_id = ${orderId} AND method = 'wallet'`;
+      } else {
+        await sql`UPDATE payments SET amount = ${newWalletPaid} WHERE id = (
+          SELECT id FROM payments WHERE order_id = ${orderId} AND method = 'wallet' ORDER BY created_at DESC LIMIT 1
+        )`;
+      }
+    }
+    finalPaidAmount = Math.max(0, totalPaidSoFar - refundFromWallet);
+    finalBalanceAmount = Math.max(0, priced.totalAmount - finalPaidAmount);
+  } else if (priced.totalAmount > totalPaidSoFar) {
+    const needed = roundMoney(priced.totalAmount - totalPaidSoFar);
+    const custBalRows = await sql`SELECT wallet_balance FROM customers WHERE id = ${customerId}`;
+    const custBal = Number(custBalRows[0]?.wallet_balance || 0);
+    const additionalDeduct = Math.min(custBal, needed);
+    if (additionalDeduct > 0) {
+      await deductCustomerWallet(sql, {
+        orderId,
+        customerId,
+        orderNo: currentOrder.order_no,
+        amount: additionalDeduct,
+        reason: 'Additional payment for edited order',
+      });
+      finalPaidAmount = roundMoney(totalPaidSoFar + additionalDeduct);
+      finalBalanceAmount = Math.max(0, priced.totalAmount - finalPaidAmount);
+    }
+  }
+
+  await sql`UPDATE orders SET
+    order_type = ${priced.type},
+    service = ${priced.service},
+    items = ${JSON.stringify(items)}::jsonb,
+    weight_kg = ${priced.weightKg},
+    weight_note = ${text(body.weightNote, 500)},
+    gross_amount = ${priced.grossAmount},
+    discount_amount = ${priced.discountAmount},
+    discount_percent = ${priced.discountPercent},
+    discount_name = ${text(priced.discountName, 160)},
+    express_percent = ${priced.expressPercent},
+    express_amount = ${priced.expressAmount},
+    express_label = ${expressLabel},
+    tax_amount = ${priced.taxAmount},
+    tax_percent = ${priced.taxPercent},
+    total_amount = ${priced.totalAmount},
+    paid_amount = ${finalPaidAmount},
+    balance_amount = ${finalBalanceAmount},
+    due_date = ${dueDate}::date,
+    extra = ${JSON.stringify(extra)}::jsonb
+  WHERE id = ${orderId}`;
+
+  return json({
+    id: orderId,
+    orderNo: currentOrder.order_no,
+    totalAmount: priced.totalAmount,
+    paidAmount: finalPaidAmount,
+    balanceAmount: finalBalanceAmount,
+  });
 }
 
 async function recordPayment({ sql, request, params }) {
@@ -1093,6 +1341,7 @@ const routes = [
   ['PATCH', '/api/customers/:id', updateCustomer, 'user'],
   ['POST', '/api/orders', createOrderRoute, 'user'],
   ['PATCH', '/api/orders/:id', updateOrderStatus, 'user'],
+  ['PUT', '/api/orders/:id', updateOrderRoute, 'user'],
   ['DELETE', '/api/orders/:id', deleteOrderRoute, 'user'],
   ['POST', '/api/orders/:id/payments', recordPayment, 'user'],
   ['POST', '/api/orders/:id/share-link', shareLink, 'user'],
