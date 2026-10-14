@@ -730,10 +730,14 @@ export async function updateCustomer(id, fields, current) {
 }
 
 export async function deleteCustomer(id, current) {
-  if (remoteMode) return finishRemoteMutation(`/api/customers/${encodeURIComponent(id)}`, 'DELETE');
+  if (remoteMode) return finishRemoteMutation(`/api/customers/${encodeURIComponent(id)}?cascade=true`, 'DELETE');
   return saveLocal({
     ...current,
     customers: (current.customers || []).filter((customer) => customer.id !== id),
+    orders: (current.orders || []).filter((order) => order.customerId !== id),
+    payments: (current.payments || []).filter((payment) => payment.customerId !== id),
+    customerPackages: (current.customerPackages || []).filter((cp) => cp.customerId !== id),
+    walletTransactions: (current.walletTransactions || []).filter((wt) => wt.customerId !== id),
   });
 }
 
@@ -1086,6 +1090,16 @@ export async function updateOrderStatus(orderId, status, current) {
     orders: current.orders.map((order) => order.id === orderId
       ? { ...order, status, items: order.items.map((item) => ({ ...item, status })) }
       : order),
+  });
+}
+
+export async function deleteOrder(orderId, current) {
+  if (remoteMode) return finishRemoteMutation(`/api/orders/${encodeURIComponent(orderId)}`, 'DELETE');
+  return saveLocal({
+    ...current,
+    orders: (current.orders || []).filter((order) => order.id !== orderId),
+    payments: (current.payments || []).filter((payment) => payment.orderId !== orderId),
+    walletTransactions: (current.walletTransactions || []).filter((wt) => wt.orderId !== orderId),
   });
 }
 

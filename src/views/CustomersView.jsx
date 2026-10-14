@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Share2, UserPlus, X } from 'lucide-react';
+import { Search, Share2, Trash2, UserPlus, X } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { onActivateKey } from '../lib/a11y.js';
 import { CustomerAccordionList } from '../components/MobileLists.jsx';
@@ -11,6 +11,7 @@ export default function CustomersView({
   customerSearchQuery,
   setCustomerSearchQuery,
   setSelectedCustomerId,
+  onDeleteCustomer,
 }) {
   const q = customerSearchQuery.trim().toLowerCase();
   const visibleCustomers = q
@@ -140,6 +141,21 @@ export default function CustomersView({
                         >
                           Open Profile →
                         </button>
+                        {onDeleteCustomer && (
+                          <button
+                            type="button"
+                            className="icon-button"
+                            style={{ width: '30px', height: '30px', color: '#dc2626' }}
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to delete customer "${c.name}"? All their orders and history will also be removed.`)) {
+                                onDeleteCustomer(c.id);
+                              }
+                            }}
+                            title={`Delete customer ${c.name}`}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -156,6 +172,7 @@ export default function CustomersView({
           orders={data.orders}
           onOpenProfile={openProfile}
           onSharePriceList={(c) => setModal({ type: 'share-price-list', customer: c })}
+          onDeleteCustomer={onDeleteCustomer}
           emptyText={q ? 'No customers match your search.' : 'No customers yet.'}
         />
       </div>

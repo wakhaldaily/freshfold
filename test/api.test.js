@@ -342,8 +342,13 @@ test('customers with history cannot be deleted, and only admins can delete', asy
   const cashier = await pinLogin(api, '5555');
   const customerId = await createCustomer(api, cashier);
   assert.equal((await api.del(`/api/customers/${customerId}`, { token: cashier })).status, 403);
-  await api.post('/api/orders', { customerId, type: 'weight', service: 'Drying', weightKg: 1 }, { token: cashier });
+  const ord = await api.post('/api/orders', { customerId, type: 'weight', service: 'Drying', weightKg: 1 }, { token: cashier });
   assert.equal((await api.del(`/api/customers/${customerId}`, { token: adminToken })).status, 409);
+  // Delete order directly via DELETE /api/orders/:id
+  assert.equal((await api.del(`/api/orders/${ord.data.id}`, { token: cashier })).status, 200);
+  // Re-create order, then test cascade customer delete
+  await api.post('/api/orders', { customerId, type: 'weight', service: 'Drying', weightKg: 1 }, { token: cashier });
+  assert.equal((await api.del(`/api/customers/${customerId}?cascade=true`, { token: adminToken })).status, 200);
   const other = await createCustomer(api, cashier, { mobile: '9000011111' });
   assert.equal((await api.del(`/api/customers/${other}`, { token: adminToken })).status, 200);
 });

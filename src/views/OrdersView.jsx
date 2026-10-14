@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarDays, FileSpreadsheet, Files, ReceiptText, Search, X } from 'lucide-react';
+import { CalendarDays, FileSpreadsheet, Files, ReceiptText, Search, Trash2, X } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { OrderAccordionList } from '../components/MobileLists.jsx';
 import { formatDate } from '../lib/dateFormat.js';
@@ -24,6 +24,7 @@ export default function OrdersView({
   orderStatusFilter,
   setOrderFilterYear,
   setOrderFilterMonth,
+  onDeleteOrder,
 }) {
   return (
     <div className="responsive-page-card">
@@ -387,6 +388,22 @@ export default function OrdersView({
                         >
                           <ReceiptText size={15} />
                         </button>
+                        {onDeleteOrder && (
+                          <button
+                            type="button"
+                            className="icon-button"
+                            style={{ width: '32px', height: '32px', color: '#dc2626' }}
+                            onClick={() => {
+                              const orderLabel = o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`;
+                              if (window.confirm(`Are you sure you want to delete order ${orderLabel} from history? This action cannot be undone.`)) {
+                                onDeleteOrder(o.id);
+                              }
+                            }}
+                            title={`Delete order ${o.orderNo}`}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -400,7 +417,7 @@ export default function OrdersView({
       {/* Phones: compact expandable rows instead of the wide table */}
       {filteredOrders.length > 0 && (
         <div className="mobile-only">
-          <OrderAccordionList orders={filteredOrders} customers={data.customers} setModal={setModal} />
+          <OrderAccordionList orders={filteredOrders} customers={data.customers} setModal={setModal} onDeleteOrder={onDeleteOrder} />
         </div>
       )}
     </div>

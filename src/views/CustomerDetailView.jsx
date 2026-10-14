@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mail, MapPin, Megaphone, Package, PackagePlus, Pencil, Phone, Plus, ReceiptText, Share2, Tag, Wallet } from 'lucide-react';
+import { Mail, MapPin, Megaphone, Package, PackagePlus, Pencil, Phone, Plus, ReceiptText, Share2, Tag, Trash2, Wallet } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { formatDate, formatDateTime } from '../lib/dateFormat.js';
 import { OrderAccordionList } from '../components/MobileLists.jsx';
@@ -14,6 +14,7 @@ export default function CustomerDetailView({
   customerWalletTx,
   customerDetailTab,
   setCustomerDetailTab,
+  onDeleteCustomer,
 }) {
   return (
     <div style={{ display: 'grid', gap: '22px' }}>
@@ -94,6 +95,21 @@ export default function CustomerDetailView({
           >
             <Pencil size={14} /> Edit Info
           </button>
+          {onDeleteCustomer && (
+            <button
+              type="button"
+              className="button button-quiet"
+              onClick={() => {
+                if (window.confirm(`Are you sure you want to delete customer "${currentDetailCustomer.name}"? All their orders and history will also be removed.`)) {
+                  onDeleteCustomer(currentDetailCustomer.id);
+                }
+              }}
+              style={{ color: '#dc2626', borderColor: '#fecaca', background: '#fef2f2' }}
+              title="Delete this customer"
+            >
+              <Trash2 size={14} /> Delete Customer
+            </button>
+          )}
         </div>
       </div>
 

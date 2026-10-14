@@ -383,7 +383,7 @@ export const garmentCatalog = [
   { id: 'h-blanket-cover-double', name: 'Blanket Cover Double', category: 'Household', prices: { 'Dry cleaning': 330, 'Steam press': 150, 'Premium laundry': 220, 'Club Fresh DC': 200, 'Club Fresh SP': 90 } },
   { id: 'h-blanket-double', name: 'Blanket Double', category: 'Household', prices: { 'Dry cleaning': 500, 'Steam press': null, 'Premium laundry': 330, 'Club Fresh DC': 300, 'Club Fresh SP': null } },
   { id: 'h-blanket-single', name: 'Blanket Single', category: 'Household', prices: { 'Dry cleaning': 300, 'Steam press': null, 'Premium laundry': 200, 'Club Fresh DC': 150, 'Club Fresh SP': null } },
-  { id: 'h-carpet-sqft', name: 'Carpet per sq ft', category: 'Household', prices: { 'Dry cleaning': 25, 'Steam press': null, 'Premium laundry': 17, 'Club Fresh DC': 17.5, 'Club Fresh SP': null } },
+  { id: 'h-carpet-sqft', name: 'Carpet per sq ft', category: 'Household', prices: { 'Dry cleaning': 25, 'Steam press': null, 'Premium laundry': 17, 'Club Fresh DC': 17.5, 'Club Fresh SP': null }, isDimensionBased: true },
   { id: 'h-curtain-no-lining', name: 'Curtain without lining', category: 'Household', prices: { 'Dry cleaning': 200, 'Steam press': 90, 'Premium laundry': 130, 'Club Fresh DC': 150, 'Club Fresh SP': 70 } },
   { id: 'h-curtain-lining', name: 'Curtain with lining', category: 'Household', prices: { 'Dry cleaning': 250, 'Steam press': 115, 'Premium laundry': 165, 'Club Fresh DC': 200, 'Club Fresh SP': 90 } },
   { id: 'h-curtain-blackout', name: 'Curtain with blackout lining', category: 'Household', prices: { 'Dry cleaning': 300, 'Steam press': 135, 'Premium laundry': 200, 'Club Fresh DC': 210, 'Club Fresh SP': 90 } },
@@ -398,11 +398,11 @@ export const garmentCatalog = [
   { id: 'h-laptop-bag', name: 'Laptop Bag', category: 'Household', prices: { 'Dry cleaning': 180, 'Steam press': null, 'Premium laundry': 115, 'Club Fresh DC': 150, 'Club Fresh SP': null } },
   { id: 'h-mattress-double', name: 'Mattress double', category: 'Household', prices: { 'Dry cleaning': 650, 'Steam press': null, 'Premium laundry': null, 'Club Fresh DC': 455, 'Club Fresh SP': null } },
   { id: 'h-mattress-single', name: 'Mattress single', category: 'Household', prices: { 'Dry cleaning': 500, 'Steam press': null, 'Premium laundry': null, 'Club Fresh DC': 350, 'Club Fresh SP': null } },
-  { id: 'h-rug-sqft', name: 'Rug per square feet', category: 'Household', prices: { 'Dry cleaning': 22, 'Steam press': null, 'Premium laundry': 15, 'Club Fresh DC': 15.4, 'Club Fresh SP': null } },
+  { id: 'h-rug-sqft', name: 'Rug per square feet', category: 'Household', prices: { 'Dry cleaning': 22, 'Steam press': null, 'Premium laundry': 15, 'Club Fresh DC': 15.4, 'Club Fresh SP': null }, isDimensionBased: true },
   { id: 'h-table-cloth-below-10', name: 'Table Cloth below 10 sq ft', category: 'Household', prices: { 'Dry cleaning': 100, 'Steam press': 45, 'Premium laundry': 65, 'Club Fresh DC': 65, 'Club Fresh SP': 20 } },
   { id: 'h-table-cloth-above-10', name: 'Table Cloth above 10 sq ft', category: 'Household', prices: { 'Dry cleaning': 150, 'Steam press': 65, 'Premium laundry': 95, 'Club Fresh DC': 80, 'Club Fresh SP': 40 } },
   { id: 'h-table-mat', name: 'Table Mat', category: 'Household', prices: { 'Dry cleaning': 50, 'Steam press': 20, 'Premium laundry': 30, 'Club Fresh DC': 30, 'Club Fresh SP': 10 } },
-  { id: 'h-blinds-sqft', name: 'Blinds per sq ft', category: 'Household', prices: { 'Dry cleaning': 30, 'Steam press': null, 'Premium laundry': 20, 'Club Fresh DC': 21, 'Club Fresh SP': null } },
+  { id: 'h-blinds-sqft', name: 'Blinds per sq ft', category: 'Household', prices: { 'Dry cleaning': 30, 'Steam press': null, 'Premium laundry': 20, 'Club Fresh DC': 21, 'Club Fresh SP': null }, isDimensionBased: true },
   { id: 'h-ottoman', name: 'Ottoman', category: 'Household', prices: { 'Dry cleaning': 200, 'Steam press': null, 'Premium laundry': null, 'Club Fresh DC': 150, 'Club Fresh SP': null } },
   { id: 'h-sofa-normal-seat', name: 'Sofa Normal Per Seat', category: 'Household', prices: { 'Dry cleaning': 300, 'Steam press': null, 'Premium laundry': null, 'Club Fresh DC': 200, 'Club Fresh SP': null } },
   { id: 'h-sofa-heavy-seat', name: 'Sofa Heavy Per Seat', category: 'Household', prices: { 'Dry cleaning': 400, 'Steam press': null, 'Premium laundry': null, 'Club Fresh DC': 280, 'Club Fresh SP': null } },
@@ -575,3 +575,17 @@ export function createInitialData({ demo = false } = {}) {
     defects: [...initialDefects],
   };
 }
+
+export function isDimensionItem(item) {
+  if (!item) return false;
+  if (item.id === 'h-carpet-sqft' || item.id === 'h-rug-sqft' || item.id === 'h-blinds-sqft') return true;
+  if (Boolean(item.isDimensionBased)) return true;
+  const name = String(item.name || '').toLowerCase();
+  if (/per\s*(?:sq(?:uare)?\.?\s*(?:f(?:ee)?t)?|sqft)/i.test(name)) return true;
+  if (/carpet/i.test(name)) return true;
+  if (/rug.*(?:sq|feet|ft)/i.test(name)) return true;
+  if (/blinds?.*(?:sq|feet|ft)/i.test(name)) return true;
+  return false;
+}
+
+export const isCarpetItem = isDimensionItem;

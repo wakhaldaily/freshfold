@@ -471,17 +471,41 @@ async function updateCustomer({ sql, request, params }) {
   return json({ id: params.id });
 }
 
-async function deleteCustomer({ sql, params }) {
+async function deleteCustomer({ sql, params, url }) {
+  const cascade = url?.searchParams?.get('cascade') === 'true';
   let rows;
-  try {
-    rows = await sql`DELETE FROM customers WHERE id = ${params.id} RETURNING id`;
-  } catch (error) {
-    if (error.code === '23503') {
-      throw new HttpError(409, "This customer has orders, packages or payments on record, so they can't be deleted.");
+  if (cascade) {
+    const results = await sql.transaction([
+      sql`DELETE FROM wallet_transactions WHERE customer_id = ${params.id} OR order_id IN (SELECT id FROM orders WHERE customer_id = ${params.id})`,
+      sql`DELETE FROM payments WHERE customer_id = ${params.id} OR order_id IN (SELECT id FROM orders WHERE customer_id = ${params.id})`,
+      sql`DELETE FROM orders WHERE customer_id = ${params.id}`,
+      sql`DELETE FROM package_sales WHERE customer_id = ${params.id}`,
+      sql`DELETE FROM customer_packages WHERE customer_id = ${params.id}`,
+      sql`DELETE FROM customers WHERE id = ${params.id} RETURNING id`,
+    ]);
+    rows = results[5];
+  } else {
+    try {
+      rows = await sql`DELETE FROM customers WHERE id = ${params.id} RETURNING id`;
+    } catch (error) {
+      if (error.code === '23503') {
+        throw new HttpError(409, "This customer has orders, packages or payments on record, so they can't be deleted.");
+      }
+      throw error;
     }
-    throw error;
   }
-  if (!rows.length) throw new HttpError(404, 'Customer not found.');
+  if (!rows || !rows.length) throw new HttpError(404, 'Customer not found.');
+  return json({ id: params.id, success: true });
+}
+
+async function deleteOrderRoute({ sql, params }) {
+  const results = await sql.transaction([
+    sql`DELETE FROM wallet_transactions WHERE order_id = ${params.id}`,
+    sql`DELETE FROM payments WHERE order_id = ${params.id}`,
+    sql`DELETE FROM orders WHERE id = ${params.id} RETURNING id`,
+  ]);
+  const deleted = results[2];
+  if (!deleted || !deleted.length) throw new HttpError(404, 'Order not found.');
   return json({ id: params.id, success: true });
 }
 
@@ -1069,6 +1093,7 @@ const routes = [
   ['PATCH', '/api/customers/:id', updateCustomer, 'user'],
   ['POST', '/api/orders', createOrderRoute, 'user'],
   ['PATCH', '/api/orders/:id', updateOrderStatus, 'user'],
+  ['DELETE', '/api/orders/:id', deleteOrderRoute, 'user'],
   ['POST', '/api/orders/:id/payments', recordPayment, 'user'],
   ['POST', '/api/orders/:id/share-link', shareLink, 'user'],
   ['POST', '/api/packages', sellPackage, 'user'],

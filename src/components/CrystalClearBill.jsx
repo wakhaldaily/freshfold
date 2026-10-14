@@ -427,6 +427,11 @@ export default function CrystalClearBill({
                   <tr>
                     <td style={{ padding: '8px 4px 1px 4px', fontWeight: 700 }}>
                       {itemNameUpper}
+                      {item.length && (item.width || item.breadth) && (
+                        <div style={{ fontSize: '10.5px', color: '#334155', fontWeight: 600, marginTop: '1px' }}>
+                          Size: {item.length} ft × {item.width || item.breadth} ft ({item.sqFt || Math.round(item.length * (item.width || item.breadth) * 100) / 100} sq.ft{item.ratePerSqFt ? ` @ ₹${item.ratePerSqFt}/sq.ft` : ''})
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '8px 4px 1px 4px' }}>
                       {item.service || order.service} (SAC-99971)

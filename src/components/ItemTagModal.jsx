@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Check, Plus, Sparkles, Tag, X } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
+import { isCarpetItem } from '../data.js';
+import { roundMoney } from '../lib/orderPricing.js';
 import { useEscapeKey } from '../lib/a11y.js';
 
 export default function ItemTagModal({
@@ -20,6 +22,15 @@ export default function ItemTagModal({
 }) {
   useEscapeKey(isOpen && Boolean(item), onClose);
   if (!isOpen || !item) return null;
+
+  const isCarpet = isCarpetItem(item);
+  const [carpetLength, setCarpetLength] = useState(item.length ? String(item.length) : '');
+  const [carpetWidth, setCarpetWidth] = useState((item.width || item.breadth) ? String(item.width || item.breadth) : '');
+  const numLength = Number(carpetLength) || 0;
+  const numWidth = Number(carpetWidth) || 0;
+  const carpetSqFt = (numLength > 0 && numWidth > 0) ? Math.round(numLength * numWidth * 100) / 100 : 0;
+  const carpetRatePerSqFt = item.ratePerSqFt || (item.sqFt && item.unitPrice ? roundMoney(item.unitPrice / item.sqFt) : item.unitPrice) || 0;
+  const computedCarpetUnitPrice = carpetSqFt > 0 ? roundMoney(carpetSqFt * carpetRatePerSqFt) : item.unitPrice;
 
   // Local state for editing the item's tags
   const [selectedAddons, setSelectedAddons] = useState(item.addons || []);
@@ -129,8 +140,29 @@ export default function ItemTagModal({
 
   // Save all back to parent cart item
   const handleSave = () => {
+    let finalUnitPrice = item.unitPrice;
+    let finalSqFt = item.sqFt;
+    let finalLength = item.length;
+    let finalWidth = item.width || item.breadth;
+    let finalRate = item.ratePerSqFt;
+
+    if (isCarpet && numLength > 0 && numWidth > 0) {
+      finalLength = Math.round(numLength * 100) / 100;
+      finalWidth = Math.round(numWidth * 100) / 100;
+      finalSqFt = carpetSqFt;
+      finalRate = carpetRatePerSqFt;
+      finalUnitPrice = computedCarpetUnitPrice;
+    }
+
     onUpdateItem({
       ...item,
+      unitPrice: finalUnitPrice,
+      ratePerSqFt: finalRate,
+      length: finalLength,
+      width: finalWidth,
+      breadth: finalWidth,
+      sqFt: finalSqFt,
+      isDimensionBased: isCarpet ? true : item.isDimensionBased,
       brand: selectedBrand,
       color: selectedColor,
       defects: selectedDefects,
@@ -215,6 +247,59 @@ export default function ItemTagModal({
 
         {/* Body Content */}
         <div style={{ padding: '20px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', display: 'grid', gap: '18px', flex: 1, minHeight: 0, background: '#fff' }}>
+          {/* CARPET DIMENSIONS SECTION */}
+          {isCarpet && (
+            <div style={{ background: '#f0f9ff', border: '1.5px solid #7dd3fc', borderRadius: '12px', padding: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '16px' }}>📐</span>
+                <label style={{ fontSize: '13px', fontWeight: 800, color: '#0369a1' }}>
+                  {item.name} Dimensions (Length × Breadth in Feet)
+                </label>
+              </div>
+              <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#0284c7' }}>
+                Rate: <strong>₹{carpetRatePerSqFt}/sq.ft</strong> ({item.service || 'Service'}). Enter dimensions in feet:
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                    Length (feet)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.1"
+                    placeholder="e.g. 8"
+                    value={carpetLength}
+                    onChange={(e) => setCarpetLength(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                    Breadth / Width (feet)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.1"
+                    placeholder="e.g. 6"
+                    value={carpetWidth}
+                    onChange={(e) => setCarpetWidth(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                  />
+                </div>
+              </div>
+              {carpetSqFt > 0 ? (
+                <div style={{ background: '#e0f2fe', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', color: '#0369a1', fontWeight: 700, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                  <span>Area: {numLength} ft × {numWidth} ft = <strong>{carpetSqFt} sq.ft</strong></span>
+                  <span>Price: {carpetSqFt} × ₹{carpetRatePerSqFt} = <strong>₹{computedCarpetUnitPrice}</strong></span>
+                </div>
+              ) : (
+                <small style={{ color: '#64748b', fontSize: '11px' }}>Enter both length and width in feet to calculate sq.ft area and price.</small>
+              )}
+            </div>
+          )}
+
           {/* ========================================================= */}
           {/* SECTION 1: TOP-UP ADD-ON SERVICES (AT TOP AS REQUESTED)    */}
           {/* ========================================================= */}

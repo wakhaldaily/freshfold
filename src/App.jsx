@@ -3,7 +3,7 @@ import { CheckCircle2, Store } from 'lucide-react';
 
 import {
   assignPackage, clearAdminSession, clearAllCustomerAndOrderData, clearAuthToken, createAdmin, createCustomer, createOrder,
-  createPackage, deleteAdmin, deleteCustomer, deletePackage, getAdminSession, isRemoteMode,
+  createPackage, deleteAdmin, deleteCustomer, deleteOrder, deletePackage, getAdminSession, isRemoteMode,
   loadLocal, loadStore, recordPayment, saveSettings, saveStaff, setAdminSession,
   updateAdminProfile, updateCustomer, updateOrderStatus, updatePackage,
   saveCustomAddon, saveCustomBrand, saveCustomColor, saveCustomDefect,
@@ -271,6 +271,45 @@ export default function App() {
       callback();
     } else {
       setModal({ type: 'admin-auth', onSuccess: callback });
+    }
+  };
+
+  const handleDeleteOrder = async (orderId) => {
+    try {
+      await runMutation(
+        (cur) => deleteOrder(orderId, cur),
+        'Order deleted from history.',
+      );
+      if (modal?.orderId === orderId) {
+        setModal(null);
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to delete order.');
+    }
+  };
+
+  const handleDeleteCustomer = async (customerId) => {
+    const doDelete = async () => {
+      try {
+        await runMutation(
+          (cur) => deleteCustomer(customerId, cur),
+          'Customer and associated records deleted.',
+        );
+        if (selectedCustomerId === customerId) {
+          setSelectedCustomerId('');
+          setView('customers');
+        }
+        if (modal?.customer?.id === customerId) {
+          setModal(null);
+        }
+      } catch (err) {
+        showToast(err.message || 'Failed to delete customer.');
+      }
+    };
+    if (isRemoteMode() && !adminUser) {
+      requireAdmin(doDelete);
+    } else {
+      await doDelete();
     }
   };
 
@@ -627,6 +666,7 @@ export default function App() {
               orderStatusFilter={orderStatusFilter}
               setOrderFilterYear={setOrderFilterYear}
               setOrderFilterMonth={setOrderFilterMonth}
+              onDeleteOrder={handleDeleteOrder}
             />
           )}
 
@@ -641,6 +681,7 @@ export default function App() {
               customerSearchQuery={customerSearchQuery}
               setCustomerSearchQuery={setCustomerSearchQuery}
               setSelectedCustomerId={setSelectedCustomerId}
+              onDeleteCustomer={handleDeleteCustomer}
             />
           )}
 
@@ -658,6 +699,7 @@ export default function App() {
               customerWalletTx={customerWalletTx}
               customerDetailTab={customerDetailTab}
               setCustomerDetailTab={setCustomerDetailTab}
+              onDeleteCustomer={handleDeleteCustomer}
             />
           )}
 
@@ -819,6 +861,7 @@ export default function App() {
         }}
         onOpenPayment={() => setModal({ type: 'payment', orderId: activeOrder.id })}
         onOpenReceipt={() => setModal({ type: 'thermal-receipt', orderId: activeOrder.id })}
+        onDeleteOrder={handleDeleteOrder}
         onToast={showToast}
       />
 

@@ -11,7 +11,7 @@ import { formatDate } from '../lib/dateFormat.js';
 
 const orderNoLabel = (o) => (o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`);
 
-export function OrderAccordionList({ orders, customers, setModal, showCustomer = true, emptyText = 'No orders to show.' }) {
+export function OrderAccordionList({ orders, customers, setModal, onDeleteOrder, showCustomer = true, emptyText = 'No orders to show.' }) {
   if (!orders.length) return <p className="m-list-empty">{emptyText}</p>;
   const byId = new Map(customers.map((c) => [c.id, c]));
   return (
@@ -56,6 +56,21 @@ export function OrderAccordionList({ orders, customers, setModal, showCustomer =
                   <button type="button" className="button button-quiet" onClick={() => setModal({ type: 'thermal-receipt', orderId: o.id })}>
                     <ReceiptText size={14} /> Receipt
                   </button>
+                  {onDeleteOrder && (
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      style={{ color: '#dc2626' }}
+                      onClick={() => {
+                        const orderLabel = o.orderNo?.startsWith('#') ? o.orderNo : `#${o.orderNo}`;
+                        if (window.confirm(`Are you sure you want to delete order ${orderLabel} from history?`)) {
+                          onDeleteOrder(o.id);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             </details>
@@ -66,7 +81,7 @@ export function OrderAccordionList({ orders, customers, setModal, showCustomer =
   );
 }
 
-export function CustomerAccordionList({ customers, orders, onOpenProfile, onSharePriceList, emptyText = 'No customers to show.' }) {
+export function CustomerAccordionList({ customers, orders, onOpenProfile, onSharePriceList, onDeleteCustomer, emptyText = 'No customers to show.' }) {
   if (!customers.length) return <p className="m-list-empty">{emptyText}</p>;
   return (
     <ul className="m-list" aria-label="Customers">
@@ -110,6 +125,20 @@ export function CustomerAccordionList({ customers, orders, onOpenProfile, onShar
                   <button type="button" className="button button-primary" onClick={() => onOpenProfile(c.id)}>
                     <UserRound size={14} /> Open Profile
                   </button>
+                  {onDeleteCustomer && (
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      style={{ color: '#dc2626' }}
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to delete customer "${c.name}"? All their orders and history will also be removed.`)) {
+                          onDeleteCustomer(c.id);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             </details>

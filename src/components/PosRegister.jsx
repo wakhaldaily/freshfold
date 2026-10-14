@@ -4,10 +4,10 @@ import {
   ReceiptText, RotateCcw, Scale, Search, Shirt, Sparkles, Sun, Tag, Trash2, UserPlus,
   Users, Wallet, Waves, Wind, X,
 } from 'lucide-react';
-import { defaultSettings, garmentCatalog, services, weightServices } from '../data.js';
+import { defaultSettings, garmentCatalog, isCarpetItem, services, weightServices } from '../data.js';
 import { formatMoney, formatOrderNo, getNextOrderNo } from '../lib/persistence.js';
 import { findBestPackageDiscount, isGarmentEligible } from '../lib/packageDiscountEngine.js';
-import { computeTotals, mergePackageTemplates, pickOrderDiscount, toPaise } from '../lib/orderPricing.js';
+import { computeTotals, mergePackageTemplates, pickOrderDiscount, roundMoney, toPaise } from '../lib/orderPricing.js';
 import ItemTagModal from './ItemTagModal.jsx';
 import CustomSelect from './CustomSelect.jsx';
 
@@ -87,6 +87,9 @@ export default function PosRegister({
   // Tagging modal for a cart item
   const [taggingItemIndex, setTaggingItemIndex] = useState(null);
 
+  // Carpet dimensions modal state: { garment, service, length, width, editIndex }
+  const [carpetModalState, setCarpetModalState] = useState(null);
+
   // State for Weight mode
   const [weightKg, setWeightKg] = useState('');
   const [weightClothesCount, setWeightClothesCount] = useState('');
@@ -160,6 +163,17 @@ export default function PosRegister({
       return;
     }
 
+    if (isCarpetItem(garment)) {
+      setCarpetModalState({
+        garment,
+        service: selectedPieceService,
+        length: '',
+        width: '',
+        editIndex: null,
+      });
+      return;
+    }
+
     setCartItems((prev) => {
       const existing = prev.find((item) => item.id === garment.id && item.service === selectedPieceService);
       if (existing) {
@@ -184,6 +198,55 @@ export default function PosRegister({
         },
       ];
     });
+  };
+
+  const handleConfirmCarpetDimensions = ({ length, width, breadth, sqFt, ratePerSqFt, unitPrice }) => {
+    if (!carpetModalState) return;
+    const { garment, service, editIndex } = carpetModalState;
+
+    if (editIndex !== null) {
+      setCartItems((prev) =>
+        prev.map((it, idx) => {
+          if (idx === editIndex) {
+            return {
+              ...it,
+              length,
+              width,
+              breadth,
+              sqFt,
+              ratePerSqFt,
+              unitPrice,
+              isDimensionBased: true,
+            };
+          }
+          return it;
+        })
+      );
+    } else {
+      setCartItems((prev) => [
+        ...prev,
+        {
+          id: garment.id,
+          name: garment.name,
+          category: garment.category,
+          unitPrice,
+          ratePerSqFt,
+          length,
+          width,
+          breadth,
+          sqFt,
+          isDimensionBased: true,
+          quantity: 1,
+          service: service || selectedPieceService,
+          brand: '',
+          color: '',
+          defects: [],
+          addons: [],
+          note: '',
+        },
+      ]);
+    }
+    setCarpetModalState(null);
   };
 
   const handleUpdateQty = (idx, delta) => {
@@ -1542,6 +1605,60 @@ export default function PosRegister({
                               {item.service} · {formatMoney(lineUnitPrice)} ea
                               {addonSum > 0 && <span style={{ color: '#16a34a' }}> (+₹{addonSum})</span>}
                             </span>
+                            {item.length && (item.width || item.breadth) ? (
+                              <div style={{ marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '10.5px', fontWeight: 700, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '4px' }}>
+                                  📐 {item.length} ft × {item.width || item.breadth} ft ({item.sqFt || Math.round(item.length * (item.width || item.breadth) * 100) / 100} sq.ft{item.ratePerSqFt ? ` @ ₹${item.ratePerSqFt}/sq.ft` : ''})
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setCarpetModalState({
+                                    garment: item,
+                                    service: item.service || selectedPieceService,
+                                    length: String(item.length),
+                                    width: String(item.width || item.breadth),
+                                    editIndex: idx,
+                                  })}
+                                  style={{
+                                    border: '1px solid #bae6fd',
+                                    background: '#f0f9ff',
+                                    color: '#0284c7',
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Edit Size
+                                </button>
+                              </div>
+                            ) : isCarpetItem(item) ? (
+                              <div style={{ marginTop: '3px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setCarpetModalState({
+                                    garment: item,
+                                    service: item.service || selectedPieceService,
+                                    length: '',
+                                    width: '',
+                                    editIndex: idx,
+                                  })}
+                                  style={{
+                                    border: '1px solid #fecaca',
+                                    background: '#fef2f2',
+                                    color: '#b91c1c',
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  📐 Enter Dimensions
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
@@ -2009,6 +2126,258 @@ export default function PosRegister({
           onToast={onToast}
         />
       )}
+
+      {/* Carpet Dimensions Modal */}
+      {carpetModalState && (
+        <CarpetDimensionModal
+          isOpen={Boolean(carpetModalState)}
+          onClose={() => setCarpetModalState(null)}
+          garment={carpetModalState.garment}
+          service={carpetModalState.service || selectedPieceService}
+          initialLength={carpetModalState.length}
+          initialWidth={carpetModalState.width}
+          onConfirm={handleConfirmCarpetDimensions}
+        />
+      )}
+    </div>
+  );
+}
+
+function CarpetDimensionModal({
+  isOpen,
+  onClose,
+  garment,
+  service,
+  initialLength = '',
+  initialWidth = '',
+  onConfirm,
+}) {
+  const [length, setLength] = useState(initialLength ? String(initialLength) : '');
+  const [width, setWidth] = useState(initialWidth ? String(initialWidth) : '');
+
+  const ratePerSqFt = garment?.prices?.[service]
+    ?? garment?.ratePerSqFt
+    ?? (garment?.sqFt && garment?.unitPrice ? roundMoney(garment.unitPrice / garment.sqFt) : garment?.unitPrice)
+    ?? 0;
+
+  const numL = Number(length) || 0;
+  const numW = Number(width) || 0;
+  const sqFt = (numL > 0 && numW > 0) ? Math.round(numL * numW * 100) / 100 : 0;
+  const calculatedPrice = sqFt > 0 ? roundMoney(sqFt * ratePerSqFt) : 0;
+
+  const commonPresets = [
+    { l: 5, w: 3, label: '5×3 ft' },
+    { l: 6, w: 4, label: '6×4 ft' },
+    { l: 7, w: 5, label: '7×5 ft' },
+    { l: 8, w: 5, label: '8×5 ft' },
+    { l: 8, w: 6, label: '8×6 ft' },
+    { l: 9, w: 6, label: '9×6 ft' },
+    { l: 10, w: 8, label: '10×8 ft' },
+    { l: 12, w: 9, label: '12×9 ft' },
+  ];
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="modal-backdrop"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 99999,
+        background: 'rgba(15, 23, 42, 0.72)',
+        backdropFilter: 'blur(5px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+        animation: 'fade-in 0.15s ease',
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="carpet-dimension-title"
+        style={{
+          width: '460px',
+          maxWidth: '96vw',
+          background: '#ffffff',
+          borderRadius: '16px',
+          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.4)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px' }}>📐</span>
+              <h3 id="carpet-dimension-title" style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
+                {garment?.name || 'Item'} Dimensions (in Feet)
+              </h3>
+            </div>
+            <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#64748b' }}>
+              <strong style={{ color: '#0f172a' }}>{garment?.name || 'Item'}</strong> · {service} @ ₹{ratePerSqFt}/sq.ft
+            </p>
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#fff', border: '1px solid #e2e8f0' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '20px', display: 'grid', gap: '16px' }}>
+          {/* Quick preset buttons */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+              Quick Common Sizes:
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {commonPresets.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => {
+                    setLength(String(p.l));
+                    setWidth(String(p.w));
+                  }}
+                  style={{
+                    border: Number(length) === p.l && Number(width) === p.w ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
+                    background: Number(length) === p.l && Number(width) === p.w ? '#e0f2fe' : '#f8fafc',
+                    color: Number(length) === p.l && Number(width) === p.w ? '#0369a1' : '#334155',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Dimension Inputs */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
+                Length (in feet) *
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0.1"
+                placeholder="e.g. 8"
+                autoFocus
+                value={length}
+                onChange={(e) => setLength(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '9px 12px',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
+                Breadth / Width (in feet) *
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0.1"
+                placeholder="e.g. 6"
+                value={width}
+                onChange={(e) => setWidth(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '9px 12px',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Live Calculation Box */}
+          <div style={{
+            background: sqFt > 0 ? '#f0fdf4' : '#f8fafc',
+            border: sqFt > 0 ? '1.5px solid #86efac' : '1px dashed #cbd5e1',
+            borderRadius: '10px',
+            padding: '12px 14px',
+          }}>
+            {sqFt > 0 ? (
+              <div style={{ display: 'grid', gap: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#166534' }}>
+                  <span>Calculated Area:</span>
+                  <strong>{numL} ft × {numW} ft = {sqFt} sq.ft</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#166534' }}>
+                  <span>Rate per sq.ft:</span>
+                  <span>₹{ratePerSqFt}</span>
+                </div>
+                <div style={{ borderTop: '1px solid #bbf7d0', margin: '4px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 800, color: '#15803d' }}>
+                  <span>Unit Price:</span>
+                  <span>₹{calculatedPrice}</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', fontSize: '12px', color: '#64748b', padding: '6px 0' }}>
+                Enter both length and width in feet to calculate area & price.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <button
+            type="button"
+            className="button button-quiet"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="button button-primary"
+            disabled={!(sqFt > 0)}
+            onClick={() => {
+              if (!(sqFt > 0)) return;
+              onConfirm({
+                length: Math.round(numL * 100) / 100,
+                width: Math.round(numW * 100) / 100,
+                breadth: Math.round(numW * 100) / 100,
+                sqFt,
+                ratePerSqFt,
+                unitPrice: calculatedPrice,
+              });
+            }}
+          >
+            {initialLength ? 'Update Dimensions' : 'Add to Order (₹' + (calculatedPrice || 0) + ')'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

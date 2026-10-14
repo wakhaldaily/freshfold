@@ -883,6 +883,11 @@ export default function ThermalReceiptModal({
                     >
                       <div>
                         <strong style={{ display: 'block' }}>{item.name}</strong>
+                        {item.length && (item.width || item.breadth) && (
+                          <div style={{ fontSize: '8.5px', color: '#0369a1', fontWeight: 600 }}>
+                            Size: {item.length}ft × {item.width || item.breadth}ft ({item.sqFt || Math.round(item.length * (item.width || item.breadth) * 100) / 100} sq.ft{item.ratePerSqFt ? ` @ ₹${item.ratePerSqFt}/sq.ft` : ''})
+                          </div>
+                        )}
                         <div style={{ fontSize: '8.5px', color: '#475569', marginTop: '1px', lineHeight: 1.3 }}>
                           <span>[{item.service || order.service}]</span>
                           {tagList.length > 0 && <span> · {tagList.join(' · ')}</span>}

@@ -10,6 +10,7 @@ import {
   garmentCatalog,
   initialAddons,
   initialPackageCatalog,
+  isCarpetItem,
   services,
   weightServices,
 } from '../data.js';
@@ -232,9 +233,24 @@ export function priceOrder(input = {}, context = {}) {
       const garment = garmentById.get(raw?.id);
       if (!garment) throw new PricingError(`Unknown garment "${cleanText(raw?.name || raw?.id, 60)}".`);
       const lineService = cleanText(raw.service || service, 60);
-      const unitPrice = garment.prices?.[lineService];
+      let unitPrice = garment.prices?.[lineService];
+      if (unitPrice === null || unitPrice === undefined) {
+        const altKey = Object.keys(garment.prices || {}).find((k) => k.toLowerCase() === lineService.toLowerCase());
+        if (altKey) unitPrice = garment.prices[altKey];
+      }
       if (unitPrice === null || unitPrice === undefined) {
         throw new PricingError(`"${garment.name}" isn't offered for ${lineService}.`);
+      }
+      const isDimensionBased = isCarpetItem(garment);
+      const rawLength = Number(raw.length);
+      const rawWidth = Number(raw.width ?? raw.breadth);
+      const length = isDimensionBased && Number.isFinite(rawLength) && rawLength > 0 ? Math.round(rawLength * 100) / 100 : null;
+      const width = isDimensionBased && Number.isFinite(rawWidth) && rawWidth > 0 ? Math.round(rawWidth * 100) / 100 : null;
+      let effectiveUnitPrice = unitPrice;
+      let sqFt = null;
+      if (isDimensionBased && length && width) {
+        sqFt = Math.round((length * width) * 100) / 100;
+        effectiveUnitPrice = roundMoney(sqFt * unitPrice);
       }
       const quantity = Math.floor(Number(raw.quantity));
       if (!(quantity >= 1) || quantity > MAX_ITEM_QUANTITY) {
@@ -242,13 +258,19 @@ export function priceOrder(input = {}, context = {}) {
       }
       const addons = priceAddons(raw.addons, addonCatalog);
       const addonPaise = addons.reduce((sum, a) => sum + toPaise(a.price), 0);
-      grossPaise += (toPaise(unitPrice) + addonPaise) * quantity;
+      grossPaise += (toPaise(effectiveUnitPrice) + addonPaise) * quantity;
       return {
         id: garment.id,
         name: garment.name,
         category: garment.category,
         service: lineService,
-        unitPrice: roundMoney(unitPrice),
+        unitPrice: roundMoney(effectiveUnitPrice),
+        ratePerSqFt: isDimensionBased ? roundMoney(unitPrice) : undefined,
+        length: length || undefined,
+        width: width || undefined,
+        breadth: width || undefined,
+        sqFt: sqFt || undefined,
+        isDimensionBased: isDimensionBased || undefined,
         quantity,
         addons,
         brand: cleanText(raw.brand, 80),

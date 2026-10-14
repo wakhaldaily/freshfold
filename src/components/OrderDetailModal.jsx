@@ -15,6 +15,7 @@ import {
   Shirt,
   Sparkles,
   Tag,
+  Trash2,
   Truck,
   User,
   Waves,
@@ -41,6 +42,7 @@ export default function OrderDetailModal({
   onUpdateStatus,
   onOpenPayment,
   onOpenReceipt,
+  onDeleteOrder,
   onToast,
 }) {
   useEscapeKey(isOpen && Boolean(order), onClose);
@@ -499,6 +501,20 @@ export default function OrderDetailModal({
                           <span style={{ fontSize: '10px', color: '#94a3b8' }}>
                             [{item.barcode || `${order.orderNo}-${idx + 1}`}]
                           </span>
+                          {item.length && (item.width || item.breadth) && (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                              }}
+                            >
+                              📐 {item.length} ft × {item.width || item.breadth} ft ({item.sqFt || Math.round(item.length * (item.width || item.breadth) * 100) / 100} sq.ft{item.ratePerSqFt ? ` @ ₹${item.ratePerSqFt}/sq.ft` : ''})
+                            </span>
+                          )}
                         </div>
 
                         {tags.length > 0 && (
@@ -711,20 +727,49 @@ export default function OrderDetailModal({
             background: '#ffffff',
           }}
         >
-          <button
-            type="button"
-            className="button button-quiet"
-            onClick={onOpenReceipt}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '12px',
-              fontWeight: 700,
-            }}
-          >
-            <ReceiptText size={16} /> Bill & 80mm Receipt
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="button button-quiet"
+              onClick={onOpenReceipt}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                fontWeight: 700,
+              }}
+            >
+              <ReceiptText size={16} /> Bill & 80mm Receipt
+            </button>
+
+            {onDeleteOrder && (
+              <button
+                type="button"
+                className="button button-quiet"
+                onClick={() => {
+                  const orderLabel = order.orderNo?.startsWith('#') ? order.orderNo : `#${order.orderNo}`;
+                  if (window.confirm(`Are you sure you want to delete order ${orderLabel} from history? This action cannot be undone.`)) {
+                    onDeleteOrder(order.id);
+                    onClose();
+                  }
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: '#dc2626',
+                  borderColor: '#fecaca',
+                  background: '#fef2f2',
+                }}
+                title="Delete this order from history"
+              >
+                <Trash2 size={15} /> Delete Order
+              </button>
+            )}
+          </div>
 
           <div style={{ display: 'flex', gap: '8px' }}>
             {balance > 0 && (

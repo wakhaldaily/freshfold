@@ -382,6 +382,11 @@ export default function PublicBillView({ billParam, tokenParam }) {
                           <td style={{ padding: '10px 6px' }}>
                             <div style={{ fontWeight: 600, color: '#0f172a' }}>{item.name}</div>
                             <div style={{ fontSize: '11px', color: '#64748b' }}>{item.service || order.service}</div>
+                            {item.length && (item.width || item.breadth) && (
+                              <div style={{ fontSize: '10.5px', color: '#0369a1', fontWeight: 600, marginTop: '2px' }}>
+                                Size: {item.length} ft × {item.width || item.breadth} ft ({item.sqFt || Math.round(item.length * (item.width || item.breadth) * 100) / 100} sq.ft{item.ratePerSqFt ? ` @ ₹${item.ratePerSqFt}/sq.ft` : ''})
+                              </div>
+                            )}
                             {tags.length > 0 && (
                               <div style={{ fontSize: '10px', color: '#475569', marginTop: '2px' }}>
                                 {tags.join(' • ')}

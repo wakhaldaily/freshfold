@@ -257,6 +257,17 @@ export function generateThermalReceiptPdf({
       doc.text(nameText.slice(0, 26), leftX, y);
       y += 3.2;
 
+      if (item.length && (item.width || item.breadth)) {
+        doc.setFont('courier', 'normal');
+        doc.setFontSize(6.8);
+        const w = item.width || item.breadth;
+        const sq = item.sqFt || Math.round(item.length * w * 100) / 100;
+        const rateStr = item.ratePerSqFt ? ` @ Rs.${item.ratePerSqFt}/sq.ft` : '';
+        doc.text(`Size: ${item.length}ft x ${w}ft (${sq} sq.ft${rateStr})`.slice(0, 48), leftX, y);
+        y += 2.8;
+        doc.setFontSize(7.5);
+      }
+
       doc.setFont('courier', 'normal');
       if (item.barcode) {
         doc.text(`[${item.barcode}]`, leftX, y);
@@ -684,6 +695,14 @@ export function generateStandardInvoicePdf({
 
       // Secondary preference line (Hanger 0 0.00 0.00)
       y += 3.2;
+      if (item.length && (item.width || item.breadth)) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        const w = item.width || item.breadth;
+        const sq = item.sqFt || Math.round(item.length * w * 100) / 100;
+        const rateStr = item.ratePerSqFt ? ` @ Rs.${item.ratePerSqFt}/sq.ft` : '';
+        doc.text(`Size: ${item.length}x${w}ft (${sq} sq.ft${rateStr})`.slice(0, 36), 10, y);
+      }
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(6.5);
       doc.text(String(item.note || customer?.preference || 'Hanger'), 65, y);
@@ -881,6 +900,12 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
       const lineTot = qty * lineUnit;
       const itemDis = lineDiscounts[idx] || 0;
       text += `• ${qty}x ${item.name || 'Item'} (${item.service || order.service}) - ₹${Math.max(0, lineTot - itemDis).toFixed(2)}${itemDis > 0 ? ` (disc: -₹${itemDis.toFixed(2)})` : ''}\n`;
+      if (item.length && (item.width || item.breadth)) {
+        const w = item.width || item.breadth;
+        const sq = item.sqFt || Math.round(item.length * w * 100) / 100;
+        const rateStr = item.ratePerSqFt ? ` @ ₹${item.ratePerSqFt}/sq.ft` : '';
+        text += `   ↳ Size: ${item.length} ft × ${w} ft (${sq} sq.ft${rateStr})\n`;
+      }
       const tags = [item.brand ? `Brand: ${item.brand}` : '', item.color ? `Color: ${item.color}` : '', ...(item.defects || [])].filter(Boolean);
       if (tags.length > 0) {
         text += `   ↳ ${tags.join(' | ')}\n`;
