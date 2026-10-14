@@ -11,7 +11,7 @@
  */
 import { initialPackageCatalog } from '../data.js';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const BCRYPT_PATTERN = '^[$]2[aby][$]';
 

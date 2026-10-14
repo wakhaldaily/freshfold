@@ -244,5 +244,5 @@ WHERE security_answer <> '' AND security_answer !~ '^[$]2[aby][$]';
 
 UPDATE store_settings SET config = config - 'admins' WHERE config ? 'admins';
 
-INSERT INTO store_settings (id, config) VALUES ('schema', '{"version":2}'::jsonb)
+INSERT INTO store_settings (id, config) VALUES ('schema', '{"version":3}'::jsonb)
 ON CONFLICT (id) DO UPDATE SET config = EXCLUDED.config;
