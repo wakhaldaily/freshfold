@@ -92,7 +92,7 @@ test('3. createOrder in local mode preserves checkout discount and calculates co
   assert.equal(newOrder.balanceAmount, 170);
 });
 
-test('4. Receipt and WhatsApp text do not contain checkout discount label', () => {
+test('4. Receipt and WhatsApp text show total discount and item discount, and omit cashier/booked by', () => {
   const order = {
     id: 'ord-disc',
     orderNo: 'B7002',
@@ -119,9 +119,14 @@ test('4. Receipt and WhatsApp text do not contain checkout discount label', () =
 
   // Net total reflects discounted price (300)
   assert.match(shareText, /NET TOTAL: ₹300\.00/);
-  // Checkout discount label is completely hidden from customer receipt text
-  assert.doesNotMatch(shareText, /Checkout Discount/i);
-  assert.doesNotMatch(shareText, /Discount \(25%\)/i);
+  // Discount is clearly shown in total breakdown
+  assert.match(shareText, /Discount \(25%\): -₹100\.00/);
+  // Item line shows net amount and discount
+  assert.match(shareText, /Suit 2 Pcs/);
+  assert.match(shareText, /disc: -₹100\.00/);
+  // Cashier and booked-by information are strictly omitted
+  assert.doesNotMatch(shareText, /Cashier/i);
+  assert.doesNotMatch(shareText, /Booked By/i);
 });
 
 test('5. Fractions are rounded to whole numbers: no fraction numbers in discount', () => {

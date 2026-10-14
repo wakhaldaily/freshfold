@@ -14,6 +14,7 @@ import {
 import { verifyBillToken } from '../lib/billSecurity.js';
 import { formatDate, formatDateTime } from '../lib/dateFormat.js';
 import { formatMoney, loadLocal } from '../lib/persistence.js';
+import { calculateLineDiscounts, getOrderTotalDiscount } from '../lib/orderPricing.js';
 import CrystalClearBill from './CrystalClearBill.jsx';
 import { BillSkeleton } from './SkeletonLoader.jsx';
 
@@ -148,6 +149,14 @@ export default function PublicBillView({ billParam, tokenParam }) {
   // Match the other bill layouts: GST details only appear when GST is switched on in Settings.
   const taxEnabled = settings?.taxEnabled !== false;
   const taxAmount = Number(order.taxAmount || 0);
+
+  const rawItems = Array.isArray(order.items) ? order.items : [];
+  const items = rawItems.filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge');
+  const totalDiscount = getOrderTotalDiscount(order);
+  const lineDiscounts = calculateLineDiscounts(items, totalDiscount);
+  const discountLabel = order.discountName
+    || (order.manualCheckoutDiscountPercent ? `${order.manualCheckoutDiscountPercent}%` : '')
+    || (order.discountPercent ? `${order.discountPercent}%` : '');
 
   const handleDownloadPdf = async () => {
     // jsPDF is loaded on demand to keep the initial bundle small.
@@ -300,72 +309,103 @@ export default function PublicBillView({ billParam, tokenParam }) {
             </h4>
 
             {order.type === 'weight' ? (
-              <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <strong style={{ color: '#0f172a' }}>{order.service} (By Weight)</strong>
-                  <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatMoney(order.grossAmount)}</span>
-                </div>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>
-                  Weight: <strong>{order.weightKg} kg</strong> {order.weightClothesCount ? `(${order.weightClothesCount} pcs)` : ''}
-                </div>
-                {Array.isArray(order.weightGarments) && order.weightGarments.length > 0 && (
-                  <div style={{ fontSize: '11px', color: '#475569', marginTop: '6px' }}>
-                    Clothes: {order.weightGarments.map((g) => `${g.name} x${g.quantity}`).join(', ')}
-                  </div>
-                )}
-                {Array.isArray(order.weightAddons) && order.weightAddons.length > 0 && (
-                  <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '4px' }}>
-                    Top-ups: {order.weightAddons.map((a) => `${a.name} (+${formatMoney(a.price)})`).join(', ')}
-                  </div>
-                )}
-                {order.weightNote && (
-                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', fontStyle: 'italic' }}>
-                    Note: {order.weightNote}
-                  </div>
-                )}
+              <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '11px', textAlign: 'left' }}>
+                      <th style={{ padding: '8px 6px', fontWeight: 700 }}>Service (Weight)</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'center', width: '56px', fontWeight: 700 }}>Weight</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'right', width: '64px', fontWeight: 700 }}>Rate</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'right', width: '70px', fontWeight: 700 }}>Discount</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'right', width: '76px', fontWeight: 700 }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px dashed #e2e8f0' }}>
+                      <td style={{ padding: '10px 6px' }}>
+                        <div style={{ fontWeight: 600, color: '#0f172a' }}>{order.service} (By Weight)</div>
+                        {order.weightClothesCount ? <div style={{ fontSize: '11px', color: '#64748b' }}>{order.weightClothesCount} pcs</div> : null}
+                        {Array.isArray(order.weightGarments) && order.weightGarments.length > 0 && (
+                          <div style={{ fontSize: '10px', color: '#475569', marginTop: '2px' }}>
+                            Clothes: {order.weightGarments.map((g) => `${g.name} x${g.quantity}`).join(', ')}
+                          </div>
+                        )}
+                        {Array.isArray(order.weightAddons) && order.weightAddons.length > 0 && (
+                          <div style={{ fontSize: '10px', color: '#0284c7', marginTop: '2px' }}>
+                            Top-ups: {order.weightAddons.map((a) => `${a.name} (+${formatMoney(a.price)})`).join(', ')}
+                          </div>
+                        )}
+                        {order.weightNote && (
+                          <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px', fontStyle: 'italic' }}>
+                            Note: {order.weightNote}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 6px', textAlign: 'center', color: '#0f172a' }}>{order.weightKg} kg</td>
+                      <td style={{ padding: '10px 6px', textAlign: 'right', color: '#64748b' }}>
+                        {formatMoney(order.weightKg > 0 ? (order.grossAmount / order.weightKg) : order.grossAmount)}
+                      </td>
+                      <td style={{ padding: '10px 6px', textAlign: 'right', color: '#16a34a', fontWeight: totalDiscount > 0 ? 600 : 400 }}>
+                        {totalDiscount > 0 ? `-${formatMoney(totalDiscount)}` : ''}
+                      </td>
+                      <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                        {formatMoney(Math.max(0, order.grossAmount - totalDiscount))}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             ) : (
-              <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
-                {(order.items || []).filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge').map((item, idx) => {
-                  const addonExtra = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
-                  const lineTotal = item.quantity * (Number(item.unitPrice || 0) + addonExtra);
-                  const tags = [item.brand ? `Brand: ${item.brand}` : '', item.color ? `Color: ${item.color}` : '', ...(item.defects || [])].filter(Boolean);
+              <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '11px', textAlign: 'left' }}>
+                      <th style={{ padding: '8px 6px', fontWeight: 700 }}>Item / Service</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'center', width: '40px', fontWeight: 700 }}>Qty</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'right', width: '60px', fontWeight: 700 }}>Rate</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'right', width: '68px', fontWeight: 700 }}>Discount</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'right', width: '74px', fontWeight: 700 }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => {
+                      const qty = Number(item.quantity) || 1;
+                      const addonExtra = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
+                      const unitPrice = (Number(item.unitPrice) || 0) + addonExtra;
+                      const lineAmt = qty * unitPrice;
+                      const itemDis = lineDiscounts[idx] || 0;
+                      const itemTotal = Math.max(0, lineAmt - itemDis);
+                      const tags = [item.brand ? `Brand: ${item.brand}` : '', item.color ? `Color: ${item.color}` : '', ...(item.defects || [])].filter(Boolean);
 
-                  return (
-                    <div
-                      key={item.id || idx}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                        paddingBottom: '10px',
-                        borderBottom: idx < (order.items.length - 1) ? '1px dashed #e2e8f0' : 'none',
-                        fontSize: '13px',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 600, color: '#0f172a' }}>
-                          {item.quantity}x {item.name}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>
-                          Service: {item.service || order.service}
-                        </div>
-                        {tags.length > 0 && (
-                          <div style={{ fontSize: '10px', color: '#475569', marginTop: '2px' }}>
-                            {tags.join(' • ')}
-                          </div>
-                        )}
-                        {Array.isArray(item.addons) && item.addons.length > 0 && (
-                          <div style={{ fontSize: '10px', color: '#0284c7', marginTop: '2px' }}>
-                            Add-ons: {item.addons.map((a) => `${a.name} (+${formatMoney(a.price)})`).join(', ')}
-                          </div>
-                        )}
-                      </div>
-
-                      <strong style={{ color: '#0f172a' }}>{formatMoney(lineTotal)}</strong>
-                    </div>
-                  );
-                })}
+                      return (
+                        <tr key={item.id || idx} style={{ borderBottom: '1px dashed #e2e8f0' }}>
+                          <td style={{ padding: '10px 6px' }}>
+                            <div style={{ fontWeight: 600, color: '#0f172a' }}>{item.name}</div>
+                            <div style={{ fontSize: '11px', color: '#64748b' }}>{item.service || order.service}</div>
+                            {tags.length > 0 && (
+                              <div style={{ fontSize: '10px', color: '#475569', marginTop: '2px' }}>
+                                {tags.join(' • ')}
+                              </div>
+                            )}
+                            {Array.isArray(item.addons) && item.addons.length > 0 && (
+                              <div style={{ fontSize: '10px', color: '#0284c7', marginTop: '2px' }}>
+                                Add-ons: {item.addons.map((a) => `${a.name} (+${formatMoney(a.price)})`).join(', ')}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 6px', textAlign: 'center', color: '#0f172a' }}>{qty}</td>
+                          <td style={{ padding: '10px 6px', textAlign: 'right', color: '#64748b' }}>{formatMoney(unitPrice)}</td>
+                          <td style={{ padding: '10px 6px', textAlign: 'right', color: '#16a34a', fontWeight: itemDis > 0 ? 600 : 400 }}>
+                            {itemDis > 0 ? `-${formatMoney(itemDis)}` : ''}
+                          </td>
+                          <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                            {formatMoney(itemTotal)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
 
@@ -376,10 +416,10 @@ export default function PublicBillView({ billParam, tokenParam }) {
                 <span>{formatMoney(order.grossAmount)}</span>
               </div>
 
-              {order.discountAmount > 0 && (
+              {totalDiscount > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#16a34a', marginBottom: '6px' }}>
-                  <span>Discount ({order.discountName || `${order.discountPercent}%`})</span>
-                  <span>-{formatMoney(order.discountAmount)}</span>
+                  <span>Total Discount{discountLabel ? ` (${discountLabel})` : ''}</span>
+                  <span>-{formatMoney(totalDiscount)}</span>
                 </div>
               )}
 

@@ -28,6 +28,7 @@ import { formatMoney, getShareableBillUrl } from '../lib/persistence.js';
 import CrystalClearBill from './CrystalClearBill.jsx';
 import ScaledToFit from './ScaledToFit.jsx';
 import { useEscapeKey } from '../lib/a11y.js';
+import { calculateLineDiscounts, getOrderTotalDiscount } from '../lib/orderPricing.js';
 
 export default function ThermalReceiptModal({
   isOpen,
@@ -70,7 +71,8 @@ export default function ThermalReceiptModal({
   const rawItems = Array.isArray(order.items) ? order.items : [];
   const items = rawItems.filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge');
   const gross = Number(order.grossAmount || 0);
-  const discount = Number(order.discountAmount || 0);
+  const totalDiscount = getOrderTotalDiscount(order);
+  const discount = totalDiscount;
   const taxable = Math.max(0, gross - discount) + Number(order.expressAmount || 0);
   const tax = Number(order.taxAmount || 0);
   const total = Number(order.totalAmount ?? (taxable + tax));
@@ -79,6 +81,7 @@ export default function ThermalReceiptModal({
 
   const cashierName = currentStaff?.name || 'Counter Cashier';
   const isWeight = order.type === 'weight';
+  const lineDiscounts = calculateLineDiscounts(items, totalDiscount);
 
   const captureReceiptBlob = async () => {
     const el = document.getElementById('print-invoice');
@@ -751,10 +754,6 @@ export default function ThermalReceiptModal({
                 <span style={{ color: '#64748b' }}>PROMISED:</span>
                 <strong style={{ color: '#0f172a' }}>{formatDate(order.dueDate)}</strong>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>CASHIER:</span>
-                <strong>{cashierName}</strong>
-              </div>
             </div>
 
             {/* Customer Information */}
@@ -809,7 +808,7 @@ export default function ThermalReceiptModal({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) 30px 48px 56px',
+                  gridTemplateColumns: 'minmax(0, 1fr) 28px 42px 42px 48px',
                   gap: '4px',
                   paddingBottom: '5px',
                   borderBottom: '1px solid #0f172a',
@@ -821,6 +820,7 @@ export default function ThermalReceiptModal({
                 <span>ITEM / SERVICE</span>
                 <span style={{ textAlign: 'center' }}>QTY</span>
                 <span style={{ textAlign: 'right' }}>RATE</span>
+                <span style={{ textAlign: 'right' }}>DISC</span>
                 <span style={{ textAlign: 'right' }}>AMT</span>
               </div>
 
@@ -830,7 +830,7 @@ export default function ThermalReceiptModal({
                   style={{
                     paddingTop: '8px',
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr) 34px 44px 56px',
+                    gridTemplateColumns: 'minmax(0, 1fr) 28px 42px 42px 48px',
                     gap: '4px',
                     fontSize: '10px',
                   }}
@@ -852,13 +852,17 @@ export default function ThermalReceiptModal({
                   <span style={{ textAlign: 'right' }}>
                     ₹{order.weightKg > 0 ? (gross / order.weightKg).toFixed(0) : 0}
                   </span>
-                  <strong style={{ textAlign: 'right' }}>{formatMoney(gross)}</strong>
+                  <span style={{ textAlign: 'right', color: '#16a34a' }}>
+                    {totalDiscount > 0 ? `₹${totalDiscount.toFixed(0)}` : ''}
+                  </span>
+                  <strong style={{ textAlign: 'right' }}>₹{Math.max(0, gross - totalDiscount).toFixed(2)}</strong>
                 </div>
               ) : (
                 items.map((item, idx) => {
                   const addonExtra = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
                   const unitWithAddons = Number(item.unitPrice || 0) + addonExtra;
                   const lineTotal = item.quantity * unitWithAddons;
+                  const itemDis = lineDiscounts[idx] || 0;
                   const tagList = [
                     item.brand ? `Brand: ${item.brand}` : '',
                     item.color ? `Color: ${item.color}` : '',
@@ -871,7 +875,7 @@ export default function ThermalReceiptModal({
                       style={{
                         paddingTop: '8px',
                         display: 'grid',
-                        gridTemplateColumns: 'minmax(0, 1fr) 30px 48px 56px',
+                        gridTemplateColumns: 'minmax(0, 1fr) 28px 42px 42px 48px',
                         gap: '4px',
                         fontSize: '10px',
                         alignItems: 'start',
@@ -891,7 +895,10 @@ export default function ThermalReceiptModal({
                       </div>
                       <span style={{ textAlign: 'center' }}>{item.quantity}</span>
                       <span style={{ textAlign: 'right' }}>₹{unitWithAddons.toFixed(0)}</span>
-                      <strong style={{ textAlign: 'right' }}>₹{lineTotal.toFixed(2)}</strong>
+                      <span style={{ textAlign: 'right', color: '#16a34a' }}>
+                        {itemDis > 0 ? `₹${itemDis.toFixed(0)}` : ''}
+                      </span>
+                      <strong style={{ textAlign: 'right' }}>₹{Math.max(0, lineTotal - itemDis).toFixed(2)}</strong>
                     </div>
                   );
                 })
@@ -913,10 +920,9 @@ export default function ThermalReceiptModal({
                 <strong>{formatMoney(gross)}</strong>
               </div>
 
-              {/* Checkout discount label is intentionally hidden on receipts; its deduction is reflected in Net Total */}
               {discount > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
-                  <span>Discount ({order.discountName || `${order.discountPercent}%`}):</span>
+                  <span>Total Discount{order.discountName ? ` (${order.discountName})` : (order.manualCheckoutDiscountPercent ? ` (${order.manualCheckoutDiscountPercent}%)` : (order.discountPercent ? ` (${order.discountPercent}%)` : ''))}:</span>
                   <strong>-{formatMoney(discount)}</strong>
                 </div>
               )}

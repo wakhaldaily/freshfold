@@ -118,8 +118,14 @@ export default function CrystalClearBill({
 
   // Financial values
   const grossAmount = Number(order.grossAmount || 0);
-  const discountAmount = Number(order.discountAmount || 0);
-  const discountPercent = Number(order.discountPercent || 0);
+  const packageDiscount = Number(order.discountAmount || 0);
+  const checkoutDiscount = Number(
+    order.manualCheckoutDiscountAmount ??
+    (order.manualCheckoutDiscountPercent ? (grossAmount * Number(order.manualCheckoutDiscountPercent)) / 100 : 0)
+  );
+  const totalDiscount = Math.round((packageDiscount + checkoutDiscount) * 100) / 100;
+  const discountAmount = totalDiscount;
+  const discountPercent = Number(order.discountPercent || order.manualCheckoutDiscountPercent || 0);
   const expressAmount = Number(order.expressAmount || 0);
 
   const taxableSubtotal = Math.max(0, grossAmount - discountAmount) + expressAmount;
@@ -143,7 +149,7 @@ export default function CrystalClearBill({
   const lineAmounts = items.map((it) => (Number(it.quantity) || 1)
     * ((Number(it.unitPrice) || 0) + (it.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0)));
   const lineSum = lineAmounts.reduce((a, b) => a + b, 0);
-  const allocatable = Math.min(discountAmount, lineSum);
+  const allocatable = Math.min(totalDiscount, lineSum);
   let allocated = 0;
   const lineDiscounts = lineAmounts.map((amt, i) => {
     if (lineSum <= 0) return 0;
@@ -365,9 +371,7 @@ export default function CrystalClearBill({
             <th style={{ padding: '6px 4px', textAlign: 'center', width: '6%' }}>Qty</th>
             <th style={{ padding: '6px 4px', textAlign: 'right', width: '8%' }}>Rate</th>
             <th style={{ padding: '6px 4px', textAlign: 'right', width: '9%' }}>Amount</th>
-            <th style={{ padding: '6px 4px', textAlign: 'right', width: '8%' }}>
-              {discountPercent > 0 ? `Dis (${discountPercent}%)` : 'Dis'}
-            </th>
+            <th style={{ padding: '6px 4px', textAlign: 'right', width: '8%' }}>Discount</th>
             <th style={{ padding: '6px 4px', textAlign: 'right', width: '9%' }}>Total</th>
           </tr>
         </thead>
@@ -391,7 +395,7 @@ export default function CrystalClearBill({
                   {grossAmount.toFixed(2)}
                 </td>
                 <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right' }}>
-                  {discountAmount.toFixed(2)}
+                  {discountAmount > 0 ? discountAmount.toFixed(2) : ''}
                 </td>
                 <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right', fontWeight: 600 }}>
                   {(grossAmount - discountAmount).toFixed(2)}
@@ -437,7 +441,7 @@ export default function CrystalClearBill({
                       {itemAmt.toFixed(2)}
                     </td>
                     <td style={{ padding: '8px 4px 1px 4px', textAlign: 'right' }}>
-                      {itemDis.toFixed(2)}
+                      {itemDis > 0 ? itemDis.toFixed(2) : ''}
                     </td>
                     <td style={{ padding: '8px 4px 1px 4px', textAlign: 'right', fontWeight: 600 }}>
                       {itemTotal.toFixed(2)}
@@ -478,7 +482,7 @@ export default function CrystalClearBill({
         }}
       >
         <div style={{ fontWeight: 700 }}>
-          Terms and Conditions &nbsp; Booked By : {cashierName}
+          Terms and Conditions
           {taxEnabled && taxAmount > 0 && (
             <span style={{ fontWeight: 500, marginLeft: '6px' }}>
               ( CGST: {halfTax.toFixed(2)}, SGST: {otherHalfTax.toFixed(2)} = {taxAmount.toFixed(2)} )
@@ -488,7 +492,7 @@ export default function CrystalClearBill({
         <div style={{ display: 'flex', alignItems: 'center', gap: '22px', fontWeight: 700 }}>
           <span>Subtotal</span>
           <span style={{ minWidth: '60px', textAlign: 'right' }}>{grossAmount.toFixed(2)}</span>
-          <span style={{ minWidth: '55px', textAlign: 'right' }}>{discountAmount.toFixed(2)}</span>
+          <span style={{ minWidth: '55px', textAlign: 'right' }}>{discountAmount > 0 ? discountAmount.toFixed(2) : ''}</span>
           <span style={{ minWidth: '60px', textAlign: 'right' }}>{taxableSubtotal.toFixed(2)}</span>
         </div>
       </div>

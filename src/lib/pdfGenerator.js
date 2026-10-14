@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { buildPublicBillUrl } from './billSecurity.js';
 import { formatDate, formatDateTime, parseDateInput } from './dateFormat.js';
+import { calculateLineDiscounts, getOrderTotalDiscount } from './orderPricing.js';
 
 export { formatDate, formatDateTime } from './dateFormat.js';
 
@@ -169,7 +170,6 @@ export function generateThermalReceiptPdf({
   y += 3.6;
 
   doc.text(`Promised  : ${formatDate(order.dueDate)}`, leftX, y);
-  doc.text(`By: ${String(cashierName || '').slice(0, 10)}`, rightX, y, { align: 'right' });
   y += 3.6;
 
   // Customer Info
@@ -195,8 +195,9 @@ export function generateThermalReceiptPdf({
   doc.setFont('courier', 'bold');
   doc.setFontSize(7.5);
   doc.text('ITEM / SERVICE', leftX, y);
-  doc.text('QTY', 42, y, { align: 'center' });
-  doc.text('RATE', 56, y, { align: 'right' });
+  doc.text('QTY', 38, y, { align: 'center' });
+  doc.text('RATE', 49, y, { align: 'right' });
+  doc.text('DISC', 61, y, { align: 'right' });
   doc.text('AMOUNT', rightX, y, { align: 'right' });
   y += 3.2;
   hr();
@@ -205,13 +206,19 @@ export function generateThermalReceiptPdf({
   doc.setFont('courier', 'normal');
   doc.setFontSize(7.5);
 
+  const totalDiscount = getOrderTotalDiscount(order);
+  const lineDiscounts = calculateLineDiscounts(items, totalDiscount);
+
   if (isWeight) {
     doc.setFont('courier', 'bold');
     doc.text(`Weight Laundry: ${order.service || 'Bulk Wash'}`, leftX, y);
     y += 3.2;
     doc.setFont('courier', 'normal');
     doc.text(`Weight: ${num(order.weightKg)} kg (${order.weightClothesCount ? `${order.weightClothesCount} pcs` : 'Bulk'})`, leftX, y);
-    doc.text(`${num(order.grossAmount).toFixed(2)}`, rightX, y, { align: 'right' });
+    if (totalDiscount > 0) {
+      doc.text(totalDiscount.toFixed(2), 61, y, { align: 'right' });
+    }
+    doc.text(`${Math.max(0, num(order.grossAmount) - totalDiscount).toFixed(2)}`, rightX, y, { align: 'right' });
     y += 3.4;
 
     if (Array.isArray(order.weightGarments) && order.weightGarments.length > 0) {
@@ -237,15 +244,17 @@ export function generateThermalReceiptPdf({
       doc.setFontSize(7.5);
     }
   } else if (items.length > 0) {
-    items.forEach((item) => {
+    items.forEach((item, idx) => {
       const addonExtra = (Array.isArray(item.addons) ? item.addons : []).reduce((sum, a) => sum + num(a?.price), 0);
       const unitWithAddons = num(item.unitPrice) + addonExtra;
       const qty = num(item.quantity) || 1;
       const lineTotal = qty * unitWithAddons;
+      const itemDis = lineDiscounts[idx] || 0;
+      const itemTot = Math.max(0, lineTotal - itemDis);
 
       doc.setFont('courier', 'bold');
       const nameText = `${item.name || 'Item'} (${item.service || order.service || 'Service'})`;
-      doc.text(nameText.slice(0, 32), leftX, y);
+      doc.text(nameText.slice(0, 26), leftX, y);
       y += 3.2;
 
       doc.setFont('courier', 'normal');
@@ -254,9 +263,12 @@ export function generateThermalReceiptPdf({
       } else {
         doc.text(item.category ? item.category : 'Standard', leftX, y);
       }
-      doc.text(`${qty}`, 42, y, { align: 'center' });
-      doc.text(`${unitWithAddons.toFixed(2)}`, 56, y, { align: 'right' });
-      doc.text(`${lineTotal.toFixed(2)}`, rightX, y, { align: 'right' });
+      doc.text(`${qty}`, 38, y, { align: 'center' });
+      doc.text(`${unitWithAddons.toFixed(2)}`, 49, y, { align: 'right' });
+      if (itemDis > 0) {
+        doc.text(`${itemDis.toFixed(2)}`, 61, y, { align: 'right' });
+      }
+      doc.text(`${itemTot.toFixed(2)}`, rightX, y, { align: 'right' });
       y += 3.2;
 
       // Item Tagging (Brand, Color, Defects)
@@ -288,9 +300,8 @@ export function generateThermalReceiptPdf({
 
   // 5. TOTALS & TAX BREAKDOWN
   const gross = num(order.grossAmount);
-  const discount = num(order.discountAmount);
   const expressAmount = num(order.expressAmount);
-  const taxable = Math.max(0, gross - discount) + expressAmount;
+  const taxable = Math.max(0, gross - totalDiscount) + expressAmount;
   const tax = num(order.taxAmount);
   // Keep a legitimate 0 total; only fall back when totalAmount is missing
   const total = num(order.totalAmount ?? (taxable + tax));
@@ -304,13 +315,13 @@ export function generateThermalReceiptPdf({
   doc.text(formatMoneyPdf(gross), rightX, y, { align: 'right' });
   y += 3.6;
 
-  if (discount > 0) {
-    const pct = num(order.discountPercent);
-    let discountLabel = 'Discount:';
-    if (order.discountName) discountLabel = `Discount (${order.discountName}):`;
-    else if (pct > 0) discountLabel = `Discount (${pct}%):`;
+  if (totalDiscount > 0) {
+    const pct = num(order.manualCheckoutDiscountPercent) || num(order.discountPercent);
+    let discountLabel = 'Total Discount:';
+    if (order.discountName) discountLabel = `Total Disc (${order.discountName}):`;
+    else if (pct > 0) discountLabel = `Total Disc (${pct}%):`;
     doc.text(discountLabel.slice(0, 24), 40, y, { align: 'right' });
-    doc.text(`-${formatMoneyPdf(discount)}`, rightX, y, { align: 'right' });
+    doc.text(`-${formatMoneyPdf(totalDiscount)}`, rightX, y, { align: 'right' });
     y += 3.6;
   }
 
@@ -320,7 +331,7 @@ export function generateThermalReceiptPdf({
     y += 3.6;
   }
 
-  if (discount > 0 || expressAmount > 0) {
+  if (totalDiscount > 0 || expressAmount > 0) {
     doc.text(store.taxEnabled ? 'Taxable Subtotal:' : 'Subtotal:', 40, y, { align: 'right' });
     doc.text(formatMoneyPdf(taxable), rightX, y, { align: 'right' });
     y += 3.6;
@@ -542,8 +553,9 @@ export function generateStandardInvoicePdf({
 
   // 3. Financial Balance Strip
   const grossAmount = num(order.grossAmount);
-  const discountAmount = num(order.discountAmount);
-  const discountPercent = num(order.discountPercent);
+  const totalDiscount = getOrderTotalDiscount(order);
+  const discountAmount = totalDiscount;
+  const discountPercent = num(order.manualCheckoutDiscountPercent) || num(order.discountPercent);
   const expressAmount = num(order.expressAmount);
   const taxableSubtotal = Math.max(0, grossAmount - discountAmount) + expressAmount;
   const taxAmount = taxEnabled ? num(order.taxAmount) : 0;
@@ -612,7 +624,7 @@ export function generateStandardInvoicePdf({
   doc.text('Qty', 120, y, { align: 'center' });
   doc.text('Rate', 138, y, { align: 'right' });
   doc.text('Amount', 158, y, { align: 'right' });
-  doc.text(discountPercent > 0 ? `Dis (${discountPercent}%)` : 'Dis', 178, y, { align: 'right' });
+  doc.text('Discount', 178, y, { align: 'right' });
   doc.text('Total', 200, y, { align: 'right' });
 
   y += 1.8;
@@ -630,20 +642,22 @@ export function generateStandardInvoicePdf({
     doc.text(`${weightKg} kg`, 120, y, { align: 'center' });
     doc.text((weightKg > 0 ? grossAmount / weightKg : grossAmount).toFixed(0), 138, y, { align: 'right' });
     doc.text(grossAmount.toFixed(2), 158, y, { align: 'right' });
-    doc.text(discountAmount.toFixed(2), 178, y, { align: 'right' });
+    if (discountAmount > 0) {
+      doc.text(discountAmount.toFixed(2), 178, y, { align: 'right' });
+    }
     doc.setFont('helvetica', 'bold');
     doc.text(Math.max(0, grossAmount - discountAmount).toFixed(2), 200, y, { align: 'right' });
     y += 4;
   } else {
     // Line amounts include add-ons; the order-level discount is allocated proportionally
-    // so the per-line discounts sum exactly to order.discountAmount.
+    // so the per-line discounts sum exactly to total discount.
     const lines = items.map((item) => {
       const qty = num(item.quantity) || 1;
       const addonExtra = (Array.isArray(item.addons) ? item.addons : []).reduce((sum, a) => sum + num(a?.price), 0);
       const unitWithAddons = num(item.unitPrice) + addonExtra;
       return { item, qty, unitWithAddons, amount: round2(qty * unitWithAddons) };
     });
-    const lineDiscounts = allocateDiscount(lines.map((l) => l.amount), discountAmount);
+    const lineDiscounts = calculateLineDiscounts(items, discountAmount);
 
     lines.forEach(({ item, qty, unitWithAddons, amount: itemAmt }, idx) => {
       y += 4;
@@ -661,7 +675,9 @@ export function generateStandardInvoicePdf({
       doc.text(String(qty), 120, y, { align: 'center' });
       doc.text(Number.isInteger(unitWithAddons) ? unitWithAddons.toFixed(0) : unitWithAddons.toFixed(2), 138, y, { align: 'right' });
       doc.text(itemAmt.toFixed(2), 158, y, { align: 'right' });
-      doc.text(itemDis.toFixed(2), 178, y, { align: 'right' });
+      if (itemDis > 0) {
+        doc.text(itemDis.toFixed(2), 178, y, { align: 'right' });
+      }
 
       doc.setFont('helvetica', 'bold');
       doc.text(itemTot.toFixed(2), 200, y, { align: 'right' });
@@ -686,7 +702,7 @@ export function generateStandardInvoicePdf({
   y += 3.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
-  let bookedByText = `Terms and Conditions   Booked By : ${cashierName}`;
+  let bookedByText = 'Terms and Conditions';
   if (taxEnabled && taxAmount > 0) {
     bookedByText += ` ( CGST: ${cgstAmount.toFixed(2)}, SGST: ${sgstAmount.toFixed(2)} = ${taxAmount.toFixed(2)} )`;
   }
@@ -694,7 +710,9 @@ export function generateStandardInvoicePdf({
 
   doc.text('Subtotal', 138, y, { align: 'right' });
   doc.text(grossAmount.toFixed(2), 158, y, { align: 'right' });
-  doc.text(discountAmount.toFixed(2), 178, y, { align: 'right' });
+  if (discountAmount > 0) {
+    doc.text(discountAmount.toFixed(2), 178, y, { align: 'right' });
+  }
   doc.text(taxableSubtotal.toFixed(2), 200, y, { align: 'right' });
 
   y += 2;
@@ -853,12 +871,16 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
     }
   } else if (Array.isArray(order.items)) {
     text += `*ITEMS:*\n`;
-    order.items.filter((item) => !item.isSurcharge && item.category !== 'Service Surcharge').forEach((item) => {
+    const shareItems = order.items.filter((item) => !item.isSurcharge && item.category !== 'Service Surcharge');
+    const shareTotalDiscount = getOrderTotalDiscount(order);
+    const lineDiscounts = calculateLineDiscounts(shareItems, shareTotalDiscount);
+    shareItems.forEach((item, idx) => {
       const addonExtra = (Array.isArray(item.addons) ? item.addons : []).reduce((sum, a) => sum + num(a?.price), 0);
       const lineUnit = num(item.unitPrice) + addonExtra;
       const qty = num(item.quantity) || 1;
       const lineTot = qty * lineUnit;
-      text += `• ${qty}x ${item.name || 'Item'} (${item.service || order.service}) - ₹${lineTot.toFixed(2)}\n`;
+      const itemDis = lineDiscounts[idx] || 0;
+      text += `• ${qty}x ${item.name || 'Item'} (${item.service || order.service}) - ₹${Math.max(0, lineTot - itemDis).toFixed(2)}${itemDis > 0 ? ` (disc: -₹${itemDis.toFixed(2)})` : ''}\n`;
       const tags = [item.brand ? `Brand: ${item.brand}` : '', item.color ? `Color: ${item.color}` : '', ...(item.defects || [])].filter(Boolean);
       if (tags.length > 0) {
         text += `   ↳ ${tags.join(' | ')}\n`;
@@ -871,8 +893,12 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
 
   text += `--------------------------------\n`;
   text += `Gross Amount: ₹${num(order.grossAmount).toFixed(2)}\n`;
-  if (num(order.discountAmount) > 0) {
-    text += `Discount (${order.discountName || `${num(order.discountPercent)}%`}): -₹${num(order.discountAmount).toFixed(2)}\n`;
+  const totalDiscount = getOrderTotalDiscount(order);
+  if (totalDiscount > 0) {
+    const discountLabel = order.discountName
+      || (order.manualCheckoutDiscountPercent ? `${order.manualCheckoutDiscountPercent}%` : '')
+      || (num(order.discountPercent) ? `${num(order.discountPercent)}%` : '');
+    text += `Discount${discountLabel ? ` (${discountLabel})` : ''}: -₹${totalDiscount.toFixed(2)}\n`;
   }
   if (settings?.taxEnabled !== false && num(order.taxAmount) > 0) {
     text += `Tax (${settings?.taxLabel || 'GST'} ${settings?.taxPercent || 18}%): ₹${num(order.taxAmount).toFixed(2)}\n`;

@@ -292,3 +292,39 @@ export function priceOrder(input = {}, context = {}) {
     ...totals,
   };
 }
+
+/** Total discount on an order, combining package discount and manual checkout discount. */
+export function getOrderTotalDiscount(order) {
+  if (!order) return 0;
+  const packageDiscount = Number(order.discountAmount || 0);
+  const checkoutDiscount = Number(
+    order.manualCheckoutDiscountAmount ??
+    (order.manualCheckoutDiscountPercent ? (Number(order.grossAmount || 0) * Number(order.manualCheckoutDiscountPercent)) / 100 : 0)
+  );
+  return roundMoney(packageDiscount + checkoutDiscount);
+}
+
+/**
+ * Allocates total discount across order items proportionally to their line amounts.
+ * Returns an array of discount amounts matching each item in items.
+ */
+export function calculateLineDiscounts(items = [], totalDiscount = 0) {
+  const list = Array.isArray(items) ? items : [];
+  const lineAmounts = list.map((it) => (Number(it.quantity) || 1)
+    * ((Number(it.unitPrice) || 0) + (Array.isArray(it.addons) ? it.addons : []).reduce((sum, a) => sum + Number(a?.price || 0), 0)));
+  const lineSum = lineAmounts.reduce((a, b) => a + b, 0);
+  const allocatable = Math.min(Math.max(0, Number(totalDiscount) || 0), lineSum);
+  if (lineAmounts.length === 0 || allocatable <= 0 || lineSum <= 0) {
+    return lineAmounts.map(() => 0);
+  }
+  let allocated = 0;
+  return lineAmounts.map((amt, i) => {
+    if (i === lineAmounts.length - 1) {
+      return roundMoney(allocatable - allocated);
+    }
+    const share = roundMoney((amt / lineSum) * allocatable);
+    allocated = roundMoney(allocated + share);
+    return share;
+  });
+}
+

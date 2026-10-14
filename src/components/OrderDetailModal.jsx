@@ -23,6 +23,7 @@ import {
 import { formatDate, formatDateTime } from '../lib/dateFormat.js';
 import { formatMoney } from '../lib/persistence.js';
 import { useEscapeKey } from '../lib/a11y.js';
+import { calculateLineDiscounts, getOrderTotalDiscount } from '../lib/orderPricing.js';
 
 const STATUS_STEPS = [
   { key: 'Received', label: '1. Received', icon: Package, desc: 'Intake recorded' },
@@ -45,9 +46,16 @@ export default function OrderDetailModal({
   useEscapeKey(isOpen && Boolean(order), onClose);
   if (!isOpen || !order) return null;
 
+  const rawItems = Array.isArray(order.items) ? order.items : [];
+  const items = rawItems.filter((it) => !it.isSurcharge && it.category !== 'Service Surcharge');
   const isWeight = order.type === 'weight';
   const gross = Number(order.grossAmount || 0);
-  const discount = Number(order.discountAmount || 0);
+  const totalDiscount = getOrderTotalDiscount(order);
+  const discount = totalDiscount;
+  const lineDiscounts = calculateLineDiscounts(items, totalDiscount);
+  const discountLabel = order.discountName
+    || (order.manualCheckoutDiscountPercent ? `${order.manualCheckoutDiscountPercent}%` : '')
+    || (order.discountPercent ? `${order.discountPercent}%` : '');
   const total = Number(order.totalAmount || gross);
   const paid = Number(order.paidAmount || 0);
   const balance = Number(order.balanceAmount ?? (total - paid));
@@ -450,10 +458,11 @@ export default function OrderDetailModal({
                   )}
                 </div>
               ) : (
-                (order.items || []).map((item, idx) => {
+                items.map((item, idx) => {
                   const addonExtra = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
                   const effectiveUnitPrice = Number(item.unitPrice || 0) + addonExtra;
                   const lineTotal = item.quantity * effectiveUnitPrice;
+                  const itemDis = lineDiscounts[idx] || 0;
                   const tags = [
                     item.brand ? `Brand: ${item.brand}` : '',
                     item.color ? `Color: ${item.color}` : '',
@@ -469,7 +478,7 @@ export default function OrderDetailModal({
                         justifyContent: 'space-between',
                         padding: '11px 14px',
                         background: idx % 2 === 0 ? '#ffffff' : '#f8fafc',
-                        borderBottom: idx === order.items.length - 1 ? 'none' : '1px solid #f1f5f9',
+                        borderBottom: idx === items.length - 1 ? 'none' : '1px solid #f1f5f9',
                       }}
                     >
                       <div style={{ flex: 1, minWidth: 0, marginRight: '12px' }}>
@@ -541,8 +550,13 @@ export default function OrderDetailModal({
                         <div style={{ fontSize: '11px', color: '#64748b' }}>
                           {item.quantity} × {formatMoney(effectiveUnitPrice)}
                         </div>
+                        {itemDis > 0 && (
+                          <div style={{ fontSize: '10.5px', color: '#16a34a', fontWeight: 600 }}>
+                            Disc: -{formatMoney(itemDis)}
+                          </div>
+                        )}
                         <strong style={{ fontSize: '12.5px', color: '#0f172a' }}>
-                          {formatMoney(lineTotal)}
+                          {formatMoney(Math.max(0, lineTotal - itemDis))}
                         </strong>
                       </div>
                     </div>
@@ -570,10 +584,10 @@ export default function OrderDetailModal({
               <span style={{ flexShrink: 0 }}>{formatMoney(order.grossAmount)}</span>
             </div>
 
-            {order.discountAmount > 0 && (
+            {totalDiscount > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', color: '#16a34a', minWidth: 0 }}>
-                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>Discount ({order.discountName || `${order.discountPercent}%`}):</span>
-                <span style={{ flexShrink: 0 }}>-{formatMoney(order.discountAmount)}</span>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>Total Discount{discountLabel ? ` (${discountLabel})` : ''}:</span>
+                <span style={{ flexShrink: 0 }}>-{formatMoney(totalDiscount)}</span>
               </div>
             )}
 
