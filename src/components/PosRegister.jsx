@@ -7,7 +7,7 @@ import {
 import { defaultSettings, garmentCatalog, isCarpetItem, services, weightServices } from '../data.js';
 import { formatMoney, formatOrderNo, getNextOrderNo } from '../lib/persistence.js';
 import { findBestPackageDiscount, isGarmentEligible } from '../lib/packageDiscountEngine.js';
-import { computeTotals, mergePackageTemplates, pickOrderDiscount, roundMoney, toPaise } from '../lib/orderPricing.js';
+import { computeTotals, formatIndianCurrencyString, mergePackageTemplates, pickOrderDiscount, roundMoney, toPaise } from '../lib/orderPricing.js';
 import ItemTagModal from './ItemTagModal.jsx';
 import CustomSelect from './CustomSelect.jsx';
 
@@ -138,6 +138,7 @@ export default function PosRegister({
             base = Number(it.unitPrice || 0);
           }
         }
+        const hasCustom = it.customUnitPrice !== undefined && it.customUnitPrice !== null && it.customUnitPrice !== '';
         return {
           ...it,
           id: it.garmentId || it.id,
@@ -145,6 +146,8 @@ export default function PosRegister({
           defects: Array.isArray(it.defects) ? it.defects : [],
           baseUnitPrice: Number(base),
           unitPrice: Number(it.unitPrice || base),
+          customUnitPrice: hasCustom ? Number(it.customUnitPrice) : undefined,
+          customUnitPriceInput: hasCustom ? formatIndianCurrencyString(it.customUnitPrice) : undefined,
         };
       });
     }
@@ -420,18 +423,38 @@ export default function PosRegister({
     ? Math.max(0, Math.min(100, Number(customExpressPercent) || 0))
     : Number(activeExpressOption?.percent || 0);
 
+  const [customWeightRate, setCustomWeightRate] = useState(() => {
+    if (editingOrder?.customWeightRate !== undefined && editingOrder?.customWeightRate !== null) {
+      return Number(editingOrder.customWeightRate);
+    }
+    return null;
+  });
+  const [customWeightRateInput, setCustomWeightRateInput] = useState(() => {
+    if (editingOrder?.customWeightRate !== undefined && editingOrder?.customWeightRate !== null) {
+      return formatIndianCurrencyString(editingOrder.customWeightRate);
+    }
+    return undefined;
+  });
+
   const getItemEffectiveUnitPrice = (item) => {
+    if (item.customUnitPrice !== undefined && item.customUnitPrice !== null && item.customUnitPrice !== '') {
+      return Number(item.customUnitPrice);
+    }
     const base = Number(item.baseUnitPrice ?? item.unitPrice ?? 0);
     return expressPercent > 0 ? roundMoney(base * (1 + expressPercent / 100)) : base;
   };
+
+  const baseWeightRate = Number(currentWeightServiceObj?.ratePerKg || 0);
+  const effectiveWeightRate = expressPercent > 0 ? roundMoney(baseWeightRate * (1 + expressPercent / 100)) : baseWeightRate;
+  const finalWeightRate = customWeightRate != null && !isNaN(Number(customWeightRate)) && Number(customWeightRate) >= 0
+    ? Number(customWeightRate)
+    : effectiveWeightRate;
 
   // Calculations
   const grossAmount = useMemo(() => {
     if (orderType === 'weight') {
       const kg = Number(weightKg || 0);
-      const baseRate = Number(currentWeightServiceObj?.ratePerKg || 0);
-      const effectiveRate = expressPercent > 0 ? roundMoney(baseRate * (1 + expressPercent / 100)) : baseRate;
-      const weightCost = kg * effectiveRate;
+      const weightCost = kg * finalWeightRate;
       const addonsCost = weightAddons.reduce((sum, a) => sum + Number(a.price || 0), 0);
       return Math.round((weightCost + addonsCost + Number.EPSILON) * 100) / 100;
     }
@@ -442,7 +465,7 @@ export default function PosRegister({
       return sum + (toPaise(effectiveBase) + addonExtra) * item.quantity;
     }, 0);
     return paise / 100;
-  }, [orderType, weightKg, currentWeightServiceObj, weightAddons, cartItems, expressPercent]);
+  }, [orderType, weightKg, finalWeightRate, weightAddons, cartItems, expressPercent]);
 
   // Evaluate best package discount dynamically
   const cartContext = useMemo(() => ({
@@ -525,6 +548,240 @@ export default function PosRegister({
     }
   };
 
+  const handlePriceKeyDown = (e) => {
+    // Block Up and Down arrow keys to prevent spinner behaviour
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      return;
+    }
+
+    // Allow navigation, delete, and control keys
+    if (
+      e.key === 'Backspace' ||
+      e.key === 'Delete' ||
+      e.key === 'Tab' ||
+      e.key === 'Escape' ||
+      e.key === 'Enter' ||
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight' ||
+      e.key === 'Home' ||
+      e.key === 'End' ||
+      ((e.ctrlKey || e.metaKey) && ['a', 'c', 'v', 'x', 'z'].includes(e.key.toLowerCase()))
+    ) {
+      return;
+    }
+
+    // Allow decimal point only once
+    if (e.key === '.') {
+      if (e.currentTarget.value.includes('.')) {
+        e.preventDefault();
+      }
+      return;
+    }
+
+    // Block any non-digit character (alphabets, symbols, etc.)
+    if (!/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      return;
+    }
+
+    // Check if cursor is after decimal point and there are already 2 decimal digits
+    const val = e.currentTarget.value;
+    const selStart = e.currentTarget.selectionStart;
+    const selEnd = e.currentTarget.selectionEnd;
+    const dotIndex = val.indexOf('.');
+    if (dotIndex !== -1 && selStart > dotIndex && selStart === selEnd) {
+      const decimals = val.slice(dotIndex + 1);
+      if (decimals.length >= 2) {
+        e.preventDefault();
+        return;
+      }
+    }
+  };
+
+  const handleItemPriceChange = (idx, rawVal, inputEl) => {
+    if (rawVal === '' || rawVal === null || rawVal === undefined) {
+      setCartItems((prev) =>
+        prev.map((item, i) => {
+          if (i !== idx) return item;
+          const copy = { ...item };
+          delete copy.customUnitPrice;
+          delete copy.customUnitPriceInput;
+          return copy;
+        })
+      );
+      return;
+    }
+
+    const prevPos = inputEl?.selectionStart ?? rawVal.length;
+    const nonCommaBefore = rawVal.slice(0, prevPos).replace(/,/g, '').length;
+
+    const clean = String(rawVal).replace(/,/g, '');
+    const parts = clean.split('.');
+    let integerDigits = parts[0].replace(/\D/g, '');
+    if (integerDigits.length > 1 && integerDigits.startsWith('0')) {
+      integerDigits = integerDigits.replace(/^0+/, '') || '0';
+    }
+    const hasDot = parts.length > 1;
+    let decimalDigits = '';
+    if (hasDot) {
+      decimalDigits = parts.slice(1).join('').replace(/\D/g, '').slice(0, 2);
+    }
+
+    if (!integerDigits && !hasDot) {
+      setCartItems((prev) =>
+        prev.map((item, i) => {
+          if (i !== idx) return item;
+          const copy = { ...item };
+          delete copy.customUnitPrice;
+          delete copy.customUnitPriceInput;
+          return copy;
+        })
+      );
+      return;
+    }
+
+    const unformattedNumericStr = (integerDigits || '0') + (hasDot ? '.' + decimalDigits : '');
+    const formatted = formatIndianCurrencyString(unformattedNumericStr);
+    const numericVal = parseFloat(unformattedNumericStr);
+
+    setCartItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+        return {
+          ...item,
+          customUnitPriceInput: formatted,
+          customUnitPrice: Number.isFinite(numericVal) ? numericVal : null,
+        };
+      })
+    );
+
+    if (inputEl) {
+      let newPos = 0;
+      let nonCommaCount = 0;
+      for (let i = 0; i < formatted.length; i++) {
+        if (formatted[i] !== ',') {
+          nonCommaCount++;
+        }
+        if (nonCommaCount === nonCommaBefore) {
+          newPos = i + 1;
+          break;
+        }
+      }
+      requestAnimationFrame(() => {
+        try {
+          inputEl.setSelectionRange(newPos, newPos);
+        } catch (_) {}
+      });
+    }
+  };
+
+  const handleItemPriceBlur = (idx) => {
+    setCartItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+        if (item.customUnitPrice == null) {
+          const copy = { ...item };
+          delete copy.customUnitPrice;
+          delete copy.customUnitPriceInput;
+          return copy;
+        }
+        const num = roundMoney(item.customUnitPrice);
+        const isWhole = Number.isInteger(num);
+        const formatted = formatIndianCurrencyString(isWhole ? num.toFixed(0) : num.toFixed(2));
+        return {
+          ...item,
+          customUnitPrice: num,
+          customUnitPriceInput: formatted,
+        };
+      })
+    );
+  };
+
+  const handleResetItemPrice = (idx) => {
+    setCartItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+        const copy = { ...item };
+        delete copy.customUnitPrice;
+        delete copy.customUnitPriceInput;
+        return copy;
+      })
+    );
+  };
+
+  const handleWeightRateChange = (rawVal, inputEl) => {
+    if (rawVal === '' || rawVal === null || rawVal === undefined) {
+      setCustomWeightRate(null);
+      setCustomWeightRateInput('');
+      return;
+    }
+    const prevPos = inputEl?.selectionStart ?? rawVal.length;
+    const nonCommaBefore = rawVal.slice(0, prevPos).replace(/,/g, '').length;
+
+    const clean = String(rawVal).replace(/,/g, '');
+    const parts = clean.split('.');
+    let integerDigits = parts[0].replace(/\D/g, '');
+    if (integerDigits.length > 1 && integerDigits.startsWith('0')) {
+      integerDigits = integerDigits.replace(/^0+/, '') || '0';
+    }
+    const hasDot = parts.length > 1;
+    let decimalDigits = '';
+    if (hasDot) {
+      decimalDigits = parts.slice(1).join('').replace(/\D/g, '').slice(0, 2);
+    }
+
+    if (!integerDigits && !hasDot) {
+      setCustomWeightRate(null);
+      setCustomWeightRateInput('');
+      return;
+    }
+
+    const unformattedNumericStr = (integerDigits || '0') + (hasDot ? '.' + decimalDigits : '');
+    const formatted = formatIndianCurrencyString(unformattedNumericStr);
+    const numericVal = parseFloat(unformattedNumericStr);
+
+    setCustomWeightRate(Number.isFinite(numericVal) ? numericVal : null);
+    setCustomWeightRateInput(formatted);
+
+    if (inputEl) {
+      let newPos = 0;
+      let nonCommaCount = 0;
+      for (let i = 0; i < formatted.length; i++) {
+        if (formatted[i] !== ',') {
+          nonCommaCount++;
+        }
+        if (nonCommaCount === nonCommaBefore) {
+          newPos = i + 1;
+          break;
+        }
+      }
+      requestAnimationFrame(() => {
+        try {
+          inputEl.setSelectionRange(newPos, newPos);
+        } catch (_) {}
+      });
+    }
+  };
+
+  const handleWeightRateBlur = () => {
+    if (customWeightRate == null) {
+      setCustomWeightRate(null);
+      setCustomWeightRateInput('');
+      return;
+    }
+    const num = roundMoney(customWeightRate);
+    const isWhole = Number.isInteger(num);
+    const formatted = formatIndianCurrencyString(isWhole ? num.toFixed(0) : num.toFixed(2));
+    setCustomWeightRate(num);
+    setCustomWeightRateInput(formatted);
+  };
+
+  const handleResetWeightRate = () => {
+    setCustomWeightRate(null);
+    setCustomWeightRateInput('');
+  };
+
   const {
     taxPercent,
     taxAmount,
@@ -578,11 +835,14 @@ export default function PosRegister({
       const itemsToSave = orderType === 'pieces'
         ? cartItems.map((item) => {
             const baseRate = Number(item.baseUnitPrice ?? item.unitPrice ?? 0);
-            const effectiveBase = expressPercent > 0 ? roundMoney(baseRate * (1 + expressPercent / 100)) : baseRate;
+            const effectiveBase = getItemEffectiveUnitPrice(item);
             return {
               ...item,
               baseUnitPrice: baseRate,
               unitPrice: effectiveBase,
+              customUnitPrice: (item.customUnitPrice !== undefined && item.customUnitPrice !== null && item.customUnitPrice !== '')
+                ? Number(item.customUnitPrice)
+                : undefined,
             };
           })
         : [];
@@ -601,6 +861,9 @@ export default function PosRegister({
         service: activeService,
         items: itemsToSave,
         weightKg: orderType === 'weight' ? Number(weightKg) : 0,
+        customWeightRate: (orderType === 'weight' && customWeightRate != null && !isNaN(Number(customWeightRate)))
+          ? Number(customWeightRate)
+          : undefined,
         weightClothesCount: orderType === 'weight' ? Number(weightClothesCount || 0) : 0,
         weightGarments: orderType === 'weight' ? weightGarments : [],
         weightAddons: orderType === 'weight' ? weightAddons : [],
@@ -1742,9 +2005,71 @@ export default function PosRegister({
                             <strong style={{ fontSize: '13px', display: 'block', color: '#1e293b', wordBreak: 'break-word' }}>{item.name}</strong>
                             <span style={{ fontSize: '11px', color: '#64748b', wordBreak: 'break-word', display: 'block' }}>
                               {item.service} · {formatMoney(lineUnitPrice)} ea
-                              {expressPercent > 0 && <span style={{ color: '#b45309', fontWeight: 600 }}> (+{expressPercent}% turnaround)</span>}
+                              {item.customUnitPrice != null ? (
+                                <span style={{ color: '#2563eb', fontWeight: 600 }}> (custom rate)</span>
+                              ) : (
+                                expressPercent > 0 && <span style={{ color: '#b45309', fontWeight: 600 }}> (+{expressPercent}% turnaround)</span>
+                              )}
                               {addonSum > 0 && <span style={{ color: '#16a34a' }}> (+₹{addonSum})</span>}
                             </span>
+
+                            {/* Editable Rate/pc Input */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '5px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '11px', color: '#475569', fontWeight: 600 }}>Rate/pc:</span>
+                              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                                <span style={{ position: 'absolute', left: '7px', fontSize: '11px', color: item.customUnitPrice != null ? '#2563eb' : '#64748b', pointerEvents: 'none', fontWeight: 700 }}>₹</span>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={
+                                    item.customUnitPriceInput !== undefined
+                                      ? item.customUnitPriceInput
+                                      : (item.customUnitPrice != null ? formatIndianCurrencyString(item.customUnitPrice) : '')
+                                  }
+                                  placeholder={formatIndianCurrencyString(
+                                    Number.isInteger(Number(effectiveBase))
+                                      ? Number(effectiveBase).toFixed(0)
+                                      : Number(effectiveBase).toFixed(2)
+                                  )}
+                                  onChange={(e) => handleItemPriceChange(idx, e.target.value, e.target)}
+                                  onKeyDown={handlePriceKeyDown}
+                                  onBlur={() => handleItemPriceBlur(idx)}
+                                  title="Enter custom rate per piece to overwrite catalog rate"
+                                  style={{
+                                    width: '88px',
+                                    height: '24px',
+                                    padding: '2px 6px 2px 18px',
+                                    fontSize: '11.5px',
+                                    fontWeight: item.customUnitPrice != null ? 700 : 500,
+                                    color: item.customUnitPrice != null ? '#1d4ed8' : '#334155',
+                                    background: item.customUnitPrice != null ? '#eff6ff' : '#ffffff',
+                                    border: item.customUnitPrice != null ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                                    borderRadius: '5px',
+                                    outline: 'none',
+                                    boxSizing: 'border-box',
+                                  }}
+                                />
+                              </div>
+                              {item.customUnitPrice != null && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetItemPrice(idx)}
+                                  title="Reset to default catalog rate"
+                                  style={{
+                                    border: 'none',
+                                    background: '#f1f5f9',
+                                    color: '#64748b',
+                                    fontSize: '10.5px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                  }}
+                                >
+                                  ↺ Reset
+                                </button>
+                              )}
+                            </div>
                             {item.length && (item.width || item.breadth) ? (
                               <div style={{ marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '10.5px', fontWeight: 700, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '4px' }}>
@@ -1897,11 +2222,69 @@ export default function PosRegister({
                   <span style={{ fontSize: '12px', color: '#64748b' }}>Weight Laundry Service:</span>
                   <strong style={{ fontSize: '12px', color: '#1e293b' }}>{selectedWeightService}</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '12px', color: '#64748b' }}>Recorded Scale Weight:</span>
                   <strong style={{ fontSize: '13px', color: '#2563eb' }}>
-                    {weightKg ? `${weightKg} kg @ ₹${currentWeightServiceObj.ratePerKg}/kg` : '0 kg'}
+                    {weightKg ? `${weightKg} kg` : '0 kg'}
                   </strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>Rate per kg:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                      <span style={{ position: 'absolute', left: '7px', fontSize: '11px', color: customWeightRate != null ? '#2563eb' : '#64748b', pointerEvents: 'none', fontWeight: 700 }}>₹</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={
+                          customWeightRateInput !== undefined
+                            ? customWeightRateInput
+                            : (customWeightRate != null ? formatIndianCurrencyString(customWeightRate) : '')
+                        }
+                        placeholder={formatIndianCurrencyString(
+                          Number.isInteger(Number(effectiveWeightRate))
+                            ? Number(effectiveWeightRate).toFixed(0)
+                            : Number(effectiveWeightRate).toFixed(2)
+                        )}
+                        onChange={(e) => handleWeightRateChange(e.target.value, e.target)}
+                        onKeyDown={handlePriceKeyDown}
+                        onBlur={handleWeightRateBlur}
+                        title="Enter custom rate per kg to overwrite default rate"
+                        style={{
+                          width: '88px',
+                          height: '24px',
+                          padding: '2px 6px 2px 18px',
+                          fontSize: '11.5px',
+                          fontWeight: customWeightRate != null ? 700 : 500,
+                          color: customWeightRate != null ? '#1d4ed8' : '#334155',
+                          background: customWeightRate != null ? '#eff6ff' : '#ffffff',
+                          border: customWeightRate != null ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                          borderRadius: '5px',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                    {customWeightRate != null && (
+                      <button
+                        type="button"
+                        onClick={handleResetWeightRate}
+                        title="Reset to default rate"
+                        style={{
+                          border: 'none',
+                          background: '#f1f5f9',
+                          color: '#64748b',
+                          fontSize: '10.5px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                        }}
+                      >
+                        ↺ Reset
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '12px', color: '#64748b' }}>Clothes Count:</span>

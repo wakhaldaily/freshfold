@@ -41,6 +41,42 @@ export function roundMoney(value) {
   return fromPaise(toPaise(value));
 }
 
+/**
+ * Formats a numeric string or number into Indian numbering format (e.g. 1,000, 10,000, 1,00,000.50).
+ * Preserves trailing decimal dots while typing (e.g., "1,000." -> "1,000.").
+ */
+export function formatIndianCurrencyString(val) {
+  if (val === null || val === undefined) return '';
+  const str = String(val).replace(/,/g, '').trim();
+  if (str === '') return '';
+
+  const hasMinus = str.startsWith('-');
+  const unsigned = hasMinus ? str.slice(1) : str;
+
+  const parts = unsigned.split('.');
+  const integerPart = parts[0];
+  const decimalPart = parts.length > 1 ? '.' + parts[1].slice(0, 2) : '';
+
+  const digits = integerPart.replace(/\D/g, '');
+  if (!digits && !decimalPart) return '';
+
+  let formattedInteger = '';
+  if (digits) {
+    if (digits.length <= 3) {
+      formattedInteger = digits;
+    } else {
+      const lastThree = digits.slice(-3);
+      const remaining = digits.slice(0, -3);
+      const groupedRemaining = remaining.replace(/\B(?=(\d{2})+(?!\d))/g, ',');
+      formattedInteger = groupedRemaining + ',' + lastThree;
+    }
+  } else if (decimalPart) {
+    formattedInteger = '0';
+  }
+
+  return (hasMinus ? '-' : '') + formattedInteger + decimalPart;
+}
+
 function clamp(value, min, max) {
   const n = Number(value);
   if (!Number.isFinite(n)) return min;
@@ -232,8 +268,15 @@ export function priceOrder(input = {}, context = {}) {
     weightKg = Math.round(weightKg * 1000) / 1000;
     const expressPercent = clamp(input.expressPercent || 0, 0, 100);
     const effectiveRate = expressPercent > 0 ? roundMoney(rate * (1 + expressPercent / 100)) : rate;
+    const rawCustomRate = input.customWeightRate ?? input.weightRateOverride;
+    const customRate = rawCustomRate !== undefined && rawCustomRate !== null && rawCustomRate !== ''
+      ? Number(rawCustomRate)
+      : null;
+    const finalRate = (customRate !== null && Number.isFinite(customRate) && customRate >= 0)
+      ? roundMoney(customRate)
+      : effectiveRate;
     weightAddons = priceAddons(input.weightAddons, addonCatalog);
-    grossPaise = Math.round(weightKg * effectiveRate * 100) + weightAddons.reduce((sum, a) => sum + toPaise(a.price), 0);
+    grossPaise = Math.round(weightKg * finalRate * 100) + weightAddons.reduce((sum, a) => sum + toPaise(a.price), 0);
   } else {
     if (!Array.isArray(input.items) || input.items.length === 0) throw new PricingError('Choose at least one garment.');
     if (input.items.length > 200) throw new PricingError('Too many lines in one order.');
@@ -265,6 +308,13 @@ export function priceOrder(input = {}, context = {}) {
       if (expressPercent > 0) {
         effectiveUnitPrice = roundMoney(effectiveUnitPrice * (1 + expressPercent / 100));
       }
+      const rawCustomPrice = raw.customUnitPrice ?? raw.unitPriceOverride;
+      const customUnitPrice = rawCustomPrice !== undefined && rawCustomPrice !== null && rawCustomPrice !== ''
+        ? Number(rawCustomPrice)
+        : null;
+      if (customUnitPrice !== null && Number.isFinite(customUnitPrice) && customUnitPrice >= 0) {
+        effectiveUnitPrice = roundMoney(customUnitPrice);
+      }
       const quantity = Math.floor(Number(raw.quantity));
       if (!(quantity >= 1) || quantity > MAX_ITEM_QUANTITY) {
         throw new PricingError(`Enter a quantity between 1 and ${MAX_ITEM_QUANTITY} for ${garment.name}.`);
@@ -279,6 +329,9 @@ export function priceOrder(input = {}, context = {}) {
         service: lineService,
         baseUnitPrice: roundMoney(baseUnitPrice),
         unitPrice: roundMoney(effectiveUnitPrice),
+        customUnitPrice: (customUnitPrice !== null && Number.isFinite(customUnitPrice) && customUnitPrice >= 0)
+          ? roundMoney(customUnitPrice)
+          : undefined,
         ratePerSqFt: isDimensionBased ? (expressPercent > 0 ? roundMoney(unitPrice * (1 + expressPercent / 100)) : roundMoney(unitPrice)) : undefined,
         length: length || undefined,
         width: width || undefined,
