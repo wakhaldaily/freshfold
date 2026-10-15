@@ -290,3 +290,33 @@ test('5. Server API: PUT /api/orders/:id updates order and cancels with wallet r
   assert.equal(orderInDb.status, 'Cancelled');
   assert.equal(Number(orderInDb.balance_amount), 0);
 });
+
+test('6. Order editing retains same order number without duplicate error', async () => {
+  const store = loadLocal();
+  const customer = store.customers[0];
+
+  // 1. Create order with specific order number
+  const initialStore = await createOrder({
+    orderNo: 'B9999',
+    customerId: customer.id,
+    type: 'pieces',
+    service: 'Dry cleaning',
+    taxEnabled: false,
+    items: [{ id: 'm-shirt', name: 'Shirt', service: 'Dry cleaning', unitPrice: 125, quantity: 2 }],
+  }, store);
+
+  const existingOrder = initialStore.orders.find((o) => o.orderNo === 'B9999');
+  assert.ok(existingOrder, 'Order B9999 must exist');
+
+  // 2. Edit order keeping the same order number 'B9999'
+  const updatedStore = await updateOrder(existingOrder.id, {
+    ...existingOrder,
+    orderNo: 'B9999',
+    items: [{ id: 'm-shirt', name: 'Shirt', service: 'Dry cleaning', unitPrice: 125, quantity: 3 }],
+    grossAmount: 375,
+  }, initialStore);
+
+  const savedOrder = updatedStore.orders.find((o) => o.id === existingOrder.id);
+  assert.equal(savedOrder.orderNo, 'B9999', 'Order number must remain B9999');
+  assert.equal(savedOrder.totalAmount, 375);
+});

@@ -66,20 +66,46 @@ export default function PosRegister({
   const [customOrderNo, setCustomOrderNo] = useState(editingOrder?.orderNo || defaultNextOrderNo);
   const [hasManuallyEditedOrderNo, setHasManuallyEditedOrderNo] = useState(Boolean(editingOrder));
 
-  // Synchronize when default sequence advances and user hasn't typed a custom override
+  // Synchronize when editingOrder is supplied or changed
   useEffect(() => {
-    if (!hasManuallyEditedOrderNo && !editingOrder) {
+    if (editingOrder?.orderNo) {
+      setCustomOrderNo(editingOrder.orderNo);
+      setHasManuallyEditedOrderNo(true);
+    } else if (!hasManuallyEditedOrderNo) {
       setCustomOrderNo(defaultNextOrderNo);
     }
-  }, [defaultNextOrderNo, hasManuallyEditedOrderNo, editingOrder]);
+  }, [editingOrder, defaultNextOrderNo, hasManuallyEditedOrderNo]);
+
+  // Synchronize customer when editingOrder changes
+  useEffect(() => {
+    if (editingOrder?.customerId) {
+      setSelectedCustomerId(editingOrder.customerId);
+    }
+  }, [editingOrder]);
 
   // Check if chosen order number already exists in current orders
   const isDuplicateOrderNo = useMemo(() => {
     if (!customOrderNo || !customOrderNo.trim()) return false;
-    const target = customOrderNo.trim().toLowerCase();
-    return (orders || []).some(
-      (o) => o.id !== editingOrder?.id && (o.orderNo || '').trim().toLowerCase() === target
-    );
+    const clean = (val) => String(val || '').trim().replace(/^#/, '').toLowerCase();
+    const target = clean(customOrderNo);
+    if (!target) return false;
+
+    // When editing an order, keeping the same order number is explicitly permitted and never a duplicate!
+    if (editingOrder) {
+      const currentEditingNo = clean(editingOrder.orderNo);
+      if (currentEditingNo && currentEditingNo === target) {
+        return false;
+      }
+    }
+
+    return (orders || []).some((o) => {
+      // Exclude the order currently being edited (by ID or by its original orderNo)
+      if (editingOrder) {
+        if (String(o.id) === String(editingOrder.id)) return false;
+        if (clean(o.orderNo) === clean(editingOrder.orderNo)) return false;
+      }
+      return clean(o.orderNo) === target;
+    });
   }, [customOrderNo, orders, editingOrder]);
 
   // Service Selection:
@@ -1599,7 +1625,9 @@ export default function PosRegister({
                   }}
                 >
                   {isDuplicateOrderNo
-                    ? '⚠️ Order number already exists in records.'
+                    ? '⚠️ Order number already in use by another order.'
+                    : editingOrder
+                    ? `Editing Order #${editingOrder.orderNo?.replace(/^#/, '')}`
                     : `Next order will be ${getNextOrderNo(customOrderNo || defaultNextOrderNo)}`}
                 </span>
               </div>

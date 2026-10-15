@@ -611,6 +611,7 @@ export default function App() {
           {/* ========================================================= */}
           {view === 'new-order' && (
             <PosRegister
+              key={editingOrder ? `edit-${editingOrder.id}` : 'new-order'}
               customers={data.customers}
               customerPackages={data.customerPackages}
               packages={data.packages}
