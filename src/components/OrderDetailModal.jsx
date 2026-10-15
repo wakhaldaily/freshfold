@@ -382,7 +382,7 @@ export default function OrderDetailModal({
                 <CalendarDays size={13} /> PROMISED READY
               </div>
               <strong style={{ fontSize: '13px', color: '#0f172a' }}>
-                {formatDate(order.dueDate)}{order.expressPercent > 0 ? ` [⚡ +${order.expressPercent}%]` : ''}
+                {formatDate(order.dueDate)}
               </strong>
               <div style={{ fontSize: '11px', color: '#64748b' }}>
                 Intake: {formatDateTime(order.createdAt)}
@@ -640,10 +640,10 @@ export default function OrderDetailModal({
               </div>
             )}
 
-            {(order.expressPercent > 0 || Number(order.expressAmount || 0) > 0) && (
+            {Number(order.expressAmount || 0) > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', color: '#d97706', fontWeight: 600, minWidth: 0 }}>
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>⚡ {order.expressLabel || `Early Delivery (+${order.expressPercent}%)`}:</span>
-                <span style={{ flexShrink: 0 }}>{Number(order.expressAmount || 0) > 0 ? `+${formatMoney(order.expressAmount)}` : 'Included in item rates'}</span>
+                <span style={{ flexShrink: 0 }}>+{formatMoney(order.expressAmount)}</span>
               </div>
             )}
 

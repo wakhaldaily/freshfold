@@ -299,9 +299,7 @@ export default function PublicBillView({ billParam, tokenParam }) {
               <div>
                 <div style={{ color: '#64748b', fontSize: '11px' }}>Dates:</div>
                 <div style={{ color: '#0f172a' }}>Booked: {formatDate(order.createdAt)}</div>
-                <div style={{ color: '#0284c7', fontWeight: 600 }}>
-                  Due: {formatDate(order.dueDate)}{order.expressPercent > 0 ? ` [⚡ +${order.expressPercent}%]` : ''}
-                </div>
+                <div style={{ color: '#0284c7', fontWeight: 600 }}>Due: {formatDate(order.dueDate)}</div>
               </div>
             </div>
           </div>
@@ -432,10 +430,10 @@ export default function PublicBillView({ billParam, tokenParam }) {
                 </div>
               )}
 
-              {(order.expressPercent > 0 || Number(order.expressAmount || 0) > 0) && (
+              {Number(order.expressAmount || 0) > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#ea580c', marginBottom: '6px' }}>
                   <span>Turnaround ({order.expressLabel || `${order.expressPercent}%`})</span>
-                  <span>{Number(order.expressAmount || 0) > 0 ? `+${formatMoney(order.expressAmount)}` : 'Included in item rates'}</span>
+                  <span>+{formatMoney(order.expressAmount)}</span>
                 </div>
               )}
 

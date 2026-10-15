@@ -753,10 +753,7 @@ export default function ThermalReceiptModal({
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>PROMISED:</span>
-                <strong style={{ color: '#0f172a' }}>
-                  {formatDate(order.dueDate)}
-                  {order.expressPercent > 0 ? ` [⚡ +${order.expressPercent}%]` : ''}
-                </strong>
+                <strong style={{ color: '#0f172a' }}>{formatDate(order.dueDate)}</strong>
               </div>
             </div>
 
@@ -936,10 +933,10 @@ export default function ThermalReceiptModal({
                 </div>
               )}
 
-              {(order.expressPercent > 0 || Number(order.expressAmount || 0) > 0) && (
+              {Number(order.expressAmount || 0) > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ea580c' }}>
                   <span>Turnaround ({order.expressLabel || `${order.expressPercent}%`}):</span>
-                  <strong>{Number(order.expressAmount || 0) > 0 ? `+${formatMoney(order.expressAmount)}` : 'Included in item rates'}</strong>
+                  <strong>+{formatMoney(order.expressAmount)}</strong>
                 </div>
               )}
 

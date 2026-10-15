@@ -356,11 +356,6 @@ export default function CrystalClearBill({
           <span>Delivery Date :</span>
           <span>{dueMeta.fullDelivery}</span>
           <span>{dueMeta.day}</span>
-          {Number(order.expressPercent) > 0 && (
-            <span style={{ marginLeft: '6px', color: '#b45309', fontWeight: 700 }}>
-              [{order.expressLabel || `⚡ Early Delivery (+${order.expressPercent}%)`}]
-            </span>
-          )}
         </div>
       </div>
 
@@ -383,34 +378,61 @@ export default function CrystalClearBill({
         <tbody>
           {isWeight ? (
             <>
-              <tr>
-                <td style={{ padding: '8px 4px 2px 4px', fontWeight: 700 }}>
-                  Weight Laundry - {order.service}
-                  {Array.isArray(order.weightAddons) && order.weightAddons.length > 0 && (
-                    <div style={{ fontSize: '10.5px', color: '#15803d', fontWeight: 600, marginTop: '2px' }}>
-                      Add-ons: {order.weightAddons.map((a) => (Number(a.price) > 0 ? `${a.name} (+₹${Number(a.price)})` : a.name)).join(', ')}
-                    </div>
-                  )}
-                </td>
-                <td style={{ padding: '8px 4px 2px 4px' }}>
-                  {order.service} (SAC-99971)
-                </td>
-                <td style={{ padding: '8px 4px 2px 4px', textAlign: 'center' }}>
-                  {order.weightKg} kg
-                </td>
-                <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right' }}>
-                  {(order.weightKg > 0 ? (grossAmount - (order.weightAddons || []).reduce((s, a) => s + Number(a.price || 0), 0)) / order.weightKg : grossAmount).toFixed(0)}
-                </td>
-                <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right' }}>
-                  {grossAmount.toFixed(2)}
-                </td>
-                <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right' }}>
-                  {discountAmount > 0 ? discountAmount.toFixed(2) : ''}
-                </td>
-                <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right', fontWeight: 600 }}>
-                  {(grossAmount - discountAmount).toFixed(2)}
-                </td>
-              </tr>
+              {(() => {
+                const addonsCost = (order.weightAddons || []).reduce((s, a) => s + Number(a.price || 0), 0);
+                const weightCost = Math.max(0, grossAmount - addonsCost);
+                const weightRate = order.weightKg > 0 ? (weightCost / order.weightKg) : 0;
+                const weightTot = Math.max(0, weightCost - discountAmount);
+                return (
+                  <>
+                    <tr>
+                      <td style={{ padding: '8px 4px 2px 4px', fontWeight: 700 }}>
+                        Weight Laundry - {order.service}
+                      </td>
+                      <td style={{ padding: '8px 4px 2px 4px' }}>
+                        {order.service} (SAC-99971)
+                      </td>
+                      <td style={{ padding: '8px 4px 2px 4px', textAlign: 'center' }}>
+                        {order.weightKg} kg
+                      </td>
+                      <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right' }}>
+                        {Number.isInteger(weightRate) ? weightRate.toFixed(0) : weightRate.toFixed(2)}
+                      </td>
+                      <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right' }}>
+                        {weightCost.toFixed(2)}
+                      </td>
+                      <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right' }}>
+                        {discountAmount > 0 ? discountAmount.toFixed(2) : ''}
+                      </td>
+                      <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right', fontWeight: 600 }}>
+                        {weightTot.toFixed(2)}
+                      </td>
+                    </tr>
+                    {Array.isArray(order.weightAddons) && order.weightAddons.map((a, wi) => {
+                      const aPrice = Number(a.price || 0);
+                      return (
+                        <tr key={wi} style={{ fontSize: '11px', color: '#111111' }}>
+                          <td style={{ padding: '0 4px 4px 4px' }}></td>
+                          <td style={{ padding: '0 4px 4px 4px', fontStyle: 'italic' }}>
+                            {a.name}
+                          </td>
+                          <td style={{ padding: '0 4px 4px 4px' }}></td>
+                          <td style={{ padding: '0 4px 4px 4px', textAlign: 'right' }}>
+                            {Number.isInteger(aPrice) ? aPrice.toFixed(0) : aPrice.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '0 4px 4px 4px', textAlign: 'right' }}>
+                            {aPrice.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '0 4px 4px 4px' }}></td>
+                          <td style={{ padding: '0 4px 4px 4px', textAlign: 'right' }}>
+                            {aPrice.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </>
+                );
+              })()}
               {order.weightGarments && order.weightGarments.length > 0 && (
                 <tr style={{ fontSize: '11px', color: '#333333' }}>
                   <td colSpan={7} style={{ padding: '1px 4px 6px 4px', fontStyle: 'italic' }}>
@@ -422,9 +444,8 @@ export default function CrystalClearBill({
           ) : (
             items.map((item, idx) => {
               const qty = Number(item.quantity) || 1;
-              const addonExtra = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
-              const unitPrice = (Number(item.unitPrice) || 0) + addonExtra;
-              const itemAmt = qty * unitPrice;
+              const baseUnitPrice = Number(item.unitPrice) || 0;
+              const itemAmt = qty * baseUnitPrice;
               const itemDis = lineDiscounts[idx] || 0;
               const itemTotal = Math.max(0, itemAmt - itemDis);
 
@@ -437,6 +458,8 @@ export default function CrystalClearBill({
                 ...(item.defects || []),
               ].filter(Boolean);
 
+              const addons = Array.isArray(item.addons) ? item.addons : [];
+
               return (
                 <React.Fragment key={idx}>
                   <tr>
@@ -445,11 +468,6 @@ export default function CrystalClearBill({
                       {item.length && (item.width || item.breadth) && (
                         <div style={{ fontSize: '10.5px', color: '#334155', fontWeight: 600, marginTop: '1px' }}>
                           Size: {item.length} ft × {item.width || item.breadth} ft ({item.sqFt || Math.round(item.length * (item.width || item.breadth) * 100) / 100} sq.ft{item.ratePerSqFt ? ` @ ₹${item.ratePerSqFt}/sq.ft` : ''})
-                        </div>
-                      )}
-                      {Array.isArray(item.addons) && item.addons.length > 0 && (
-                        <div style={{ fontSize: '10.5px', color: '#15803d', fontWeight: 600, marginTop: '2px' }}>
-                          Add-ons: {item.addons.map((a) => (Number(a.price) > 0 ? `${a.name} (+₹${Number(a.price)})` : a.name)).join(', ')}
                         </div>
                       )}
                       {tags.length > 0 && (
@@ -465,7 +483,7 @@ export default function CrystalClearBill({
                       {qty}
                     </td>
                     <td style={{ padding: '8px 4px 1px 4px', textAlign: 'right' }}>
-                      {Number.isInteger(unitPrice) ? unitPrice.toFixed(0) : unitPrice.toFixed(2)}
+                      {Number.isInteger(baseUnitPrice) ? baseUnitPrice.toFixed(0) : baseUnitPrice.toFixed(2)}
                     </td>
                     <td style={{ padding: '8px 4px 1px 4px', textAlign: 'right' }}>
                       {itemAmt.toFixed(2)}
@@ -477,18 +495,54 @@ export default function CrystalClearBill({
                       {itemTotal.toFixed(2)}
                     </td>
                   </tr>
-                  {/* Secondary Packaging Preference line (matches Hanger 0 0.00 0.00) */}
-                  <tr style={{ fontSize: '11px', color: '#111111' }}>
-                    <td style={{ padding: '0 4px 6px 4px' }}></td>
-                    <td style={{ padding: '0 4px 6px 4px', fontStyle: 'italic' }}>
-                      {item.note || packagingPref}
-                    </td>
-                    <td style={{ padding: '0 4px 6px 4px' }}></td>
-                    <td style={{ padding: '0 4px 6px 4px', textAlign: 'right' }}>0</td>
-                    <td style={{ padding: '0 4px 6px 4px', textAlign: 'right' }}>0.00</td>
-                    <td style={{ padding: '0 4px 6px 4px' }}></td>
-                    <td style={{ padding: '0 4px 6px 4px', textAlign: 'right' }}>0.00</td>
-                  </tr>
+
+                  {/* Add-on rows where Hanger was showing; if multiple add-ons, show each in a distinct row with price */}
+                  {addons.length > 0 ? (
+                    addons.map((a, ai) => {
+                      const aPrice = Number(a.price || 0);
+                      const aAmt = qty * aPrice;
+                      return (
+                        <tr key={ai} style={{ fontSize: '11px', color: '#111111' }}>
+                          <td style={{ padding: '0 4px 4px 4px' }}></td>
+                          <td style={{ padding: '0 4px 4px 4px', fontStyle: 'italic' }}>
+                            {a.name}
+                          </td>
+                          <td style={{ padding: '0 4px 4px 4px' }}></td>
+                          <td style={{ padding: '0 4px 4px 4px', textAlign: 'right' }}>
+                            {Number.isInteger(aPrice) ? aPrice.toFixed(0) : aPrice.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '0 4px 4px 4px', textAlign: 'right' }}>
+                            {aAmt.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '0 4px 4px 4px' }}></td>
+                          <td style={{ padding: '0 4px 4px 4px', textAlign: 'right' }}>
+                            {aAmt.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    /* Default Packaging Preference line when no add-ons are present */
+                    <tr style={{ fontSize: '11px', color: '#111111' }}>
+                      <td style={{ padding: '0 4px 6px 4px' }}></td>
+                      <td style={{ padding: '0 4px 6px 4px', fontStyle: 'italic' }}>
+                        {item.note || packagingPref}
+                      </td>
+                      <td style={{ padding: '0 4px 6px 4px' }}></td>
+                      <td style={{ padding: '0 4px 6px 4px', textAlign: 'right' }}>0</td>
+                      <td style={{ padding: '0 4px 6px 4px', textAlign: 'right' }}>0.00</td>
+                      <td style={{ padding: '0 4px 6px 4px' }}></td>
+                      <td style={{ padding: '0 4px 6px 4px', textAlign: 'right' }}>0.00</td>
+                    </tr>
+                  )}
+                  {addons.length > 0 && item.note && (
+                    <tr style={{ fontSize: '10.5px', color: '#64748b' }}>
+                      <td style={{ padding: '0 4px 4px 4px' }}></td>
+                      <td colSpan={6} style={{ padding: '0 4px 4px 4px', fontStyle: 'italic' }}>
+                        Note: {item.note}
+                      </td>
+                    </tr>
+                  )}
                 </React.Fragment>
               );
             })
