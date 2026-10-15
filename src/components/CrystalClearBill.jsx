@@ -159,10 +159,10 @@ export default function CrystalClearBill({
     return share;
   });
 
-  // Garment preference note
+  // Garment preference note (empty by default, never default to Hanger)
   const packagingPref = customer?.preference && customer.preference !== 'NA'
     ? customer.preference
-    : 'Hanger';
+    : '';
 
   return (
     <div
@@ -521,8 +521,8 @@ export default function CrystalClearBill({
                         </tr>
                       );
                     })
-                  ) : (
-                    /* Default Packaging Preference line when no add-ons are present */
+                  ) : (item.note || packagingPref) ? (
+                    /* Preference line shown only if explicitly set, never by default */
                     <tr style={{ fontSize: '11px', color: '#111111' }}>
                       <td style={{ padding: '0 4px 6px 4px' }}></td>
                       <td style={{ padding: '0 4px 6px 4px', fontStyle: 'italic' }}>
@@ -534,7 +534,7 @@ export default function CrystalClearBill({
                       <td style={{ padding: '0 4px 6px 4px' }}></td>
                       <td style={{ padding: '0 4px 6px 4px', textAlign: 'right' }}>0.00</td>
                     </tr>
-                  )}
+                  ) : null}
                   {addons.length > 0 && item.note && (
                     <tr style={{ fontSize: '10.5px', color: '#64748b' }}>
                       <td style={{ padding: '0 4px 4px 4px' }}></td>

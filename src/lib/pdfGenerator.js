@@ -743,11 +743,11 @@ export function generateStandardInvoicePdf({
           doc.setFontSize(6.5);
           doc.text(`Note: ${item.note}`.slice(0, 36), 65, y);
         }
-      } else {
+      } else if (item.note || (customer?.preference && customer.preference !== 'NA')) {
         y += 3.2;
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(6.5);
-        doc.text(String(item.note || customer?.preference || 'Hanger').slice(0, 30), 65, y);
+        doc.text(String(item.note || customer.preference).slice(0, 30), 65, y);
         doc.setFont('helvetica', 'normal');
         doc.text('0', 138, y, { align: 'right' });
         doc.text('0.00', 158, y, { align: 'right' });
