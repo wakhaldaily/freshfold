@@ -230,11 +230,14 @@ export function priceOrder(input = {}, context = {}) {
     const rate = kgRates[service];
     if (!rate) throw new PricingError(`"${service}" can't be billed by weight.`);
     weightKg = Math.round(weightKg * 1000) / 1000;
+    const expressPercent = clamp(input.expressPercent || 0, 0, 100);
+    const effectiveRate = expressPercent > 0 ? roundMoney(rate * (1 + expressPercent / 100)) : rate;
     weightAddons = priceAddons(input.weightAddons, addonCatalog);
-    grossPaise = Math.round(weightKg * rate * 100) + weightAddons.reduce((sum, a) => sum + toPaise(a.price), 0);
+    grossPaise = Math.round(weightKg * effectiveRate * 100) + weightAddons.reduce((sum, a) => sum + toPaise(a.price), 0);
   } else {
     if (!Array.isArray(input.items) || input.items.length === 0) throw new PricingError('Choose at least one garment.');
     if (input.items.length > 200) throw new PricingError('Too many lines in one order.');
+    const expressPercent = clamp(input.expressPercent || 0, 0, 100);
     items = input.items.map((raw) => {
       const garment = garmentById.get(raw?.id);
       if (!garment) throw new PricingError(`Unknown garment "${cleanText(raw?.name || raw?.id, 60)}".`);
@@ -258,6 +261,10 @@ export function priceOrder(input = {}, context = {}) {
         sqFt = Math.round((length * width) * 100) / 100;
         effectiveUnitPrice = roundMoney(sqFt * unitPrice);
       }
+      const baseUnitPrice = effectiveUnitPrice;
+      if (expressPercent > 0) {
+        effectiveUnitPrice = roundMoney(effectiveUnitPrice * (1 + expressPercent / 100));
+      }
       const quantity = Math.floor(Number(raw.quantity));
       if (!(quantity >= 1) || quantity > MAX_ITEM_QUANTITY) {
         throw new PricingError(`Enter a quantity between 1 and ${MAX_ITEM_QUANTITY} for ${garment.name}.`);
@@ -270,8 +277,9 @@ export function priceOrder(input = {}, context = {}) {
         name: garment.name,
         category: garment.category,
         service: lineService,
+        baseUnitPrice: roundMoney(baseUnitPrice),
         unitPrice: roundMoney(effectiveUnitPrice),
-        ratePerSqFt: isDimensionBased ? roundMoney(unitPrice) : undefined,
+        ratePerSqFt: isDimensionBased ? (expressPercent > 0 ? roundMoney(unitPrice * (1 + expressPercent / 100)) : roundMoney(unitPrice)) : undefined,
         length: length || undefined,
         width: width || undefined,
         breadth: width || undefined,
@@ -295,12 +303,13 @@ export function priceOrder(input = {}, context = {}) {
     mergePackageTemplates(packageTemplates),
   );
   const discount = pickOrderDiscount({ bestDiscount, grossAmount, customer });
+  const expressPercent = clamp(input.expressPercent || 0, 0, 100);
 
   const totals = computeTotals({
     grossAmount,
     discountAmount: discount.discountAmount,
-    expressPercent: input.expressPercent,
-    expressAmount: input.expressAmount,
+    expressPercent: 0, // delivery turnaround % increases rate of each item, not added to sum total
+    expressAmount: 0,
     taxEnabled: storeSettings.taxEnabled ?? true,
     taxPercent: storeSettings.taxPercent ?? 18,
     manualCheckoutDiscountPercent: input.manualCheckoutDiscountPercent,
@@ -315,9 +324,13 @@ export function priceOrder(input = {}, context = {}) {
     weightAddons,
     discountPercent: discount.discountPercent,
     discountName: discount.discountName,
-    expressLabel: totals.expressPercent > 0 ? `Early Delivery (+${totals.expressPercent}%)` : '',
+    expressPercent,
+    expressAmount: 0,
+    expressLabel: expressPercent > 0 ? (input.expressLabel || `Early Delivery (+${expressPercent}%)`) : '',
     evaluations: allEvaluations,
     ...totals,
+    expressPercent,
+    expressAmount: 0,
   };
 }
 

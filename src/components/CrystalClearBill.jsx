@@ -356,6 +356,11 @@ export default function CrystalClearBill({
           <span>Delivery Date :</span>
           <span>{dueMeta.fullDelivery}</span>
           <span>{dueMeta.day}</span>
+          {Number(order.expressPercent) > 0 && (
+            <span style={{ marginLeft: '6px', color: '#b45309', fontWeight: 700 }}>
+              [{order.expressLabel || `⚡ Early Delivery (+${order.expressPercent}%)`}]
+            </span>
+          )}
         </div>
       </div>
 
@@ -381,6 +386,11 @@ export default function CrystalClearBill({
               <tr>
                 <td style={{ padding: '8px 4px 2px 4px', fontWeight: 700 }}>
                   Weight Laundry - {order.service}
+                  {Array.isArray(order.weightAddons) && order.weightAddons.length > 0 && (
+                    <div style={{ fontSize: '10.5px', color: '#15803d', fontWeight: 600, marginTop: '2px' }}>
+                      Add-ons: {order.weightAddons.map((a) => (Number(a.price) > 0 ? `${a.name} (+₹${Number(a.price)})` : a.name)).join(', ')}
+                    </div>
+                  )}
                 </td>
                 <td style={{ padding: '8px 4px 2px 4px' }}>
                   {order.service} (SAC-99971)
@@ -389,7 +399,7 @@ export default function CrystalClearBill({
                   {order.weightKg} kg
                 </td>
                 <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right' }}>
-                  {(order.weightKg > 0 ? grossAmount / order.weightKg : grossAmount).toFixed(0)}
+                  {(order.weightKg > 0 ? (grossAmount - (order.weightAddons || []).reduce((s, a) => s + Number(a.price || 0), 0)) / order.weightKg : grossAmount).toFixed(0)}
                 </td>
                 <td style={{ padding: '8px 4px 2px 4px', textAlign: 'right' }}>
                   {grossAmount.toFixed(2)}
@@ -421,6 +431,11 @@ export default function CrystalClearBill({
               // Prefix category if available (e.g. "Women - KAMEEZ WOM")
               const categoryPrefix = item.category ? `${item.category} - ` : '';
               const itemNameUpper = `${categoryPrefix}${item.name.toUpperCase()}`;
+              const tags = [
+                item.brand ? `Brand: ${item.brand}` : '',
+                item.color ? `Color: ${item.color}` : '',
+                ...(item.defects || []),
+              ].filter(Boolean);
 
               return (
                 <React.Fragment key={idx}>
@@ -432,6 +447,16 @@ export default function CrystalClearBill({
                           Size: {item.length} ft × {item.width || item.breadth} ft ({item.sqFt || Math.round(item.length * (item.width || item.breadth) * 100) / 100} sq.ft{item.ratePerSqFt ? ` @ ₹${item.ratePerSqFt}/sq.ft` : ''})
                         </div>
                       )}
+                      {Array.isArray(item.addons) && item.addons.length > 0 && (
+                        <div style={{ fontSize: '10.5px', color: '#15803d', fontWeight: 600, marginTop: '2px' }}>
+                          Add-ons: {item.addons.map((a) => (Number(a.price) > 0 ? `${a.name} (+₹${Number(a.price)})` : a.name)).join(', ')}
+                        </div>
+                      )}
+                      {tags.length > 0 && (
+                        <div style={{ fontSize: '10px', color: '#475569', marginTop: '1px' }}>
+                          {tags.join(' · ')}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '8px 4px 1px 4px' }}>
                       {item.service || order.service} (SAC-99971)
@@ -440,7 +465,7 @@ export default function CrystalClearBill({
                       {qty}
                     </td>
                     <td style={{ padding: '8px 4px 1px 4px', textAlign: 'right' }}>
-                      {unitPrice.toFixed(0)}
+                      {Number.isInteger(unitPrice) ? unitPrice.toFixed(0) : unitPrice.toFixed(2)}
                     </td>
                     <td style={{ padding: '8px 4px 1px 4px', textAlign: 'right' }}>
                       {itemAmt.toFixed(2)}

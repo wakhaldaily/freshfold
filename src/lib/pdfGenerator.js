@@ -231,7 +231,7 @@ export function generateThermalReceiptPdf({
 
     if (Array.isArray(order.weightAddons) && order.weightAddons.length > 0) {
       doc.setFontSize(6.8);
-      const addonsText = `Add-ons: ${order.weightAddons.map((a) => `${a.name}(+Rs.${a.price})`).join(', ')}`;
+      const addonsText = `Add-ons: ${order.weightAddons.map((a) => (num(a?.price) > 0 ? `${a.name}(+Rs.${num(a.price)})` : a.name)).join(', ')}`;
       doc.text(addonsText.slice(0, 48), leftX, y);
       y += 3.2;
       doc.setFontSize(7.5);
@@ -294,7 +294,7 @@ export function generateThermalReceiptPdf({
       // Item Add-ons
       if (Array.isArray(item.addons) && item.addons.length > 0) {
         doc.setFontSize(6.8);
-        doc.text(`Top-ups: ${item.addons.map((a) => `${a.name}(+${a.price})`).join(', ').slice(0, 48)}`, leftX, y);
+        doc.text(`Top-ups: ${item.addons.map((a) => (num(a?.price) > 0 ? `${a.name}(+Rs.${num(a.price)})` : a.name)).join(', ').slice(0, 48)}`, leftX, y);
         y += 2.8;
         doc.setFontSize(7.5);
       }
@@ -621,7 +621,10 @@ export function generateStandardInvoicePdf({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.text(`Total Pcs : ${totalPcs}     Advance Balance: ${advBal.toFixed(0)}`, 10, y);
-  doc.text(`Delivery Date : ${dueFormatted}`, 200, y, { align: 'right' });
+  const deliveryText = num(order.expressPercent) > 0
+    ? `Delivery Date : ${dueFormatted} [${order.expressLabel || `Early Delivery (+${order.expressPercent}%)`}]`
+    : `Delivery Date : ${dueFormatted}`;
+  doc.text(deliveryText, 200, y, { align: 'right' });
 
   y += 2;
   doc.line(10, y, 200, y);
@@ -651,13 +654,23 @@ export function generateStandardInvoicePdf({
     doc.setFont('helvetica', 'normal');
     doc.text(`${serviceName} (SAC-99971)`, 65, y);
     doc.text(`${weightKg} kg`, 120, y, { align: 'center' });
-    doc.text((weightKg > 0 ? grossAmount / weightKg : grossAmount).toFixed(0), 138, y, { align: 'right' });
+    doc.text((weightKg > 0 ? (grossAmount - (order.weightAddons || []).reduce((s, a) => s + num(a?.price), 0)) / weightKg : grossAmount).toFixed(0), 138, y, { align: 'right' });
     doc.text(grossAmount.toFixed(2), 158, y, { align: 'right' });
     if (discountAmount > 0) {
       doc.text(discountAmount.toFixed(2), 178, y, { align: 'right' });
     }
     doc.setFont('helvetica', 'bold');
     doc.text(Math.max(0, grossAmount - discountAmount).toFixed(2), 200, y, { align: 'right' });
+    if (Array.isArray(order.weightAddons) && order.weightAddons.length > 0) {
+      y += 3;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(21, 128, 61);
+      const addonsText = `Add-ons: ${order.weightAddons.map((a) => (num(a?.price) > 0 ? `${a.name} (+Rs.${num(a.price)})` : a.name)).join(', ')}`;
+      doc.text(addonsText.slice(0, 52), 10, y);
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(7.5);
+    }
     y += 4;
   } else {
     // Line amounts include add-ons; the order-level discount is allocated proportionally
@@ -711,6 +724,17 @@ export function generateStandardInvoicePdf({
       doc.text('0.00', 158, y, { align: 'right' });
       doc.text('0.00', 200, y, { align: 'right' });
       doc.setFontSize(7.5);
+
+      if (Array.isArray(item.addons) && item.addons.length > 0) {
+        y += 2.8;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(21, 128, 61);
+        const addonsText = `Add-ons: ${item.addons.map((a) => (num(a?.price) > 0 ? `${a.name} (+Rs.${num(a.price)})` : a.name)).join(', ')}`;
+        doc.text(addonsText.slice(0, 52), 10, y);
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(7.5);
+      }
     });
   }
 
@@ -873,7 +897,7 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
   text += `📋 *Order No:* #${order.orderNo || order.id}\n`;
   text += `👤 *Customer:* ${customer?.name || 'Valued Customer'}\n`;
   text += `📅 *Date:* ${formatDateTime(order.createdAt)}\n`;
-  text += `🚚 *Promised Date:* ${formatDate(order.dueDate)}\n`;
+  text += `🚚 *Promised Date:* ${formatDate(order.dueDate)}${num(order.expressPercent) > 0 ? ` [${order.expressLabel || `⚡ Early Delivery (+${order.expressPercent}%)`}]` : ''}\n`;
   text += `--------------------------------\n`;
 
   if (order.type === 'weight') {
@@ -883,7 +907,7 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
       text += `• Clothes: ${order.weightGarments.map((g) => `${g.name} x${g.quantity}`).join(', ')}\n`;
     }
     if (Array.isArray(order.weightAddons) && order.weightAddons.length > 0) {
-      text += `• Top-ups: ${order.weightAddons.map((a) => `${a.name} (+₹${a.price})`).join(', ')}\n`;
+      text += `• Top-ups: ${order.weightAddons.map((a) => (num(a?.price) > 0 ? `${a.name} (+₹${num(a.price)})` : a.name)).join(', ')}\n`;
     }
     if (order.weightNote) {
       text += `• Note: ${order.weightNote}\n`;
@@ -911,7 +935,7 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
         text += `   ↳ ${tags.join(' | ')}\n`;
       }
       if (Array.isArray(item.addons) && item.addons.length > 0) {
-        text += `   ↳ Add-ons: ${item.addons.map((a) => `${a.name}(+₹${a.price})`).join(', ')}\n`;
+        text += `   ↳ Add-ons: ${item.addons.map((a) => (num(a?.price) > 0 ? `${a.name} (+₹${num(a.price)})` : a.name)).join(', ')}\n`;
       }
     });
   }
@@ -924,6 +948,9 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
       || (order.manualCheckoutDiscountPercent ? `${order.manualCheckoutDiscountPercent}%` : '')
       || (num(order.discountPercent) ? `${num(order.discountPercent)}%` : '');
     text += `Discount${discountLabel ? ` (${discountLabel})` : ''}: -₹${totalDiscount.toFixed(2)}\n`;
+  }
+  if (num(order.expressPercent) > 0 || num(order.expressAmount) > 0) {
+    text += `Turnaround (${order.expressLabel || `${order.expressPercent}%`}): ${num(order.expressAmount) > 0 ? `+₹${num(order.expressAmount).toFixed(2)}` : 'Included in item rates'}\n`;
   }
   if (settings?.taxEnabled !== false && num(order.taxAmount) > 0) {
     text += `Tax (${settings?.taxLabel || 'GST'} ${settings?.taxPercent || 18}%): ₹${num(order.taxAmount).toFixed(2)}\n`;

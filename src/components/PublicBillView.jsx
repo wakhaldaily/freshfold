@@ -299,7 +299,9 @@ export default function PublicBillView({ billParam, tokenParam }) {
               <div>
                 <div style={{ color: '#64748b', fontSize: '11px' }}>Dates:</div>
                 <div style={{ color: '#0f172a' }}>Booked: {formatDate(order.createdAt)}</div>
-                <div style={{ color: '#0284c7', fontWeight: 600 }}>Due: {formatDate(order.dueDate)}</div>
+                <div style={{ color: '#0284c7', fontWeight: 600 }}>
+                  Due: {formatDate(order.dueDate)}{order.expressPercent > 0 ? ` [⚡ +${order.expressPercent}%]` : ''}
+                </div>
               </div>
             </div>
           </div>
@@ -334,7 +336,7 @@ export default function PublicBillView({ billParam, tokenParam }) {
                         )}
                         {Array.isArray(order.weightAddons) && order.weightAddons.length > 0 && (
                           <div style={{ fontSize: '10px', color: '#0284c7', marginTop: '2px' }}>
-                            Top-ups: {order.weightAddons.map((a) => `${a.name} (+${formatMoney(a.price)})`).join(', ')}
+                            Top-ups: {order.weightAddons.map((a) => (Number(a.price) > 0 ? `${a.name} (+${formatMoney(a.price)})` : a.name)).join(', ')}
                           </div>
                         )}
                         {order.weightNote && (
@@ -396,7 +398,7 @@ export default function PublicBillView({ billParam, tokenParam }) {
                             )}
                             {Array.isArray(item.addons) && item.addons.length > 0 && (
                               <div style={{ fontSize: '10px', color: '#0284c7', marginTop: '2px' }}>
-                                Add-ons: {item.addons.map((a) => `${a.name} (+${formatMoney(a.price)})`).join(', ')}
+                                Add-ons: {item.addons.map((a) => (Number(a.price) > 0 ? `${a.name} (+${formatMoney(a.price)})` : a.name)).join(', ')}
                               </div>
                             )}
                           </td>
@@ -430,8 +432,12 @@ export default function PublicBillView({ billParam, tokenParam }) {
                 </div>
               )}
 
-              {/* The early/express delivery surcharge and checkout discount are intentionally not itemised here,
-                  matching the thermal receipt; their effect is already included in the Grand Total. */}
+              {(order.expressPercent > 0 || Number(order.expressAmount || 0) > 0) && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#ea580c', marginBottom: '6px' }}>
+                  <span>Turnaround ({order.expressLabel || `${order.expressPercent}%`})</span>
+                  <span>{Number(order.expressAmount || 0) > 0 ? `+${formatMoney(order.expressAmount)}` : 'Included in item rates'}</span>
+                </div>
+              )}
 
               {/* Tax is shown whenever it was actually charged on this order, so the total always adds up.
                   The rate comes from the order itself, not today's settings. */}

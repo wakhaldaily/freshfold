@@ -951,8 +951,6 @@ export async function createOrder(order, current) {
   const {
     grossAmount: gross,
     discountAmount: discount,
-    expressPercent,
-    expressAmount,
     taxPercent,
     taxAmount,
     manualCheckoutDiscountPercent,
@@ -961,13 +959,15 @@ export async function createOrder(order, current) {
   } = computeTotals({
     grossAmount: rawGross,
     discountAmount: order.discountAmount,
-    expressPercent: order.expressPercent,
-    expressAmount: order.expressAmount,
+    expressPercent: 0, // delivery turnaround % is in item rates, not in sum total
+    expressAmount: 0,
     taxEnabled: isTaxEnabled,
     taxPercent: settings.taxPercent || 0,
     manualCheckoutDiscountPercent: order.manualCheckoutDiscountPercent,
     manualCheckoutDiscountAmount: order.manualCheckoutDiscountAmount,
   });
+  const expressPercent = Number(order.expressPercent || 0);
+  const expressAmount = 0;
   const expressLabel = order.expressLabel || (expressPercent > 0 ? `Early Delivery (+${expressPercent}%)` : '');
 
   // Auto-deduct from customer's package wallet credits if available
@@ -987,7 +987,7 @@ export async function createOrder(order, current) {
     discountAmount: discount,
     discountPercent: Number(order.discountPercent || 0),
     discountName: order.discountName || '',
-    expressDelivery: expressAmount > 0,
+    expressDelivery: expressPercent > 0,
     expressPercent,
     expressAmount,
     expressLabel,
@@ -1205,8 +1205,6 @@ export async function updateOrder(orderId, orderPayload, current) {
   const {
     grossAmount: gross,
     discountAmount: discount,
-    expressPercent,
-    expressAmount,
     taxPercent,
     taxAmount,
     manualCheckoutDiscountPercent,
@@ -1215,13 +1213,15 @@ export async function updateOrder(orderId, orderPayload, current) {
   } = computeTotals({
     grossAmount: rawGross,
     discountAmount: orderPayload.discountAmount,
-    expressPercent: orderPayload.expressPercent,
-    expressAmount: orderPayload.expressAmount,
+    expressPercent: 0, // delivery turnaround % is in item rates, not in sum total
+    expressAmount: 0,
     taxEnabled: isTaxEnabled,
     taxPercent: settings.taxPercent ?? 18,
     manualCheckoutDiscountPercent: orderPayload.manualCheckoutDiscountPercent,
     manualCheckoutDiscountAmount: orderPayload.manualCheckoutDiscountAmount,
   });
+  const expressPercent = Number(orderPayload.expressPercent || 0);
+  const expressAmount = 0;
 
   const existingPayments = (current.payments || []).filter((p) => p.orderId === orderId);
   const walletPaid = existingPayments.filter((p) => p.method === 'wallet').reduce((s, p) => s + Number(p.amount || 0), 0);

@@ -128,12 +128,25 @@ export default function PosRegister({
   // Cart for Piece mode
   const [cartItems, setCartItems] = useState(() => {
     if (editingOrder?.items && Array.isArray(editingOrder.items)) {
-      return editingOrder.items.map((it) => ({
-        ...it,
-        id: it.garmentId || it.id,
-        addons: Array.isArray(it.addons) ? it.addons : [],
-        defects: Array.isArray(it.defects) ? it.defects : [],
-      }));
+      const orderExpPct = Number(editingOrder.expressPercent || 0);
+      return editingOrder.items.map((it) => {
+        let base = it.baseUnitPrice;
+        if (base === undefined || base === null) {
+          if (orderExpPct > 0 && it.unitPrice) {
+            base = roundMoney(Number(it.unitPrice) / (1 + orderExpPct / 100));
+          } else {
+            base = Number(it.unitPrice || 0);
+          }
+        }
+        return {
+          ...it,
+          id: it.garmentId || it.id,
+          addons: Array.isArray(it.addons) ? it.addons : [],
+          defects: Array.isArray(it.defects) ? it.defects : [],
+          baseUnitPrice: Number(base),
+          unitPrice: Number(it.unitPrice || base),
+        };
+      });
     }
     return [];
   });
@@ -242,6 +255,7 @@ export default function PosRegister({
           id: garment.id,
           name: garment.name,
           category: garment.category,
+          baseUnitPrice: unitPrice,
           unitPrice,
           quantity: 1,
           service: selectedPieceService,
@@ -270,6 +284,7 @@ export default function PosRegister({
               breadth,
               sqFt,
               ratePerSqFt,
+              baseUnitPrice: unitPrice,
               unitPrice,
               isDimensionBased: true,
             };
@@ -284,6 +299,7 @@ export default function PosRegister({
           id: garment.id,
           name: garment.name,
           category: garment.category,
+          baseUnitPrice: unitPrice,
           unitPrice,
           ratePerSqFt,
           length,
@@ -378,41 +394,6 @@ export default function PosRegister({
     setShowAddonPickerWeight(false);
   };
 
-  // Calculations
-  const grossAmount = useMemo(() => {
-    if (orderType === 'weight') {
-      const kg = Number(weightKg || 0);
-      const weightCost = kg * currentWeightServiceObj.ratePerKg;
-      const addonsCost = weightAddons.reduce((sum, a) => sum + Number(a.price || 0), 0);
-      return Math.round((weightCost + addonsCost + Number.EPSILON) * 100) / 100;
-    }
-    // Piece calculation: base price + sum(addons.price) for each item * qty (in paise, like the server)
-    const paise = cartItems.reduce((sum, item) => {
-      const addonExtra = (item.addons || []).reduce((aSum, a) => aSum + toPaise(a.price), 0);
-      return sum + (toPaise(item.unitPrice) + addonExtra) * item.quantity;
-    }, 0);
-    return paise / 100;
-  }, [orderType, weightKg, currentWeightServiceObj, weightAddons, cartItems]);
-
-  // Evaluate best package discount dynamically
-  const cartContext = useMemo(() => ({
-    orderType,
-    service: activeService,
-    items: orderType === 'pieces' ? cartItems : [],
-    weightKg: Number(weightKg || 0),
-    grossAmount,
-  }), [orderType, activeService, cartItems, weightKg, grossAmount]);
-
-  const { bestDiscount, allEvaluations } = useMemo(() => {
-    return findBestPackageDiscount(customerActivePackages, cartContext, mergePackageTemplates(packages));
-  }, [customerActivePackages, cartContext, packages]);
-
-  // Customer tier / profile discount vs best package discount: shared with the server.
-  const { discountPercent, discountAmount, discountName } = useMemo(
-    () => pickOrderDiscount({ bestDiscount, grossAmount, customer: currentCustomer }),
-    [bestDiscount, grossAmount, currentCustomer],
-  );
-
   const [selectedExpressId, setSelectedExpressId] = useState(() => {
     if (editingOrder?.expressPercent && editingOrder.expressPercent > 0) {
       return 'custom';
@@ -438,6 +419,49 @@ export default function PosRegister({
   const expressPercent = isCustomExpress
     ? Math.max(0, Math.min(100, Number(customExpressPercent) || 0))
     : Number(activeExpressOption?.percent || 0);
+
+  const getItemEffectiveUnitPrice = (item) => {
+    const base = Number(item.baseUnitPrice ?? item.unitPrice ?? 0);
+    return expressPercent > 0 ? roundMoney(base * (1 + expressPercent / 100)) : base;
+  };
+
+  // Calculations
+  const grossAmount = useMemo(() => {
+    if (orderType === 'weight') {
+      const kg = Number(weightKg || 0);
+      const baseRate = Number(currentWeightServiceObj?.ratePerKg || 0);
+      const effectiveRate = expressPercent > 0 ? roundMoney(baseRate * (1 + expressPercent / 100)) : baseRate;
+      const weightCost = kg * effectiveRate;
+      const addonsCost = weightAddons.reduce((sum, a) => sum + Number(a.price || 0), 0);
+      return Math.round((weightCost + addonsCost + Number.EPSILON) * 100) / 100;
+    }
+    // Piece calculation: base price with turnaround % + sum(addons.price) for each item * qty (in paise, like the server)
+    const paise = cartItems.reduce((sum, item) => {
+      const effectiveBase = getItemEffectiveUnitPrice(item);
+      const addonExtra = (item.addons || []).reduce((aSum, a) => aSum + toPaise(a.price), 0);
+      return sum + (toPaise(effectiveBase) + addonExtra) * item.quantity;
+    }, 0);
+    return paise / 100;
+  }, [orderType, weightKg, currentWeightServiceObj, weightAddons, cartItems, expressPercent]);
+
+  // Evaluate best package discount dynamically
+  const cartContext = useMemo(() => ({
+    orderType,
+    service: activeService,
+    items: orderType === 'pieces' ? cartItems.map((it) => ({ ...it, unitPrice: getItemEffectiveUnitPrice(it) })) : [],
+    weightKg: Number(weightKg || 0),
+    grossAmount,
+  }), [orderType, activeService, cartItems, weightKg, grossAmount, expressPercent]);
+
+  const { bestDiscount, allEvaluations } = useMemo(() => {
+    return findBestPackageDiscount(customerActivePackages, cartContext, mergePackageTemplates(packages));
+  }, [customerActivePackages, cartContext, packages]);
+
+  // Customer tier / profile discount vs best package discount: shared with the server.
+  const { discountPercent, discountAmount, discountName } = useMemo(
+    () => pickOrderDiscount({ bestDiscount, grossAmount, customer: currentCustomer }),
+    [bestDiscount, grossAmount, currentCustomer],
+  );
 
   const taxEnabled = settings?.taxEnabled ?? true;
   const [checkoutDiscountPercent, setCheckoutDiscountPercent] = useState(
@@ -502,7 +526,6 @@ export default function PosRegister({
   };
 
   const {
-    expressAmount,
     taxPercent,
     taxAmount,
     manualCheckoutDiscountAmount: checkoutDiscountAmount,
@@ -510,11 +533,13 @@ export default function PosRegister({
   } = computeTotals({
     grossAmount,
     discountAmount,
-    expressPercent,
+    expressPercent: 0, // delivery turnaround % increases rate of each item, not added to sum total
+    expressAmount: 0,
     taxEnabled,
     taxPercent: settings?.taxPercent ?? 18,
     manualCheckoutDiscountPercent: checkoutDiscountPct,
   });
+  const expressAmount = 0;
 
   const handleSelectExpress = (optId) => {
     setSelectedExpressId(optId);
@@ -550,6 +575,18 @@ export default function PosRegister({
 
     setSubmitting(true);
     try {
+      const itemsToSave = orderType === 'pieces'
+        ? cartItems.map((item) => {
+            const baseRate = Number(item.baseUnitPrice ?? item.unitPrice ?? 0);
+            const effectiveBase = expressPercent > 0 ? roundMoney(baseRate * (1 + expressPercent / 100)) : baseRate;
+            return {
+              ...item,
+              baseUnitPrice: baseRate,
+              unitPrice: effectiveBase,
+            };
+          })
+        : [];
+
       const payload = {
         orderNo: activeOrderNo,
         // Lets the server move to the next free number if another terminal just used this one.
@@ -562,7 +599,7 @@ export default function PosRegister({
         commPreference: currentCustomer.commPreference || 'WhatsApp & SMS',
         type: orderType,
         service: activeService,
-        items: orderType === 'pieces' ? cartItems : [],
+        items: itemsToSave,
         weightKg: orderType === 'weight' ? Number(weightKg) : 0,
         weightClothesCount: orderType === 'weight' ? Number(weightClothesCount || 0) : 0,
         weightGarments: orderType === 'weight' ? weightGarments : [],
@@ -572,9 +609,9 @@ export default function PosRegister({
         discountAmount,
         discountPercent,
         discountName: discountName,
-        expressDelivery: expressAmount > 0,
+        expressDelivery: expressPercent > 0,
         expressPercent,
-        expressAmount,
+        expressAmount: 0,
         expressLabel: isCustomExpress
           ? `Early Delivery (+${expressPercent}%)`
           : (activeExpressOption?.label ? `${activeExpressOption.label} (+${expressPercent}%)` : `Early Delivery (+${expressPercent}%)`),
@@ -1684,8 +1721,9 @@ export default function PosRegister({
                   </div>
                 ) : (
                   cartItems.map((item, idx) => {
+                    const effectiveBase = getItemEffectiveUnitPrice(item);
                     const addonSum = (item.addons || []).reduce((sum, a) => sum + Number(a.price || 0), 0);
-                    const lineUnitPrice = item.unitPrice + addonSum;
+                    const lineUnitPrice = effectiveBase + addonSum;
                     return (
                       <div
                         key={idx}
@@ -1704,6 +1742,7 @@ export default function PosRegister({
                             <strong style={{ fontSize: '13px', display: 'block', color: '#1e293b', wordBreak: 'break-word' }}>{item.name}</strong>
                             <span style={{ fontSize: '11px', color: '#64748b', wordBreak: 'break-word', display: 'block' }}>
                               {item.service} · {formatMoney(lineUnitPrice)} ea
+                              {expressPercent > 0 && <span style={{ color: '#b45309', fontWeight: 600 }}> (+{expressPercent}% turnaround)</span>}
                               {addonSum > 0 && <span style={{ color: '#16a34a' }}> (+₹{addonSum})</span>}
                             </span>
                             {item.length && (item.width || item.breadth) ? (
@@ -1817,7 +1856,7 @@ export default function PosRegister({
                           ))}
                           {(item.addons || []).map((a) => (
                             <span key={a.id || a.name} style={{ fontSize: '10px', fontWeight: 700, background: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '4px' }}>
-                              ⭐ {a.name} (+₹{a.price})
+                              ⭐ {a.name} {Number(a.price) > 0 ? `(+₹${a.price})` : ''}
                             </span>
                           ))}
 
@@ -1888,7 +1927,7 @@ export default function PosRegister({
                       Top-up Services:
                     </small>
                     <span style={{ fontSize: '11px', color: '#166534', fontWeight: 600 }}>
-                      {weightAddons.map((a) => `${a.name} (+₹${a.price})`).join(', ')}
+                      {weightAddons.map((a) => (Number(a.price) > 0 ? `${a.name} (+₹${a.price})` : a.name)).join(', ')}
                     </span>
                   </div>
                 )}
@@ -2037,12 +2076,12 @@ export default function PosRegister({
               </div>
             )}
 
-            {expressAmount > 0 && (
+            {expressPercent > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#b45309', fontWeight: 600, minWidth: 0 }}>
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   ⚡ {selectedExpressId === 'custom' ? 'Custom Early Delivery' : activeExpressOption?.label} (+{expressPercent}%):
                 </span>
-                <span style={{ flexShrink: 0 }}>+{formatMoney(expressAmount)}</span>
+                <span style={{ flexShrink: 0, fontSize: '11px', color: '#92400e' }}>Included in item rates</span>
               </div>
             )}
 
@@ -2227,7 +2266,10 @@ export default function PosRegister({
           onSaveDefect={onSaveDefect}
           onSaveAddon={onSaveAddon}
           onUpdateItem={(updatedItem) => {
-            setCartItems((prev) => prev.map((it, i) => (i === taggingItemIndex ? updatedItem : it)));
+            setCartItems((prev) => prev.map((it, i) => (i === taggingItemIndex ? {
+              ...updatedItem,
+              baseUnitPrice: updatedItem.baseUnitPrice ?? updatedItem.unitPrice,
+            } : it)));
           }}
           onToast={onToast}
         />

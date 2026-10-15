@@ -753,7 +753,10 @@ export default function ThermalReceiptModal({
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>PROMISED:</span>
-                <strong style={{ color: '#0f172a' }}>{formatDate(order.dueDate)}</strong>
+                <strong style={{ color: '#0f172a' }}>
+                  {formatDate(order.dueDate)}
+                  {order.expressPercent > 0 ? ` [⚡ +${order.expressPercent}%]` : ''}
+                </strong>
               </div>
             </div>
 
@@ -844,7 +847,7 @@ export default function ThermalReceiptModal({
                         ? ` · ${order.weightGarments.map((g) => `${g.name} x${g.quantity}`).join(', ')}`
                         : ''}
                       {order.weightAddons?.length
-                        ? ` · Addons: ${order.weightAddons.map((a) => a.name).join(', ')}`
+                        ? ` · Addons: ${order.weightAddons.map((a) => (Number(a.price) > 0 ? `${a.name} (+₹${Number(a.price)})` : a.name)).join(', ')}`
                         : ''}
                       {order.weightNote ? ` · Note: ${order.weightNote}` : ''}
                     </div>
@@ -894,7 +897,7 @@ export default function ThermalReceiptModal({
                           {tagList.length > 0 && <span> · {tagList.join(' · ')}</span>}
                           {item.addons?.length > 0 && (
                             <span style={{ color: '#15803d', display: 'block' }}>
-                              + {item.addons.map((a) => `${a.name} (₹${a.price})`).join(', ')}
+                              + {item.addons.map((a) => (Number(a.price) > 0 ? `${a.name} (+₹${Number(a.price)})` : a.name)).join(', ')}
                             </span>
                           )}
                         </div>
@@ -930,6 +933,13 @@ export default function ThermalReceiptModal({
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
                   <span>Total Discount{order.discountName ? ` (${order.discountName})` : (order.manualCheckoutDiscountPercent ? ` (${order.manualCheckoutDiscountPercent}%)` : (order.discountPercent ? ` (${order.discountPercent}%)` : ''))}:</span>
                   <strong>-{formatMoney(discount)}</strong>
+                </div>
+              )}
+
+              {(order.expressPercent > 0 || Number(order.expressAmount || 0) > 0) && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ea580c' }}>
+                  <span>Turnaround ({order.expressLabel || `${order.expressPercent}%`}):</span>
+                  <strong>{Number(order.expressAmount || 0) > 0 ? `+${formatMoney(order.expressAmount)}` : 'Included in item rates'}</strong>
                 </div>
               )}
 

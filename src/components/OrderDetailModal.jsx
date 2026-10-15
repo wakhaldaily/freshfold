@@ -382,7 +382,7 @@ export default function OrderDetailModal({
                 <CalendarDays size={13} /> PROMISED READY
               </div>
               <strong style={{ fontSize: '13px', color: '#0f172a' }}>
-                {formatDate(order.dueDate)}
+                {formatDate(order.dueDate)}{order.expressPercent > 0 ? ` [⚡ +${order.expressPercent}%]` : ''}
               </strong>
               <div style={{ fontSize: '11px', color: '#64748b' }}>
                 Intake: {formatDateTime(order.createdAt)}
@@ -482,7 +482,7 @@ export default function OrderDetailModal({
                   {Array.isArray(order.weightAddons) && order.weightAddons.length > 0 && (
                     <div style={{ fontSize: '11px', color: '#15803d', background: '#f0fdf4', padding: '8px 10px', borderRadius: '6px' }}>
                       <strong>Top-up Services: </strong>
-                      {order.weightAddons.map((a) => `${a.name} (+₹${a.price})`).join(', ')}
+                      {order.weightAddons.map((a) => (Number(a.price) > 0 ? `${a.name} (+₹${Number(a.price)})` : a.name)).join(', ')}
                     </div>
                   )}
 
@@ -582,7 +582,7 @@ export default function OrderDetailModal({
                                   color: '#15803d',
                                 }}
                               >
-                                ⭐ {a.name} (+₹{a.price})
+                                ⭐ {a.name}{Number(a.price) > 0 ? ` (+₹${Number(a.price)})` : ''}
                               </span>
                             ))}
                           </div>
@@ -640,10 +640,10 @@ export default function OrderDetailModal({
               </div>
             )}
 
-            {order.expressAmount > 0 && (
+            {(order.expressPercent > 0 || Number(order.expressAmount || 0) > 0) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', color: '#d97706', fontWeight: 600, minWidth: 0 }}>
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>⚡ {order.expressLabel || `Early Delivery (+${order.expressPercent}%)`}:</span>
-                <span style={{ flexShrink: 0 }}>+{formatMoney(order.expressAmount)}</span>
+                <span style={{ flexShrink: 0 }}>{Number(order.expressAmount || 0) > 0 ? `+${formatMoney(order.expressAmount)}` : 'Included in item rates'}</span>
               </div>
             )}
 

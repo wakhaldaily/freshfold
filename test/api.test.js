@@ -236,7 +236,7 @@ test('order prices, discounts and tax come from the catalog, not the client', as
   assert.equal(negative.status, 400);
 });
 
-test('express surcharge is stored and totals reconcile', async () => {
+test('express turnaround increases item rate and totals reconcile', async () => {
   const { api } = await freshApi();
   const token = await setupStore(api);
   const customerId = await createCustomer(api, token);
@@ -246,8 +246,11 @@ test('express surcharge is stored and totals reconcile', async () => {
   }, { token });
   assert.equal(res.status, 201, JSON.stringify(res.data));
   const order = (await api.get('/api/bootstrap', { token })).data.orders[0];
-  assert.equal(order.grossAmount, 450, 'suit 400 + stain removal 50 from catalog');
-  assert.equal(order.expressAmount, 112.5);
+  assert.equal(order.items[0].unitPrice, 500, 'suit unit price 400 increased by 25% turnaround to 500');
+  assert.equal(order.items[0].baseUnitPrice, 400, 'baseUnitPrice preserved as 400');
+  assert.equal(order.grossAmount, 550, 'suit 500 + stain removal 50 from catalog');
+  assert.equal(order.expressAmount, 0, 'express turnaround included in item rate rather than separate sum total surcharge');
+  assert.equal(order.expressPercent, 25);
   assert.equal(order.expressLabel, 'Express (+25%)');
   const reconciled = Math.ceil(order.grossAmount - order.discountAmount + order.expressAmount + order.taxAmount);
   assert.equal(reconciled, order.totalAmount);

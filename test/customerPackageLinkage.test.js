@@ -464,16 +464,17 @@ test('9. Early Delivery Surcharge calculation (e.g. 25%) and invoice verificatio
   const customer = store.customers.find((c) => c.mobile === '9812345678');
   assert.ok(customer);
 
-  // Gross 1,000, discount 200 -> Subtotal before express = 800
-  // Express 25% on 800 = 200 -> Subtotal with express = 1,000
-  // Tax 18% on 1,000 = 180 -> Total = 1,180
+  // Base unit price: 500. With 25% early turnaround: 500 * 1.25 = 625 per item.
+  // Gross: 2 * 625 = 1,250. Discount 20%: 250 -> Subtotal = 1,000.
+  // Tax 18% on 1,000 = 180 -> Total = 1,180.
+  // Turnaround percent is applied directly to item unit rates, expressAmount is 0 in sum total.
   store = await createOrder({
     customerId: customer.id,
     type: 'pieces',
     service: 'Dry cleaning',
-    items: [{ id: 'm-suit', name: 'Suit', category: 'Men', unitPrice: 500, quantity: 2 }],
-    grossAmount: 1000,
-    discountAmount: 200,
+    items: [{ id: 'm-suit', name: 'Suit', category: 'Men', unitPrice: 625, baseUnitPrice: 500, quantity: 2 }],
+    grossAmount: 1250,
+    discountAmount: 250,
     discountPercent: 20,
     discountName: 'Loyalty 20%',
     expressPercent: 25,
@@ -482,11 +483,13 @@ test('9. Early Delivery Surcharge calculation (e.g. 25%) and invoice verificatio
 
   const order = store.orders[0];
   assert.ok(order);
-  assert.equal(order.grossAmount, 1000);
-  assert.equal(order.discountAmount, 200);
+  assert.equal(order.items[0].unitPrice, 625);
+  assert.equal(order.items[0].baseUnitPrice, 500);
+  assert.equal(order.grossAmount, 1250);
+  assert.equal(order.discountAmount, 250);
   assert.equal(order.expressDelivery, true);
   assert.equal(order.expressPercent, 25);
-  assert.equal(order.expressAmount, 200, 'Express surcharge must be 25% of taxable subtotal (800 * 0.25 = 200)');
+  assert.equal(order.expressAmount, 0, 'Express turnaround is included in item rates, not added to sum total');
   assert.equal(order.taxAmount, 180, 'GST 18% on 1000 = 180');
   assert.equal(order.totalAmount, 1180, 'Grand total must equal 1000 subtotal + 180 tax = 1180');
 
@@ -496,8 +499,8 @@ test('9. Early Delivery Surcharge calculation (e.g. 25%) and invoice verificatio
     settings: store.settings,
     payments: [],
   });
-  assert.equal(shareText.includes('⚡ Early Delivery'), false, 'Receipt share text must not display separate Early Delivery line');
-  assert.equal(shareText.includes('*NET TOTAL: ₹1180.00*'), true, 'Receipt share text must include full total with surcharge');
+  assert.equal(shareText.includes('⚡ Early Delivery: +₹'), false, 'Receipt share text must not display separate Early Delivery charge');
+  assert.equal(shareText.includes('*NET TOTAL: ₹1180.00*'), true, 'Receipt share text must include full total with turnaround incorporated into items');
 });
 
 test('10. GST is completely suppressed across tickets, orders and persistence when disabled by admin', async () => {
