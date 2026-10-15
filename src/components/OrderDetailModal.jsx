@@ -121,7 +121,7 @@ export default function OrderDetailModal({
         aria-labelledby="order-detail-modal-title"
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: '740px',
+          width: '840px',
           maxWidth: '96vw',
           maxHeight: '94vh',
           minHeight: 0,

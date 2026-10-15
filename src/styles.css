@@ -4620,30 +4620,65 @@ select, .styled-select {
    buttons, while Collect Payment becomes larger and expands to fill space.
    ========================================================================= */
 .order-modal-footer {
-  padding: 14px 22px;
+  padding: 13px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-top: 1px solid #e2e8f0;
   background: #ffffff;
-  gap: 8px;
+  gap: 12px;
+  flex-wrap: nowrap;
 }
 .order-modal-footer-left {
   display: flex;
   gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 .order-modal-footer-right {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-shrink: 0;
+}
+.order-modal-icon-btn {
+  min-height: 38px !important;
+  height: 38px !important;
+  padding: 0 12px !important;
+  font-size: 12px !important;
+  border-radius: 8px !important;
+  white-space: nowrap !important;
+}
+.order-modal-pay-btn {
+  min-height: 38px !important;
+  height: 38px !important;
+  padding: 0 15px !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+  white-space: nowrap !important;
 }
 .order-modal-btn-label {
   display: inline;
 }
 .order-modal-close-icon {
   display: none;
+}
+@media (max-width: 820px) and (min-width: 641px) {
+  .order-modal-footer {
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+    padding: 12px 16px !important;
+  }
+  .order-modal-footer-left {
+    flex: 1 1 auto !important;
+    flex-wrap: wrap !important;
+  }
+  .order-modal-footer-right {
+    flex-shrink: 0 !important;
+    margin-left: auto !important;
+  }
 }
 @media (max-width: 640px) {
   .order-modal-footer {
