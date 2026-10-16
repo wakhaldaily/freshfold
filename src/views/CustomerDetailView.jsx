@@ -68,53 +68,6 @@ export default function CustomerDetailView({
                   Special Discount: {currentDetailCustomer.discountPercent}%
                 </span>
               )}
-              {customerPackages.map((cp) => {
-                const rem = cp.remainingCredit != null ? Number(cp.remainingCredit) : Number(cp.walletCredit || 0);
-                return (
-                  <span
-                    key={cp.id}
-                    style={{
-                      background: '#ede9fe',
-                      color: '#5b21b6',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <Package size={12} aria-hidden="true" />
-                    <span>{cp.name}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const remMsg = cp.kind === 'wallet' && rem > 0 ? `\n\nRemaining wallet credit of ${formatMoney(rem)} will be deducted from wallet balance.` : '';
-                        if (window.confirm(`Are you sure you want to delete the package "${cp.name}" from ${currentDetailCustomer.name}?${remMsg}`)) {
-                          onDeleteCustomerPackage?.(cp.id);
-                        }
-                      }}
-                      style={{
-                        border: 'none',
-                        background: 'rgba(220, 38, 38, 0.12)',
-                        color: '#dc2626',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        padding: '1px 5px',
-                        fontSize: '10px',
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '2px',
-                      }}
-                      title={`Delete "${cp.name}"`}
-                    >
-                      <Trash2 size={10} /> Delete
-                    </button>
-                  </span>
-                );
-              })}
             </div>
           </div>
         </div>
