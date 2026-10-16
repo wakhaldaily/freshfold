@@ -378,8 +378,6 @@ export function priceOrder(input = {}, context = {}) {
     weightAddons,
     discountPercent: discount.discountPercent,
     discountName: discount.discountName,
-    expressPercent,
-    expressAmount: 0,
     expressLabel: expressPercent > 0 ? (input.expressLabel || `Early Delivery (+${expressPercent}%)`) : '',
     evaluations: allEvaluations,
     ...totals,
