@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { buildPublicBillUrl } from './billSecurity.js';
 import { formatDate, formatDateTime, parseDateInput } from './dateFormat.js';
-import { calculateLineDiscounts, getOrderTotalDiscount } from './orderPricing.js';
+import { calculateLineDiscounts, getOrderTotalDiscount, resolveOrderPackageInfo } from './orderPricing.js';
 
 export { formatDate, formatDateTime } from './dateFormat.js';
 
@@ -468,6 +468,7 @@ export function generateStandardInvoicePdf({
   settings,
   cashierName = 'CC02',
   previousDue = 0,
+  customerPackages = [],
   existingDoc = null,
 }) {
   const storeName = settings?.storeName || 'Crystal Clear Dry Cleaning';
@@ -562,7 +563,7 @@ export function generateStandardInvoicePdf({
   y += 13;
   doc.line(10, y, 200, y);
 
-  // 3. Financial Balance Strip
+  // 3. Financial Balance Strip OR Package Strip
   const grossAmount = num(order.grossAmount);
   const totalDiscount = getOrderTotalDiscount(order);
   const discountAmount = totalDiscount;
@@ -580,30 +581,51 @@ export function generateStandardInvoicePdf({
   const advance = 0.00;
   const roundOff = Math.round((totalAmount - (taxableSubtotal + taxAmount)) * 100) / 100;
 
-  y += 3.5;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.text(`INR : ${prevDueVal.toFixed(2)}`, 22, y, { align: 'center' });
-  doc.text(`INR : ${totalAmount.toFixed(2)}`, 64, y, { align: 'center' });
-  doc.text(`INR : ${advance.toFixed(2)}`, 105, y, { align: 'center' });
-  doc.text(`INR : ${paidAmount.toFixed(2)}`, 146, y, { align: 'center' });
-  doc.text(`INR : ${balanceDue.toFixed(2)}`, 188, y, { align: 'center' });
+  const activePackageInfo = resolveOrderPackageInfo(order, customer, customerPackages);
+  if (activePackageInfo) {
+    y += 3.5;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text(String(activePackageInfo.name), 12, y, { align: 'left' });
+    doc.text(String(activePackageInfo.consumed), 85, y, { align: 'center' });
+    doc.text(String(activePackageInfo.balance), 135, y, { align: 'center' });
+    doc.text(String(activePackageInfo.validTill), 198, y, { align: 'right' });
 
-  doc.setFontSize(11);
-  doc.text('+', 43, y + 1, { align: 'center' });
-  doc.text('-', 84, y + 1, { align: 'center' });
-  doc.text('-', 125, y + 1, { align: 'center' });
-  doc.text('=', 167, y + 1, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.text('Package Name', 12, y + 3.8, { align: 'left' });
+    doc.text('Consumed (this order)', 85, y + 3.8, { align: 'center' });
+    doc.text('Balance', 135, y + 3.8, { align: 'center' });
+    doc.text('Valid till', 198, y + 3.8, { align: 'right' });
 
-  doc.setFontSize(6.5);
-  doc.text('Previous Due', 22, y + 3.8, { align: 'center' });
-  doc.text('Due (this order)', 64, y + 3.8, { align: 'center' });
-  doc.text('Advance', 105, y + 3.8, { align: 'center' });
-  doc.text('Paid', 146, y + 3.8, { align: 'center' });
-  doc.text('Balance Due', 188, y + 3.8, { align: 'center' });
+    y += 6;
+    doc.line(10, y, 200, y);
+  } else {
+    y += 3.5;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.text(`INR : ${prevDueVal.toFixed(2)}`, 22, y, { align: 'center' });
+    doc.text(`INR : ${totalAmount.toFixed(2)}`, 64, y, { align: 'center' });
+    doc.text(`INR : ${advance.toFixed(2)}`, 105, y, { align: 'center' });
+    doc.text(`INR : ${paidAmount.toFixed(2)}`, 146, y, { align: 'center' });
+    doc.text(`INR : ${balanceDue.toFixed(2)}`, 188, y, { align: 'center' });
 
-  y += 6;
-  doc.line(10, y, 200, y);
+    doc.setFontSize(11);
+    doc.text('+', 43, y + 1, { align: 'center' });
+    doc.text('-', 84, y + 1, { align: 'center' });
+    doc.text('-', 125, y + 1, { align: 'center' });
+    doc.text('=', 167, y + 1, { align: 'center' });
+
+    doc.setFontSize(6.5);
+    doc.text('Previous Due', 22, y + 3.8, { align: 'center' });
+    doc.text('Due (this order)', 64, y + 3.8, { align: 'center' });
+    doc.text('Advance', 105, y + 3.8, { align: 'center' });
+    doc.text('Paid', 146, y + 3.8, { align: 'center' });
+    doc.text('Balance Due', 188, y + 3.8, { align: 'center' });
+
+    y += 6;
+    doc.line(10, y, 200, y);
+  }
 
   // 4. Counts & Delivery Date
   const totalPcs = isWeight
@@ -843,6 +865,7 @@ export function downloadBatchInvoicesPdf({
   customers = [],
   settings = {},
   payments = [],
+  customerPackages = [],
   format = 'thermal',
   cashierName = 'Store Cashier',
   filename = '',
@@ -872,6 +895,7 @@ export function downloadBatchInvoicesPdf({
       customer: cust,
       settings,
       payments: orderPayments,
+      customerPackages,
       cashierName,
       existingDoc: doc,
     };

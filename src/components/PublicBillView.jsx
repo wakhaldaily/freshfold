@@ -14,7 +14,7 @@ import {
 import { verifyBillToken } from '../lib/billSecurity.js';
 import { formatDate, formatDateTime } from '../lib/dateFormat.js';
 import { formatMoney, loadLocal } from '../lib/persistence.js';
-import { calculateLineDiscounts, getOrderTotalDiscount } from '../lib/orderPricing.js';
+import { calculateLineDiscounts, getOrderTotalDiscount, resolveOrderPackageInfo } from '../lib/orderPricing.js';
 import CrystalClearBill from './CrystalClearBill.jsx';
 import { BillSkeleton } from './SkeletonLoader.jsx';
 
@@ -37,6 +37,7 @@ async function findLocalBill(billParam, tokenParam) {
     customer: customer || { name: 'Valued Customer', mobile: '' },
     settings: store.settings,
     payments: (store.payments || []).filter((p) => p.orderId === order.id),
+    customerPackages: store.customerPackages || [],
   };
 }
 
@@ -160,6 +161,8 @@ export default function PublicBillView({ billParam, tokenParam }) {
     || (order.manualCheckoutDiscountPercent ? `${order.manualCheckoutDiscountPercent}%` : '')
     || (order.discountPercent ? `${order.discountPercent}%` : '');
 
+  const activePackageInfo = resolveOrderPackageInfo(order, customer, billData?.customerPackages || []);
+
   const handleDownloadPdf = async () => {
     // jsPDF is loaded on demand to keep the initial bundle small.
     const { downloadThermalReceiptPdf } = await import('../lib/pdfGenerator.js');
@@ -168,7 +171,9 @@ export default function PublicBillView({ billParam, tokenParam }) {
       customer,
       settings,
       payments,
+      customerPackages: billData?.customerPackages || [],
       cashierName: 'Store Service Desk',
+      format: settings?.invoiceFormat || 'standard',
     });
   };
 
@@ -302,6 +307,29 @@ export default function PublicBillView({ billParam, tokenParam }) {
                 <div style={{ color: '#0284c7', fontWeight: 600 }}>Due: {formatDate(order.dueDate)}</div>
               </div>
             </div>
+
+            {activePackageInfo && (
+              <div style={{ marginTop: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 0.8fr 1fr', gap: '8px', fontSize: '12px' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.name}</div>
+                    <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Package Name</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.consumed}</div>
+                    <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Consumed (this order)</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.balance}</div>
+                    <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Balance</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.validTill}</div>
+                    <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Valid till</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Items & Services Section */}

@@ -904,6 +904,53 @@ export async function assignPackage(customerId, templateId, paymentMethod, curre
   });
 }
 
+export async function deleteCustomerPackage(packageId, current) {
+  if (remoteMode) return finishRemoteMutation(`/api/customer-packages/${encodeURIComponent(packageId)}`, 'DELETE');
+
+  const cp = (current.customerPackages || []).find((p) => p.id === packageId);
+  if (!cp) return current;
+
+  let customers = current.customers || [];
+  let walletTransactions = current.walletTransactions || [];
+
+  if (cp.kind === 'wallet') {
+    const remaining = Number(cp.remainingCredit != null ? cp.remainingCredit : cp.walletCredit || 0);
+    if (remaining > 0) {
+      customers = customers.map((c) =>
+        c.id === cp.customerId
+          ? { ...c, walletBalance: Math.max(0, Number(c.walletBalance || 0) - remaining) }
+          : c
+      );
+      walletTransactions = [
+        {
+          id: `wt-${crypto.randomUUID()}`,
+          customerId: cp.customerId,
+          packageId: cp.id,
+          kind: 'debit',
+          amount: remaining,
+          description: `${cp.name} cancelled/deleted`,
+          createdAt: new Date().toISOString(),
+        },
+        ...walletTransactions,
+      ];
+    }
+  }
+
+  const customerPackages = (current.customerPackages || []).filter((p) => p.id !== packageId);
+  const packageSales = (current.packageSales || []).filter((ps) => ps.packageId !== packageId);
+  walletTransactions = walletTransactions.map((tx) =>
+    tx.packageId === packageId ? { ...tx, packageId: null } : tx
+  );
+
+  return saveLocal({
+    ...current,
+    customers,
+    customerPackages,
+    packageSales,
+    walletTransactions,
+  });
+}
+
 // --- ORDERS (WITH TAX & DISCOUNT ENGINE & EDITABLE AUTO-INCREMENTING ORDER NUMBERS) ---
 export async function createOrder(order, current) {
   if (remoteMode) return finishRemoteMutation('/api/orders', 'POST', order);

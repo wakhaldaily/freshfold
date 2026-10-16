@@ -15,6 +15,7 @@ export default function CustomerDetailView({
   customerDetailTab,
   setCustomerDetailTab,
   onDeleteCustomer,
+  onDeleteCustomerPackage,
 }) {
   return (
     <div style={{ display: 'grid', gap: '22px' }}>
@@ -345,6 +346,22 @@ export default function CustomerDetailView({
                     ) : (cp.kind === 'buy_x_get_y'
                       ? `Pay for ${cp.buyQty || 5}, Get ${cp.freeQty || 1} Free`
                       : `${cp.discountPercent}% Off Eligible Orders`)}
+                  </div>
+                  <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      style={{ minHeight: '28px', padding: '0 10px', fontSize: '11px', color: '#b91c1c' }}
+                      onClick={() => {
+                        const remMsg = cp.kind === 'wallet' && remaining > 0 ? `\n\nRemaining wallet credit of ${formatMoney(remaining)} will be deducted from wallet balance.` : '';
+                        if (window.confirm(`Are you sure you want to delete the package "${cp.name}"?${remMsg}`)) {
+                          onDeleteCustomerPackage?.(cp.id);
+                        }
+                      }}
+                      title="Delete package"
+                    >
+                      <Trash2 size={13} style={{ marginRight: '4px' }} /> Delete Package
+                    </button>
                   </div>
                 </div>
               );

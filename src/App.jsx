@@ -3,7 +3,7 @@ import { CheckCircle2, Store } from 'lucide-react';
 
 import {
   assignPackage, clearAdminSession, clearAllCustomerAndOrderData, clearAuthToken, createAdmin, createCustomer, createOrder,
-  createPackage, deleteAdmin, deleteCustomer, deleteOrder, deletePackage, getAdminSession, isRemoteMode,
+  createPackage, deleteAdmin, deleteCustomer, deleteCustomerPackage, deleteOrder, deletePackage, getAdminSession, isRemoteMode,
   loadLocal, loadStore, recordPayment, saveSettings, saveStaff, setAdminSession,
   updateAdminProfile, updateCustomer, updateOrder, updateOrderStatus, updatePackage,
   saveCustomAddon, saveCustomBrand, saveCustomColor, saveCustomDefect,
@@ -317,6 +317,17 @@ export default function App() {
     }
   };
 
+  const handleDeleteCustomerPackage = async (packageId) => {
+    try {
+      await runMutation(
+        (cur) => deleteCustomerPackage(packageId, cur),
+        'Subscribed package deleted successfully.',
+      );
+    } catch (err) {
+      showToast(err.message || 'Failed to delete package.');
+    }
+  };
+
   // Active customer for detail view
   const currentDetailCustomer = useMemo(() => {
     return data?.customers.find((c) => c.id === selectedCustomerId) || data?.customers[0] || null;
@@ -474,6 +485,7 @@ export default function App() {
           customers: data.customers,
           settings: data.settings,
           payments: data.payments,
+          customerPackages: data.customerPackages,
           format: data.settings?.invoiceFormat || 'thermal',
           cashierName: currentStaff?.name || 'Store Cashier',
           filename: `CleanClear_All_Invoices_${periodLabel.replace(/[^a-zA-Z0-9_\-]/g, '_')}.pdf`,
@@ -725,6 +737,7 @@ export default function App() {
               customerDetailTab={customerDetailTab}
               setCustomerDetailTab={setCustomerDetailTab}
               onDeleteCustomer={handleDeleteCustomer}
+              onDeleteCustomerPackage={handleDeleteCustomerPackage}
             />
           )}
 
@@ -920,6 +933,7 @@ export default function App() {
             customer={activeOrderCustomer}
             settings={data.settings}
             payments={activeOrderPayments}
+            customerPackages={data.customerPackages}
             currentStaff={adminUser || authSession || { name: 'Counter Cashier' }}
             onToast={showToast}
           />

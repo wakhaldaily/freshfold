@@ -1,4 +1,5 @@
 import React from 'react';
+import { resolveOrderPackageInfo } from '../lib/orderPricing.js';
 
 // Standard Code 39 Character encoding table
 const CODE39 = {
@@ -92,8 +93,11 @@ export default function CrystalClearBill({
   settings,
   cashierName = 'CC02',
   previousDue = 0,
+  customerPackages = [],
 }) {
   if (!order) return null;
+
+  const activePackageInfo = resolveOrderPackageInfo(order, customer, customerPackages);
 
   const storeName = settings?.storeName || 'Crystal Clear Dry Cleaning';
   const storeAddress = settings?.address || 'Near Union Bank, Wazirabad, Gurgaon-122004';
@@ -277,61 +281,99 @@ export default function CrystalClearBill({
       {/* Horizontal Divider */}
       <div style={{ borderTop: '1.5px solid #000000', margin: '0 0 8px 0' }} />
 
-      {/* 3. FINANCIAL BALANCE STRIP (MATHEMATICAL EQUATION) */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr auto 1fr auto 1fr auto 1fr auto 1fr',
-          alignItems: 'center',
-          textAlign: 'center',
-          padding: '4px 0 8px 0',
-        }}
-      >
-        <div>
-          <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000' }}>
-            INR : {prevDueVal.toFixed(2)}
+      {/* 3. FINANCIAL BALANCE STRIP OR PACKAGE STRIP */}
+      {activePackageInfo ? (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '2fr 1.3fr 0.8fr 1.1fr',
+            alignItems: 'flex-start',
+            padding: '4px 0 8px 0',
+            fontSize: '12px',
+            color: '#000000',
+          }}
+        >
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ fontWeight: 700 }}>{activePackageInfo.name}</div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+              Package Name
+            </div>
           </div>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
-            Previous Due
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontWeight: 700 }}>{activePackageInfo.consumed}</div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+              Consumed (this order)
+            </div>
           </div>
-        </div>
-        <div style={{ fontSize: '18px', fontWeight: 900, color: '#000000', padding: '0 2px' }}>+</div>
-        <div>
-          <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000' }}>
-            INR : {totalAmount.toFixed(2)}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontWeight: 700 }}>{activePackageInfo.balance}</div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+              Balance
+            </div>
           </div>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
-            Due (this order)
-          </div>
-        </div>
-        <div style={{ fontSize: '18px', fontWeight: 900, color: '#000000', padding: '0 2px' }}>-</div>
-        <div>
-          <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000' }}>
-            INR : {advance.toFixed(2)}
-          </div>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
-            Advance
-          </div>
-        </div>
-        <div style={{ fontSize: '18px', fontWeight: 900, color: '#000000', padding: '0 2px' }}>-</div>
-        <div>
-          <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000' }}>
-            INR : {paidAmount.toFixed(2)}
-          </div>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
-            Paid
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontWeight: 700 }}>{activePackageInfo.validTill}</div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+              Valid till
+            </div>
           </div>
         </div>
-        <div style={{ fontSize: '18px', fontWeight: 900, color: '#000000', padding: '0 2px' }}>=</div>
-        <div>
-          <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000' }}>
-            INR : {balanceDue.toFixed(2)}
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr auto 1fr auto 1fr auto 1fr auto 1fr',
+            alignItems: 'center',
+            textAlign: 'center',
+            padding: '4px 0 8px 0',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000' }}>
+              INR : {prevDueVal.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+              Previous Due
+            </div>
           </div>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
-            Balance Due
+          <div style={{ fontSize: '18px', fontWeight: 900, color: '#000000', padding: '0 2px' }}>+</div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000' }}>
+              INR : {totalAmount.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+              Due (this order)
+            </div>
+          </div>
+          <div style={{ fontSize: '18px', fontWeight: 900, color: '#000000', padding: '0 2px' }}>-</div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000' }}>
+              INR : {advance.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+              Advance
+            </div>
+          </div>
+          <div style={{ fontSize: '18px', fontWeight: 900, color: '#000000', padding: '0 2px' }}>-</div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000' }}>
+              INR : {paidAmount.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+              Paid
+            </div>
+          </div>
+          <div style={{ fontSize: '18px', fontWeight: 900, color: '#000000', padding: '0 2px' }}>=</div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000' }}>
+              INR : {balanceDue.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+              Balance Due
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Horizontal Divider */}
       <div style={{ borderTop: '1.5px solid #000000', margin: '0 0 8px 0' }} />

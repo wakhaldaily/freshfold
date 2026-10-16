@@ -37,6 +37,7 @@ export default function ThermalReceiptModal({
   customer,
   settings,
   payments = [],
+  customerPackages = [],
   currentStaff,
   onToast,
 }) {
@@ -139,6 +140,7 @@ export default function ThermalReceiptModal({
       customer,
       settings,
       payments,
+      customerPackages,
       cashierName,
       format,
     });
@@ -656,6 +658,7 @@ export default function ThermalReceiptModal({
                 settings={settings}
                 cashierName={cashierName}
                 previousDue={0}
+                customerPackages={customerPackages}
               />
             </div>
             </ScaledToFit>

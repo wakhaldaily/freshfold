@@ -15,6 +15,7 @@ import {
   weightServices,
 } from '../data.js';
 import { findBestPackageDiscount } from './packageDiscountEngine.js';
+import { formatDate } from './dateFormat.js';
 
 export const MAX_ITEM_QUANTITY = 500;
 export const MAX_WEIGHT_KG = 1000;
@@ -420,5 +421,84 @@ export function calculateLineDiscounts(items = [], totalDiscount = 0) {
     allocated = roundMoney(allocated + share);
     return share;
   });
+}
+
+/**
+ * Resolves package details for bill generation when a customer has a package.
+ * Returns { name, consumed, balance, validTill } or null if no package exists.
+ */
+export function resolveOrderPackageInfo(order, customer, customerPackages = []) {
+  if (order?.packageInfo && order.packageInfo.name) {
+    const p = order.packageInfo;
+    return {
+      name: String(p.name || ''),
+      consumed: String(p.consumed ?? '0.00'),
+      balance: String(p.balance ?? '0'),
+      validTill: String(p.validTill || (p.expiresAt ? formatDate(p.expiresAt) : 'Lifetime')),
+    };
+  }
+
+  // Look for matching customer packages
+  const activePkgs = (Array.isArray(customerPackages) ? customerPackages : []).filter(
+    (cp) => cp && cp.customerId === (order?.customerId || customer?.id) && cp.status !== 'disabled'
+  );
+
+  let matchedPkg = null;
+  if (order?.discountName) {
+    matchedPkg = activePkgs.find(
+      (cp) => cp.name === order.discountName || String(order.discountName).includes(cp.name)
+    );
+  }
+  if (!matchedPkg && Number(order?.paidAmount || 0) > 0) {
+    matchedPkg = activePkgs.find((cp) => cp.kind === 'wallet');
+  }
+  if (!matchedPkg && activePkgs.length > 0) {
+    matchedPkg = activePkgs[0];
+  }
+
+  if (!matchedPkg) {
+    // If order has a package discountName that is not a profile/tier rate
+    if (order?.discountName && !order.discountName.includes('Tier') && !order.discountName.includes('Customer Profile')) {
+      return {
+        name: order.discountName,
+        consumed: '0.00',
+        balance: '0',
+        validTill: 'Lifetime',
+      };
+    }
+    return null;
+  }
+
+  // Consumed credit for this order:
+  // For wallet package, it consumes credit from the wallet package
+  const isWallet = matchedPkg.kind === 'wallet';
+  let consumedStr = '0.00';
+  if (isWallet) {
+    const consumedVal = Math.min(Number(order?.paidAmount || 0), Number(matchedPkg.walletCredit || 0));
+    consumedStr = consumedVal > 0 ? consumedVal.toFixed(2) : '0.00';
+  }
+
+  // Remaining balance
+  let balanceStr = '0';
+  if (isWallet) {
+    const rem = matchedPkg.remainingCredit != null ? Number(matchedPkg.remainingCredit) : Number(customer?.walletBalance || 0);
+    balanceStr = Number.isInteger(rem) ? rem.toString() : rem.toFixed(2);
+  } else if (Number(customer?.walletBalance || 0) > 0) {
+    const rem = Number(customer.walletBalance);
+    balanceStr = Number.isInteger(rem) ? rem.toString() : rem.toFixed(2);
+  }
+
+  // Expiration date
+  let validTillStr = 'Lifetime';
+  if (matchedPkg.expiresAt) {
+    validTillStr = formatDate(matchedPkg.expiresAt);
+  }
+
+  return {
+    name: matchedPkg.name,
+    consumed: consumedStr,
+    balance: balanceStr,
+    validTill: validTillStr,
+  };
 }
 

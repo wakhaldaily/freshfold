@@ -239,6 +239,7 @@ function orderExtra(body, priced) {
     weightAddons: priced.weightAddons,
     manualCheckoutDiscountPercent: priced.manualCheckoutDiscountPercent || 0,
     manualCheckoutDiscountAmount: priced.manualCheckoutDiscountAmount || 0,
+    packageInfo: body.packageInfo || null,
   };
 }
 
@@ -1053,6 +1054,36 @@ async function sellPackage({ sql, request }) {
   return json({ id: customerPackageId }, 201);
 }
 
+async function deleteCustomerPackageRoute({ sql, params }) {
+  const packageId = text(params.id, 80);
+  const rows = await sql`
+    SELECT id, customer_id AS "customerId", kind, wallet_credit AS "walletCredit",
+      COALESCE(remaining_credit, wallet_credit) AS "remainingCredit", name
+    FROM customer_packages
+    WHERE id = ${packageId}
+  `;
+  if (!rows.length) throw new HttpError(404, 'Package not found.');
+  const cp = rows[0];
+  const remaining = Number(cp.remainingCredit != null ? cp.remainingCredit : cp.walletCredit || 0);
+
+  if (cp.kind === 'wallet' && remaining > 0) {
+    await sql`
+      UPDATE customers
+      SET wallet_balance = GREATEST(0, wallet_balance - ${remaining})
+      WHERE id = ${cp.customerId}
+    `;
+    await sql`
+      INSERT INTO wallet_transactions (id, customer_id, kind, amount, description)
+      VALUES (${newId('wt')}, ${cp.customerId}, 'debit', ${remaining}, ${`${cp.name} cancelled/deleted`})
+    `;
+  }
+
+  await sql`UPDATE wallet_transactions SET customer_package_id = NULL WHERE customer_package_id = ${packageId}`;
+  await sql`DELETE FROM package_sales WHERE customer_package_id = ${packageId}`;
+  await sql`DELETE FROM customer_packages WHERE id = ${packageId}`;
+  return json({ ok: true, deleted: packageId });
+}
+
 async function createTemplate({ sql, request }) {
   const t = cleanTemplate(await readJson(request));
   const id = newId('pkg');
@@ -1273,10 +1304,18 @@ async function publicBill({ sql, url, params, ip }) {
   }
   const { share_token: _ignored, ...orderRow } = rows[0];
   const order = mapOrder(orderRow);
-  const [customerRows, settings, payments] = await Promise.all([
-    sql`SELECT name, mobile FROM customers WHERE id = ${order.customerId}`,
+  const [customerRows, settings, payments, customerPackages] = await Promise.all([
+    sql`SELECT name, mobile, wallet_balance AS "walletBalance" FROM customers WHERE id = ${order.customerId}`,
     loadSettings(sql),
     sql`SELECT id, amount, method, created_at AS "createdAt" FROM payments WHERE order_id = ${order.id} ORDER BY created_at`,
+    sql`SELECT id, customer_id AS "customerId", template_id AS "templateId", name, kind,
+      wallet_credit AS "walletCredit",
+      COALESCE(remaining_credit, wallet_credit) AS "remainingCredit",
+      discount_percent AS "discountPercent",
+      to_char(expires_at, 'YYYY-MM-DD') AS "expiresAt",
+      status
+    FROM customer_packages
+    WHERE customer_id = ${order.customerId}`,
   ]);
   const customer = customerRows[0] || { name: 'Valued Customer', mobile: '' };
   const mobile = String(customer.mobile || '');
@@ -1288,9 +1327,14 @@ async function publicBill({ sql, url, params, ip }) {
   }
   return json({
     order,
-    customer: { name: customer.name, mobile: mobile.length > 4 ? `${'•'.repeat(mobile.length - 4)}${mobile.slice(-4)}` : mobile },
+    customer: {
+      name: customer.name,
+      mobile: mobile.length > 4 ? `${'•'.repeat(mobile.length - 4)}${mobile.slice(-4)}` : mobile,
+      walletBalance: Number(customer.walletBalance || 0),
+    },
     settings: publicSettings,
     payments: payments.map((p) => numbers(p, ['amount'])),
+    customerPackages: (customerPackages || []).map((r) => numbers(r, ['walletCredit', 'remainingCredit', 'discountPercent'])),
   });
 }
 
@@ -1346,6 +1390,7 @@ const routes = [
   ['POST', '/api/orders/:id/payments', recordPayment, 'user'],
   ['POST', '/api/orders/:id/share-link', shareLink, 'user'],
   ['POST', '/api/packages', sellPackage, 'user'],
+  ['DELETE', '/api/customer-packages/:id', deleteCustomerPackageRoute, 'user'],
   ['POST', '/api/catalog', addCatalogEntry, 'user'],
 
   ['DELETE', '/api/customers/:id', deleteCustomer, 'admin'],

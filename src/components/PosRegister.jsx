@@ -7,7 +7,7 @@ import {
 import { defaultSettings, garmentCatalog, isCarpetItem, services, weightServices } from '../data.js';
 import { formatMoney, formatOrderNo, getNextOrderNo } from '../lib/persistence.js';
 import { findBestPackageDiscount, isGarmentEligible } from '../lib/packageDiscountEngine.js';
-import { computeTotals, formatIndianCurrencyString, mergePackageTemplates, pickOrderDiscount, roundMoney, toPaise } from '../lib/orderPricing.js';
+import { computeTotals, formatIndianCurrencyString, mergePackageTemplates, pickOrderDiscount, resolveOrderPackageInfo, roundMoney, toPaise } from '../lib/orderPricing.js';
 import ItemTagModal from './ItemTagModal.jsx';
 import CustomSelect from './CustomSelect.jsx';
 
@@ -886,6 +886,10 @@ export default function PosRegister({
         totalAmount: grandTotal,
         dueDate,
       };
+      const resolvedPkgInfo = resolveOrderPackageInfo(payload, currentCustomer, customerPackages);
+      if (resolvedPkgInfo) {
+        payload.packageInfo = resolvedPkgInfo;
+      }
       if (editingOrder && onUpdateOrder) {
         await onUpdateOrder(editingOrder.id, payload);
       } else {
