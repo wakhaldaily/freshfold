@@ -68,6 +68,53 @@ export default function CustomerDetailView({
                   Special Discount: {currentDetailCustomer.discountPercent}%
                 </span>
               )}
+              {customerPackages.map((cp) => {
+                const rem = cp.remainingCredit != null ? Number(cp.remainingCredit) : Number(cp.walletCredit || 0);
+                return (
+                  <span
+                    key={cp.id}
+                    style={{
+                      background: '#ede9fe',
+                      color: '#5b21b6',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <Package size={12} aria-hidden="true" />
+                    <span>{cp.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const remMsg = cp.kind === 'wallet' && rem > 0 ? `\n\nRemaining wallet credit of ${formatMoney(rem)} will be deducted from wallet balance.` : '';
+                        if (window.confirm(`Are you sure you want to delete the package "${cp.name}" from ${currentDetailCustomer.name}?${remMsg}`)) {
+                          onDeleteCustomerPackage?.(cp.id);
+                        }
+                      }}
+                      style={{
+                        border: 'none',
+                        background: 'rgba(220, 38, 38, 0.12)',
+                        color: '#dc2626',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        padding: '1px 5px',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '2px',
+                      }}
+                      title={`Delete "${cp.name}"`}
+                    >
+                      <Trash2 size={10} /> Delete
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -140,19 +187,24 @@ export default function CustomerDetailView({
           <small>{customerOrders.filter((o) => o.balanceAmount > 0).length} pending payments</small>
         </div>
 
-        <div className="metric-card">
+        <div
+          className="metric-card"
+          style={{ cursor: 'pointer', transition: 'all 0.15s ease' }}
+          onClick={() => setCustomerDetailTab('packages')}
+          title="Click to view and delete customer packages"
+        >
           <div className="metric-top">
-            <span>Lifetime Benefits</span>
+            <span>Enrolled Packages</span>
             <div className="metric-icon lavender">
               <Package size={16} />
             </div>
           </div>
-          <strong className="metric-value">{customerPackages.length} {customerPackages.length === 1 ? 'Plan' : 'Plans'}</strong>
-          <small>No validity expiration (Lifetime)</small>
+          <strong className="metric-value">{customerPackages.length} {customerPackages.length === 1 ? 'Package' : 'Packages'}</strong>
+          <small style={{ color: '#2563eb', fontWeight: 600 }}>Click to manage & delete packages →</small>
         </div>
       </div>
 
-      {/* Segmented Tabs: Order History / Lifetime Packages / Wallet Ledger */}
+      {/* Segmented Tabs: Order History / Customer Packages / Wallet Ledger */}
       <div className="tabs-row">
         <div className="segmented-tabs">
           <button
@@ -169,7 +221,7 @@ export default function CustomerDetailView({
             className={customerDetailTab === 'packages' ? 'selected' : ''}
             onClick={() => setCustomerDetailTab('packages')}
           >
-            <span>Lifetime Packages</span>
+            <span>Customer Packages</span>
             <span className="tab-count">{customerPackages.length}</span>
           </button>
 
@@ -350,8 +402,21 @@ export default function CustomerDetailView({
                   <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
                     <button
                       type="button"
-                      className="button button-quiet"
-                      style={{ minHeight: '28px', padding: '0 10px', fontSize: '11px', color: '#b91c1c' }}
+                      className="button"
+                      style={{
+                        minHeight: '30px',
+                        padding: '0 12px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        color: '#dc2626',
+                        background: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        borderRadius: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        cursor: 'pointer',
+                      }}
                       onClick={() => {
                         const remMsg = cp.kind === 'wallet' && remaining > 0 ? `\n\nRemaining wallet credit of ${formatMoney(remaining)} will be deducted from wallet balance.` : '';
                         if (window.confirm(`Are you sure you want to delete the package "${cp.name}"?${remMsg}`)) {
@@ -360,7 +425,7 @@ export default function CustomerDetailView({
                       }}
                       title="Delete package"
                     >
-                      <Trash2 size={13} style={{ marginRight: '4px' }} /> Delete Package
+                      <Trash2 size={13} /> Delete Package
                     </button>
                   </div>
                 </div>

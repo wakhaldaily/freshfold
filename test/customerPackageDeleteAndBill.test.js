@@ -123,6 +123,30 @@ test('deleteCustomerPackage removes package and deducts unused wallet balance', 
   assert.equal(debitTx.amount, prevBalance);
 });
 
+test('deleteCustomerPackage deletes discount package cleanly without wallet balance alteration', async () => {
+  let store = createInitialData();
+  const customerPayload = {
+    name: 'Priya Sharma',
+    mobile: '9123456789',
+    walletBalance: 250,
+  };
+  store = await createCustomer(customerPayload, store);
+  const customer = store.customers.find((c) => c.mobile === '9123456789');
+
+  // Assign half-price discount package
+  store = await assignPackage(customer.id, 'half-price-pkg', 'cash', store);
+  const enrolledPkg = store.customerPackages.find((cp) => cp.customerId === customer.id);
+  assert.ok(enrolledPkg, 'Discount package enrolled');
+
+  // Delete package
+  store = await deleteCustomerPackage(enrolledPkg.id, store);
+  const deletedPkg = store.customerPackages.find((cp) => cp.id === enrolledPkg.id);
+  assert.equal(deletedPkg, undefined, 'Package removed');
+
+  const custAfterDelete = store.customers.find((c) => c.id === customer.id);
+  assert.equal(custAfterDelete.walletBalance, 0, 'Wallet balance remained 0 for discount package');
+});
+
 test('generateStandardInvoicePdf includes package info when activePackageInfo present', () => {
   const order = {
     id: 'ord-123',

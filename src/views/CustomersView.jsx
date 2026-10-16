@@ -103,6 +103,7 @@ export default function CustomersView({
             ) : (
               visibleCustomers.map((c) => {
                 const custOrders = data.orders.filter((o) => o.customerId === c.id);
+                const custPkgs = (data.customerPackages || []).filter((cp) => cp.customerId === c.id && cp.status !== 'disabled');
                 const due = custOrders.reduce((sum, o) => sum + (Number(o.balanceAmount) || 0), 0);
                 return (
                   <tr key={c.id}>
@@ -111,6 +112,25 @@ export default function CustomersView({
                         {c.name}
                       </strong>
                       {c.notes && <small style={{ display: 'block', color: '#64748b' }}>Note: {c.notes}</small>}
+                      {custPkgs.length > 0 && (
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '3px' }}>
+                          {custPkgs.map((cp) => (
+                            <span
+                              key={cp.id}
+                              style={{
+                                fontSize: '10px',
+                                background: '#ede9fe',
+                                color: '#5b21b6',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                fontWeight: 600,
+                              }}
+                            >
+                              📦 {cp.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td data-label="Mobile Number">+91 {c.mobile}</td>
                     <td data-label="Address">{c.address || '—'}</td>

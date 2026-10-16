@@ -18,11 +18,13 @@ import {
   CheckCircle2,
   AlertCircle,
   MessageSquare,
+  Package,
   Percent,
   Sliders,
   ChevronDown,
 } from 'lucide-react';
 import CustomSelect from './CustomSelect.jsx';
+import { formatMoney } from '../lib/persistence.js';
 import { INDIAN_STATES } from '../data.js';
 
 export { INDIAN_STATES };
@@ -72,6 +74,8 @@ export default function CustomerModal({
   onClose,
   customer = null, // null for new, object for edit
   allCustomers = [],
+  customerPackages = [],
+  onDeleteCustomerPackage,
   onSave,
   onDelete,
   onToast,
@@ -82,6 +86,11 @@ export default function CustomerModal({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const searchContainerRef = useRef(null);
+
+  const enrolledPackages = useMemo(() => {
+    if (!activeCustomer?.id) return [];
+    return (customerPackages || []).filter((cp) => cp.customerId === activeCustomer.id);
+  }, [customerPackages, activeCustomer]);
 
   const getInitialForm = (target) => ({
     customerCode: target?.customerCode || target?.code || `CUST-${1000 + (allCustomers?.length || 0) + 1}`,
@@ -1257,6 +1266,66 @@ export default function CustomerModal({
                   />
                 </div>
               </div>
+
+              {enrolledPackages.length > 0 && (
+                <div style={{ marginTop: '20px', borderTop: '1.5px solid #e2e8f0', paddingTop: '16px' }}>
+                  <h4 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Package size={15} color="#7c3aed" /> Active Subscribed Packages ({enrolledPackages.length})
+                  </h4>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    {enrolledPackages.map((cp) => {
+                      const remaining = cp.remainingCredit != null ? Number(cp.remainingCredit) : Number(cp.walletCredit || 0);
+                      return (
+                        <div
+                          key={cp.id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 12px',
+                            background: '#faf5ff',
+                            border: '1px solid #e9d5ff',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                          }}
+                        >
+                          <div>
+                            <strong style={{ color: '#581c87', fontSize: '13px' }}>{cp.name}</strong>
+                            <div style={{ fontSize: '11px', color: '#6b21a8', marginTop: '2px' }}>
+                              {cp.kind === 'wallet' ? `Prepaid Credit: ${formatMoney(cp.walletCredit)} (Remaining: ${formatMoney(Math.max(0, remaining))})` : `${cp.discountPercent}% Discount Plan`}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            style={{
+                              minHeight: '28px',
+                              padding: '0 10px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              color: '#dc2626',
+                              background: '#fef2f2',
+                              border: '1px solid #fecaca',
+                              borderRadius: '6px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => {
+                              const remMsg = cp.kind === 'wallet' && remaining > 0 ? `\n\nRemaining wallet credit of ${formatMoney(remaining)} will be deducted from customer wallet balance.` : '';
+                              if (window.confirm(`Are you sure you want to delete package "${cp.name}" from ${activeCustomer?.name || 'customer'}?${remMsg}`)) {
+                                onDeleteCustomerPackage?.(cp.id);
+                              }
+                            }}
+                          >
+                            <Trash2 size={12} /> Delete Package
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </form>
         </div>

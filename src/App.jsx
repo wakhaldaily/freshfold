@@ -749,6 +749,9 @@ export default function App() {
               data={data}
               setModal={setModal}
               requireAdmin={requireAdmin}
+              onDeleteCustomerPackage={handleDeleteCustomerPackage}
+              setSelectedCustomerId={setSelectedCustomerId}
+              setView={setView}
             />
           )}
         </main>
@@ -946,6 +949,8 @@ export default function App() {
         onClose={() => setModal(null)}
         customer={modal?.type === 'customer-edit' ? modal.customer : null}
         allCustomers={data.customers}
+        customerPackages={data.customerPackages}
+        onDeleteCustomerPackage={handleDeleteCustomerPackage}
         onSave={async (fields, editingId) => {
           return await runMutation(
             (cur) => editingId ? updateCustomer(editingId, fields, cur) : createCustomer(fields, cur),
