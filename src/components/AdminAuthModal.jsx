@@ -199,7 +199,7 @@ export default function AdminAuthModal({
           </button>
         </div>
 
-        <div className="modal-content" style={{ padding: '24px', flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
+        <div className="modal-content" style={{ padding: '20px 24px calc(24px + env(safe-area-inset-bottom, 0px))', flex: '1 1 0%', minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y' }}>
           {/* 1. SIGN IN FORM */}
           {mode === 'login' && (
             <form onSubmit={handleLogin} style={{ display: 'grid', gap: '14px' }}>

@@ -172,7 +172,7 @@ export default function SharePriceListModal({
         </div>
 
         {/* Modal Content */}
-        <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: '20px 22px 28px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', flex: '1 1 0%', minHeight: 0 }}>
 
           {/* Customer Badge (if customer is selected) */}
           {customer ? (
@@ -490,12 +490,16 @@ export default function SharePriceListModal({
         {/* Modal Footer */}
         <div
           style={{
-            padding: '14px 22px',
+            padding: '14px 22px calc(14px + env(safe-area-inset-bottom, 0px))',
             borderTop: '1px solid #e2e8f0',
-            background: '#f8fafc',
+            background: '#ffffff',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexShrink: 0,
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 20,
           }}
         >
           <a

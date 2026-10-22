@@ -211,14 +211,16 @@ export default function OrderDetailModal({
         <div
           className="modal-content"
           style={{
-            padding: '22px',
+            padding: '20px 22px 28px',
             overflowY: 'auto',
             WebkitOverflowScrolling: 'touch',
             overscrollBehavior: 'contain',
-            flex: 1,
+            touchAction: 'pan-y',
+            flex: '1 1 0%',
             minHeight: 0,
-            display: 'grid',
-            gap: '18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
             background: '#f8fafc',
           }}
         >
@@ -273,11 +275,7 @@ export default function OrderDetailModal({
 
             {/* Stepper Steps Grid */}
             <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: '8px',
-              }}
+              className="order-modal-stepper-grid"
             >
               {STATUS_STEPS.map((step, idx) => {
                 const StepIcon = step.icon;
@@ -336,11 +334,7 @@ export default function OrderDetailModal({
 
           {/* 2. Key Highlights Strip (Customer, Schedule, Balance) */}
           <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-              gap: '12px',
-            }}
+            className="order-modal-highlights-grid"
           >
             {/* Customer info card */}
             <div

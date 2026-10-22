@@ -2772,7 +2772,7 @@ function CarpetDimensionModal({
         </div>
 
         {/* Content */}
-        <div style={{ padding: '20px', display: 'grid', gap: '16px' }}>
+        <div style={{ padding: '20px 20px 24px', display: 'grid', gap: '16px', flex: '1 1 0%', minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           {/* Quick preset buttons */}
           <div>
             <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
@@ -2885,7 +2885,7 @@ function CarpetDimensionModal({
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '14px 20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+        <div style={{ padding: '14px 20px calc(14px + env(safe-area-inset-bottom, 0px))', borderTop: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', justifyContent: 'flex-end', gap: '10px', flexShrink: 0, position: 'sticky', bottom: 0, zIndex: 20 }}>
           <button
             type="button"
             className="button button-quiet"

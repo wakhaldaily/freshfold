@@ -60,7 +60,7 @@ export default function PackageSaleModal({
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <div className="modal-content" style={{ padding: '20px', display: 'grid', gap: '16px', flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
+          <div className="modal-content" style={{ padding: '20px 20px 24px', display: 'grid', gap: '16px', flex: '1 1 0%', minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y' }}>
             <span className="field-label">Select Package Plan</span>
             <div style={{ display: 'grid', gap: '10px' }}>
               {packages.map((pkg) => {
@@ -171,11 +171,11 @@ export default function PackageSaleModal({
             </div>
           </div>
 
-          <div className="modal-footer" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #eee' }}>
-            <button type="button" className="button secondary" onClick={onClose}>
+          <div className="modal-footer" style={{ padding: '14px 20px', display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #e2e8f0', background: '#ffffff', flexShrink: 0, position: 'sticky', bottom: 0, zIndex: 20 }}>
+            <button type="button" className="button button-quiet" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="button primary" disabled={loading || !selectedTemplate}>
+            <button type="submit" className="button button-primary" disabled={loading || !selectedTemplate}>
               {loading ? 'Activating...' : `Collect ${formatMoney(selectedTemplate?.price || 0)} & Activate`}
             </button>
           </div>

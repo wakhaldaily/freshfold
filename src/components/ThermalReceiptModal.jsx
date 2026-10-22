@@ -626,12 +626,13 @@ export default function ThermalReceiptModal({
         <div
           className="modal-content"
           style={{
-            padding: '24px 20px',
+            padding: '24px 20px calc(24px + env(safe-area-inset-bottom, 0px))',
             background: '#f1f5f9',
             overflowY: 'auto',
             WebkitOverflowScrolling: 'touch',
             overscrollBehavior: 'contain',
-            flex: 1,
+            touchAction: 'pan-y',
+            flex: '1 1 0%',
             minHeight: 0,
             display: 'flex',
             justifyContent: 'center',

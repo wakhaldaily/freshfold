@@ -246,7 +246,7 @@ export default function ItemTagModal({
         </div>
 
         {/* Body Content */}
-        <div style={{ padding: '20px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', display: 'grid', gap: '18px', flex: 1, minHeight: 0, background: '#fff' }}>
+        <div style={{ padding: '20px 20px 28px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y', display: 'grid', gap: '18px', flex: '1 1 0%', minHeight: 0, background: '#fff' }}>
           {/* CARPET DIMENSIONS SECTION */}
           {isCarpet && (
             <div style={{ background: '#f0f9ff', border: '1.5px solid #7dd3fc', borderRadius: '12px', padding: '14px' }}>
@@ -600,7 +600,7 @@ export default function ItemTagModal({
         </div>
 
         {/* Modal Footer */}
-        <div style={{ padding: '14px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+        <div style={{ padding: '14px 20px calc(14px + env(safe-area-inset-bottom, 0px))', background: '#ffffff', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', flexShrink: 0, position: 'sticky', bottom: 0, zIndex: 20 }}>
           <button
             type="button"
             className="button button-quiet"
