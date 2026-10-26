@@ -409,11 +409,11 @@ export default function CustomerDetailView({
                     fontSize: '12px',
                   }}
                 >
-                  <div>
+                  <div style={{ minWidth: 0, overflowWrap: 'break-word', wordBreak: 'break-word', marginRight: '12px' }}>
                     <strong>{tx.description}</strong>
                     <small style={{ display: 'block', color: '#888' }}>{formatDateTime(tx.createdAt)}</small>
                   </div>
-                  <strong style={{ fontSize: '14px', color: tx.kind === 'credit' ? '#28845f' : '#c8474e' }}>
+                  <strong style={{ fontSize: '14px', color: tx.kind === 'credit' ? '#28845f' : '#c8474e', flexShrink: 0, textAlign: 'right' }}>
                     {tx.kind === 'credit' ? `+${formatMoney(tx.amount)}` : `-${formatMoney(tx.amount)}`}
                   </strong>
                 </div>

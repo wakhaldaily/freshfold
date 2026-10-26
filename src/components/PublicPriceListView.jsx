@@ -817,8 +817,8 @@ export default function PublicPriceListView() {
                             type="button"
                             onClick={() => updateGarmentQty(g, targetService, -1)}
                             style={{
-                              width: '28px',
-                              height: '28px',
+                              width: '32px',
+                              height: '32px',
                               borderRadius: '8px',
                               border: '1px solid #cbd5e1',
                               background: '#f8fafc',
@@ -830,7 +830,7 @@ export default function PublicPriceListView() {
                             }}
                             aria-label={`Decrease ${g.name}`}
                           >
-                            <Minus size={13} />
+                            <Minus size={14} />
                           </button>
                         )}
 
@@ -844,8 +844,8 @@ export default function PublicPriceListView() {
                           type="button"
                           onClick={() => updateGarmentQty(g, targetService, 1)}
                           style={{
-                            width: '30px',
-                            height: '30px',
+                            width: '32px',
+                            height: '32px',
                             borderRadius: '8px',
                             border: 'none',
                             background: isClubActive ? '#b45309' : '#0284c7',
@@ -858,7 +858,7 @@ export default function PublicPriceListView() {
                           }}
                           aria-label={`Add ${g.name}`}
                         >
-                          <Plus size={14} />
+                          <Plus size={15} />
                         </button>
                       </div>
                     </div>
@@ -996,8 +996,8 @@ export default function PublicPriceListView() {
                           type="button"
                           onClick={() => updateAddonQty(add, -1)}
                           style={{
-                            width: '26px',
-                            height: '26px',
+                            width: '30px',
+                            height: '30px',
                             borderRadius: '6px',
                             border: '1px solid #cbd5e1',
                             background: '#f8fafc',
@@ -1007,7 +1007,7 @@ export default function PublicPriceListView() {
                             cursor: 'pointer',
                           }}
                         >
-                          <Minus size={12} />
+                          <Minus size={13} />
                         </button>
                       )}
                       {currentQty > 0 && (
@@ -1019,8 +1019,8 @@ export default function PublicPriceListView() {
                         type="button"
                         onClick={() => updateAddonQty(add, 1)}
                         style={{
-                          width: '28px',
-                          height: '28px',
+                          width: '30px',
+                          height: '30px',
                           borderRadius: '6px',
                           border: 'none',
                           background: '#7c3aed',
@@ -1031,7 +1031,7 @@ export default function PublicPriceListView() {
                           boxShadow: '0 2px 6px rgba(124, 58, 237, 0.25)',
                         }}
                       >
-                        <Plus size={13} />
+                        <Plus size={14} />
                       </button>
                     </div>
                   </div>
@@ -1313,7 +1313,7 @@ export default function PublicPriceListView() {
                   Your Contact Details
                 </span>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '10px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
                       Customer Name <span style={{ color: '#ef4444' }}>*</span>
@@ -1435,8 +1435,8 @@ export default function PublicPriceListView() {
                                 else if (item.type === 'addon') updateAddonQty(item.addon, -1);
                               }}
                               style={{
-                                width: '24px',
-                                height: '24px',
+                                width: '28px',
+                                height: '28px',
                                 borderRadius: '6px',
                                 border: '1px solid #cbd5e1',
                                 background: '#f8fafc',
@@ -1446,7 +1446,7 @@ export default function PublicPriceListView() {
                                 cursor: 'pointer',
                               }}
                             >
-                              <Minus size={12} />
+                              <Minus size={13} />
                             </button>
                             <span style={{ fontSize: '12px', fontWeight: 700, minWidth: '16px', textAlign: 'center' }}>
                               {item.quantity}
@@ -1459,8 +1459,8 @@ export default function PublicPriceListView() {
                                 else if (item.type === 'addon') updateAddonQty(item.addon, 1);
                               }}
                               style={{
-                                width: '24px',
-                                height: '24px',
+                                width: '28px',
+                                height: '28px',
                                 borderRadius: '6px',
                                 border: 'none',
                                 background: '#0284c7',
@@ -1470,7 +1470,7 @@ export default function PublicPriceListView() {
                                 cursor: 'pointer',
                               }}
                             >
-                              <Plus size={12} />
+                              <Plus size={13} />
                             </button>
                           </div>
                         </div>

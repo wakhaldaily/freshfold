@@ -1368,7 +1368,7 @@ export default function PosRegister({
               </div>
 
               {/* 2 Primary Inputs: Weight (kg) & Number of Clothes */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '16px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
                     Scale Weight in Kilograms (kg) *
@@ -1469,7 +1469,7 @@ export default function PosRegister({
                 {showAddonPickerWeight && (
                   <div style={{ padding: '12px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', display: 'grid', gap: '10px' }}>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '320px', background: '#fff', padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '0', width: '100%', background: '#fff', padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                         <Search size={14} color="#94a3b8" />
                         <input
                           type="text"
@@ -1633,7 +1633,7 @@ export default function PosRegister({
                         ))}
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', width: '300px', minWidth: '220px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100%', maxWidth: '300px', minWidth: '0' }}>
                         <Search size={14} color="#94a3b8" />
                         <input
                           type="text"
@@ -2134,10 +2134,10 @@ export default function PosRegister({
                             <button
                               type="button"
                               className="icon-button"
-                              style={{ width: '22px', height: '22px' }}
+                              style={{ width: '28px', height: '28px' }}
                               onClick={() => handleUpdateQty(idx, -1)}
                             >
-                              <Minus size={12} />
+                              <Minus size={13} />
                             </button>
                             <span style={{ fontSize: '12px', fontWeight: 700, minWidth: '18px', textAlign: 'center' }}>
                               {item.quantity}
@@ -2145,18 +2145,18 @@ export default function PosRegister({
                             <button
                               type="button"
                               className="icon-button"
-                              style={{ width: '22px', height: '22px' }}
+                              style={{ width: '28px', height: '28px' }}
                               onClick={() => handleUpdateQty(idx, 1)}
                             >
-                              <Plus size={12} />
+                              <Plus size={13} />
                             </button>
                             <button
                               type="button"
                               className="icon-button"
-                              style={{ width: '22px', height: '22px', color: '#ef4444', marginLeft: '2px' }}
+                              style={{ width: '28px', height: '28px', color: '#ef4444', marginLeft: '2px' }}
                               onClick={() => handleRemoveItem(idx)}
                             >
-                              <Trash2 size={12} />
+                              <Trash2 size={13} />
                             </button>
                           </div>
                         </div>

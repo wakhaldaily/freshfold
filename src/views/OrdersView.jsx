@@ -241,7 +241,7 @@ export default function OrdersView({
         {/* Row 2: Search Query & Status Tabs */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           {/* Search box */}
-          <div className="orders-search-box" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '8px 14px', borderRadius: '8px', border: '1.5px solid #cbd5e1', width: '380px', minWidth: '260px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+          <div className="orders-search-box" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '8px 14px', borderRadius: '8px', border: '1.5px solid #cbd5e1', width: '100%', maxWidth: '380px', minWidth: '0', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
             <Search size={15} color="#94a3b8" />
             <input
               type="text"
@@ -264,7 +264,7 @@ export default function OrdersView({
           </div>
 
           {/* Status buttons */}
-          <div className="orders-status-tabs" role="group" aria-label="Filter by status" style={{ display: 'flex', gap: '5px' }}>
+          <div className="orders-status-tabs" role="group" aria-label="Filter by status" style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', maxWidth: '100%' }}>
             {['All', 'Received', 'Processing', 'Ready', 'Delivered', 'Cancelled'].map((st) => (
               <button
                 key={st}

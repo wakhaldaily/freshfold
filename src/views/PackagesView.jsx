@@ -103,7 +103,7 @@ export default function PackagesView({
         </div>
 
         {activeTab === 'subscriptions' && (
-          <div className="customer-directory-search" style={{ minWidth: '260px' }}>
+          <div className="customer-directory-search" style={{ minWidth: '0', width: '100%', maxWidth: '320px' }}>
             <Search size={14} color="#94a3b8" />
             <input
               type="text"
@@ -143,138 +143,256 @@ export default function PackagesView({
               </p>
             </div>
           ) : (
-            <div className="orders-table-wrap" style={{ overflowX: 'auto' }}>
-              <table className="orders-table">
-                <thead>
-                  <tr>
-                    <th>Customer Name</th>
-                    <th>Mobile</th>
-                    <th>Package Plan</th>
-                    <th>Benefit / Balance</th>
-                    <th>Enrolled Date</th>
-                    <th>Validity</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCustomerPackages.map((cp) => {
-                    const todayStr = new Date().toISOString().slice(0, 10);
-                    const isExpired = Boolean(cp.expiresAt && String(cp.expiresAt).slice(0, 10) < todayStr);
-                    const remaining = cp.remainingCredit !== undefined && cp.remainingCredit !== null
-                      ? Number(cp.remainingCredit)
-                      : Number(cp.walletCredit || 0);
-                    const isCreditFinished = cp.kind === 'wallet' && (remaining <= 0 || Number(cp.customer?.walletBalance || 0) <= 0);
-                    const isDisabled = cp.status === 'disabled' || isExpired || isCreditFinished;
+            <>
+              <div className="orders-table-wrap desktop-only" style={{ overflowX: 'auto' }}>
+                <table className="orders-table">
+                  <thead>
+                    <tr>
+                      <th>Customer Name</th>
+                      <th>Mobile</th>
+                      <th>Package Plan</th>
+                      <th>Benefit / Balance</th>
+                      <th>Enrolled Date</th>
+                      <th>Validity</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCustomerPackages.map((cp) => {
+                      const todayStr = new Date().toISOString().slice(0, 10);
+                      const isExpired = Boolean(cp.expiresAt && String(cp.expiresAt).slice(0, 10) < todayStr);
+                      const remaining = cp.remainingCredit !== undefined && cp.remainingCredit !== null
+                        ? Number(cp.remainingCredit)
+                        : Number(cp.walletCredit || 0);
+                      const isCreditFinished = cp.kind === 'wallet' && (remaining <= 0 || Number(cp.customer?.walletBalance || 0) <= 0);
+                      const isDisabled = cp.status === 'disabled' || isExpired || isCreditFinished;
 
-                    let statusLabel = 'Active';
-                    let statusBg = '#ecfdf5';
-                    let statusColor = '#047857';
+                      let statusLabel = 'Active';
+                      let statusBg = '#ecfdf5';
+                      let statusColor = '#047857';
 
-                    if (isDisabled) {
-                      if (isExpired) {
-                        statusLabel = 'Expired';
-                        statusBg = '#fee2e2';
-                        statusColor = '#b91c1c';
-                      } else if (isCreditFinished) {
-                        statusLabel = 'Depleted';
-                        statusBg = '#fef3c7';
-                        statusColor = '#b45309';
-                      } else {
-                        statusLabel = 'Disabled';
-                        statusBg = '#f3f4f6';
-                        statusColor = '#6b7280';
+                      if (isDisabled) {
+                        if (isExpired) {
+                          statusLabel = 'Expired';
+                          statusBg = '#fee2e2';
+                          statusColor = '#b91c1c';
+                        } else if (isCreditFinished) {
+                          statusLabel = 'Depleted';
+                          statusBg = '#fef3c7';
+                          statusColor = '#b45309';
+                        } else {
+                          statusLabel = 'Disabled';
+                          statusBg = '#f3f4f6';
+                          statusColor = '#6b7280';
+                        }
                       }
-                    }
 
-                    return (
-                      <tr key={cp.id}>
-                        <td data-label="Customer Name">
+                      return (
+                        <tr key={cp.id}>
+                          <td data-label="Customer Name">
+                            <button
+                              type="button"
+                              className="order-number"
+                              style={{ textAlign: 'left', fontWeight: 700, color: '#2563eb' }}
+                              onClick={() => openCustomer(cp.customerId)}
+                            >
+                              {cp.customer?.name || 'Customer'}
+                            </button>
+                          </td>
+                          <td data-label="Mobile">
+                            {cp.customer?.mobile ? `+91 ${cp.customer.mobile}` : '—'}
+                          </td>
+                          <td data-label="Package Plan">
+                            <strong style={{ color: '#0f172a' }}>{cp.name}</strong>
+                            <div style={{ fontSize: '11px', color: '#64748b' }}>
+                              {cp.kind === 'wallet' ? 'Prepaid Wallet Credit' : (cp.kind === 'buy_x_get_y' ? 'Buy X Get Y' : 'Discount Plan')}
+                            </div>
+                          </td>
+                          <td data-label="Benefit / Balance">
+                            {cp.kind === 'wallet' ? (
+                              <div>
+                                <span style={{ fontWeight: 600 }}>Credit: {formatMoney(cp.walletCredit)}</span>
+                                <div style={{ fontSize: '11px', color: isCreditFinished ? '#b45309' : '#047857', fontWeight: 600 }}>
+                                  Remaining: {formatMoney(Math.max(0, remaining))}
+                                </div>
+                              </div>
+                            ) : (
+                              <strong style={{ color: '#2563eb' }}>
+                                {cp.kind === 'buy_x_get_y'
+                                  ? `Pay ${cp.buyQty || 5}, Get ${cp.freeQty || 1} Free`
+                                  : `${cp.discountPercent}% Off Orders`}
+                              </strong>
+                            )}
+                          </td>
+                          <td data-label="Enrolled Date">
+                            {formatDate(cp.startsAt)}
+                          </td>
+                          <td data-label="Validity">
+                            {cp.expiresAt ? formatDate(cp.expiresAt) : 'Lifetime (No Expiry)'}
+                          </td>
+                          <td data-label="Status">
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                background: statusBg,
+                                color: statusColor,
+                                display: 'inline-block',
+                              }}
+                            >
+                              {statusLabel}
+                            </span>
+                          </td>
+                          <td data-label="Actions" style={{ textAlign: 'right' }}>
+                            <button
+                              type="button"
+                              className="button"
+                              onClick={() => handleDeletePackage(cp)}
+                              style={{
+                                minHeight: '28px',
+                                padding: '0 10px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                color: '#dc2626',
+                                background: '#fef2f2',
+                                border: '1px solid #fecaca',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                cursor: 'pointer',
+                              }}
+                              title={`Delete package "${cp.name}"`}
+                            >
+                              <Trash2 size={13} /> Delete Package
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card List View */}
+              <div className="mobile-only" style={{ display: 'grid', gap: '10px' }}>
+                {filteredCustomerPackages.map((cp) => {
+                  const todayStr = new Date().toISOString().slice(0, 10);
+                  const isExpired = Boolean(cp.expiresAt && String(cp.expiresAt).slice(0, 10) < todayStr);
+                  const remaining = cp.remainingCredit !== undefined && cp.remainingCredit !== null
+                    ? Number(cp.remainingCredit)
+                    : Number(cp.walletCredit || 0);
+                  const isCreditFinished = cp.kind === 'wallet' && (remaining <= 0 || Number(cp.customer?.walletBalance || 0) <= 0);
+                  const isDisabled = cp.status === 'disabled' || isExpired || isCreditFinished;
+
+                  let statusLabel = 'Active';
+                  let statusBg = '#ecfdf5';
+                  let statusColor = '#047857';
+
+                  if (isDisabled) {
+                    if (isExpired) {
+                      statusLabel = 'Expired';
+                      statusBg = '#fee2e2';
+                      statusColor = '#b91c1c';
+                    } else if (isCreditFinished) {
+                      statusLabel = 'Depleted';
+                      statusBg = '#fef3c7';
+                      statusColor = '#b45309';
+                    } else {
+                      statusLabel = 'Disabled';
+                      statusBg = '#f3f4f6';
+                      statusColor = '#6b7280';
+                    }
+                  }
+
+                  return (
+                    <div key={cp.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', display: 'grid', gap: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                        <div>
                           <button
                             type="button"
-                            className="order-number"
-                            style={{ textAlign: 'left', fontWeight: 700, color: '#2563eb' }}
+                            style={{ textAlign: 'left', fontWeight: 700, color: '#2563eb', fontSize: '14px', border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}
                             onClick={() => openCustomer(cp.customerId)}
                           >
                             {cp.customer?.name || 'Customer'}
                           </button>
-                        </td>
-                        <td data-label="Mobile">
-                          {cp.customer?.mobile ? `+91 ${cp.customer.mobile}` : '—'}
-                        </td>
-                        <td data-label="Package Plan">
-                          <strong style={{ color: '#0f172a' }}>{cp.name}</strong>
-                          <div style={{ fontSize: '11px', color: '#64748b' }}>
-                            {cp.kind === 'wallet' ? 'Prepaid Wallet Credit' : (cp.kind === 'buy_x_get_y' ? 'Buy X Get Y' : 'Discount Plan')}
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                            {cp.customer?.mobile ? `+91 ${cp.customer.mobile}` : 'No mobile'}
                           </div>
-                        </td>
-                        <td data-label="Benefit / Balance">
-                          {cp.kind === 'wallet' ? (
-                            <div>
-                              <span style={{ fontWeight: 600 }}>Credit: {formatMoney(cp.walletCredit)}</span>
-                              <div style={{ fontSize: '11px', color: isCreditFinished ? '#b45309' : '#047857', fontWeight: 600 }}>
-                                Remaining: {formatMoney(Math.max(0, remaining))}
-                              </div>
-                            </div>
-                          ) : (
-                            <strong style={{ color: '#2563eb' }}>
-                              {cp.kind === 'buy_x_get_y'
-                                ? `Pay ${cp.buyQty || 5}, Get ${cp.freeQty || 1} Free`
-                                : `${cp.discountPercent}% Off Orders`}
-                            </strong>
-                          )}
-                        </td>
-                        <td data-label="Enrolled Date">
-                          {formatDate(cp.startsAt)}
-                        </td>
-                        <td data-label="Validity">
-                          {cp.expiresAt ? formatDate(cp.expiresAt) : 'Lifetime (No Expiry)'}
-                        </td>
-                        <td data-label="Status">
-                          <span
-                            style={{
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              background: statusBg,
-                              color: statusColor,
-                              display: 'inline-block',
-                            }}
-                          >
-                            {statusLabel}
+                        </div>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            background: statusBg,
+                            color: statusColor,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {statusLabel}
+                        </span>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', fontSize: '12px', display: 'grid', gap: '6px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                          <span style={{ color: '#64748b', flexShrink: 0 }}>Plan:</span>
+                          <strong style={{ color: '#0f172a', textAlign: 'right' }}>{cp.name}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                          <span style={{ color: '#64748b', flexShrink: 0 }}>Benefit:</span>
+                          <span style={{ textAlign: 'right' }}>
+                            {cp.kind === 'wallet' ? (
+                              <strong style={{ color: isCreditFinished ? '#b45309' : '#047857' }}>
+                                {formatMoney(Math.max(0, remaining))} left / {formatMoney(cp.walletCredit)}
+                              </strong>
+                            ) : (
+                              <strong style={{ color: '#2563eb' }}>
+                                {cp.kind === 'buy_x_get_y' ? `Pay ${cp.buyQty || 5}, Get ${cp.freeQty || 1} Free` : `${cp.discountPercent}% Off`}
+                              </strong>
+                            )}
                           </span>
-                        </td>
-                        <td data-label="Actions" style={{ textAlign: 'right' }}>
-                          <button
-                            type="button"
-                            className="button"
-                            onClick={() => handleDeletePackage(cp)}
-                            style={{
-                              minHeight: '28px',
-                              padding: '0 10px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              color: '#dc2626',
-                              background: '#fef2f2',
-                              border: '1px solid #fecaca',
-                              borderRadius: '6px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              cursor: 'pointer',
-                            }}
-                            title={`Delete package "${cp.name}"`}
-                          >
-                            <Trash2 size={13} /> Delete Package
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                          <span style={{ color: '#64748b', flexShrink: 0 }}>Validity:</span>
+                          <span style={{ color: '#475569', textAlign: 'right' }}>
+                            {cp.expiresAt ? formatDate(cp.expiresAt) : 'Lifetime'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={() => handleDeletePackage(cp)}
+                          style={{
+                            minHeight: '32px',
+                            padding: '0 12px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: '#dc2626',
+                            background: '#fef2f2',
+                            border: '1px solid #fecaca',
+                            borderRadius: '6px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Trash2 size={13} /> Delete Subscription
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       )}

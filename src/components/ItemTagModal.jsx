@@ -333,7 +333,7 @@ export default function ItemTagModal({
                 placeholder="Search or type new add-on name..."
                 value={addonInput}
                 onChange={(e) => setAddonInput(e.target.value)}
-                style={{ flex: 1, minWidth: '320px', height: '40px', padding: '8px 12px', fontSize: '13px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
+                style={{ flex: 1, minWidth: '0', width: '100%', height: '40px', padding: '8px 12px', fontSize: '13px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
               />
               {canCreateAddon && (
                 <input
@@ -395,7 +395,7 @@ export default function ItemTagModal({
           {/* ========================================================= */}
           {/* SECTION 2: BRAND & COLOR                                  */}
           {/* ========================================================= */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '14px' }}>
             {/* BRAND */}
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
@@ -536,13 +536,13 @@ export default function ItemTagModal({
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: '5px', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', gap: '5px', marginBottom: '8px', flexWrap: 'wrap' }}>
               <input
                 type="text"
                 placeholder="Search or type new defect tag..."
                 value={defectInput}
                 onChange={(e) => setDefectInput(e.target.value)}
-                style={{ flex: 1, minWidth: '280px', height: '36px', padding: '8px 12px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
+                style={{ flex: 1, minWidth: '0', width: '100%', height: '36px', padding: '8px 12px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
               />
               {canCreateDefect && (
                 <button

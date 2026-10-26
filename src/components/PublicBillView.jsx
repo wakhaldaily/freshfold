@@ -295,7 +295,7 @@ export default function PublicBillView({ billParam, tokenParam }) {
             </div>
 
             {/* Store & Customer meta */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#f8fafc', padding: '12px 14px', borderRadius: '10px', fontSize: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', background: '#f8fafc', padding: '12px 14px', borderRadius: '10px', fontSize: '12px' }}>
               <div>
                 <div style={{ color: '#64748b', fontSize: '11px' }}>Customer:</div>
                 <strong style={{ color: '#0f172a' }}>{customer?.name || 'Valued Customer'}</strong>
@@ -310,20 +310,20 @@ export default function PublicBillView({ billParam, tokenParam }) {
 
             {activePackageInfo && (
               <div style={{ marginTop: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 14px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 0.8fr 1fr', gap: '8px', fontSize: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px 12px', fontSize: '12px' }}>
                   <div>
                     <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.name}</div>
                     <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Package Name</div>
                   </div>
-                  <div style={{ textAlign: 'center' }}>
+                  <div>
                     <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.consumed}</div>
                     <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Consumed (this order)</div>
                   </div>
-                  <div style={{ textAlign: 'center' }}>
+                  <div>
                     <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.balance}</div>
                     <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Balance</div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div>
                     <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.validTill}</div>
                     <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Valid till</div>
                   </div>

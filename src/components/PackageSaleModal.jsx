@@ -83,9 +83,11 @@ export default function PackageSaleModal({
                       border: isSelected ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
                       background: isSelected ? '#eff6ff' : '#fff',
                       cursor: 'pointer',
+                      flexWrap: 'wrap',
+                      gap: '10px',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 200px', minWidth: 0 }}>
                       <div
                         style={{
                           width: '38px',
@@ -99,8 +101,8 @@ export default function PackageSaleModal({
                       >
                         {isWallet ? <Wallet size={18} /> : <BadgePercent size={18} />}
                       </div>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           <strong style={{ fontSize: '13px' }}>{pkg.name}</strong>
                           <span
                             style={{
@@ -118,10 +120,10 @@ export default function PackageSaleModal({
                             {pkg.durationDays ? `${pkg.durationDays} Days Validity` : (pkg.validity || 'Lifetime · No Expiry')}
                           </span>
                         </div>
-                        <small style={{ color: '#666', fontSize: '11px' }}>{pkg.description}</small>
+                        <small style={{ color: '#666', fontSize: '11px', display: 'block' }}>{pkg.description}</small>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ textAlign: 'right', marginLeft: 'auto', flexShrink: 0 }}>
                       <strong style={{ fontSize: '14px', color: '#222' }}>{formatMoney(pkg.price)}</strong>
                       <span style={{ display: 'block', fontSize: '10px', color: '#666' }}>
                         {isWallet ? `+${formatMoney(pkg.walletCredit)} credit` : (isBogo ? `Pay ${pkg.buyQty || 5}, Get ${pkg.freeQty || 1} Free` : `${pkg.discountPercent}% off`)}
@@ -171,7 +173,7 @@ export default function PackageSaleModal({
             </div>
           </div>
 
-          <div className="modal-footer" style={{ padding: '14px 20px', display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #e2e8f0', background: '#ffffff', flexShrink: 0, position: 'sticky', bottom: 0, zIndex: 20 }}>
+          <div className="modal-footer" style={{ padding: '14px 20px', display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #e2e8f0', background: '#ffffff', flexShrink: 0, position: 'sticky', bottom: 0, zIndex: 20, flexWrap: 'wrap' }}>
             <button type="button" className="button button-quiet" onClick={onClose}>
               Cancel
             </button>

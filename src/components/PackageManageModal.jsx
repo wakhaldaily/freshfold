@@ -190,8 +190,8 @@ export default function PackageManageModal({
 
         <div className="modal-content" style={{ padding: '20px 24px calc(24px + env(safe-area-inset-bottom, 0px))', flex: '1 1 0%', minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y' }}>
           {/* Header Action */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#666' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#666', minWidth: 0, flex: '1 1 240px' }}>
               <Infinity size={15} style={{ color: '#2563eb' }} />
               <strong>Flexible Benefit Engine:</strong> Configure wallet credit, item-specific offers, or clothes discounts.
             </div>
@@ -534,9 +534,11 @@ export default function PackageManageModal({
                     border: '1px solid #e5e5ea',
                     background: '#fff',
                     boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                    flexWrap: 'wrap',
+                    gap: '12px',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: '1 1 240px', minWidth: 0 }}>
                     <div
                       style={{
                         width: '44px',
@@ -599,7 +601,7 @@ export default function PackageManageModal({
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto', flexShrink: 0 }}>
                     <button
                       type="button"
                       className="button button-quiet"
