@@ -1292,7 +1292,10 @@ export default function CustomerModal({
                           <div>
                             <strong style={{ color: '#581c87', fontSize: '13px' }}>{cp.name}</strong>
                             <div style={{ fontSize: '11px', color: '#6b21a8', marginTop: '2px' }}>
-                              {cp.kind === 'wallet' ? `Prepaid Credit: ${formatMoney(cp.walletCredit)} (Remaining: ${formatMoney(Math.max(0, remaining))})` : `${cp.discountPercent}% Discount Plan`}
+                              {cp.kind === 'wallet'
+                                ? `Prepaid: ${formatMoney(cp.walletCredit)} · Consumed: ${formatMoney(Math.max(0, Number(cp.walletCredit || 0) - Math.max(0, remaining)))} · Remaining: ${formatMoney(Math.max(0, remaining))}`
+                                : `${cp.discountPercent}% Discount Plan`}
+                              {cp.expiresAt ? ` · Valid till ${formatDate(cp.expiresAt)}` : ''}
                             </div>
                           </div>
                           <button

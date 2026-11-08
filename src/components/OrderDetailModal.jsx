@@ -44,6 +44,7 @@ export default function OrderDetailModal({
   onUpdateStatus,
   onOpenPayment,
   onOpenReceipt,
+  onOpenTags,
   onEditOrder,
   onCancelOrder,
   onDeleteOrder,
@@ -761,6 +762,26 @@ export default function OrderDetailModal({
             >
               <ReceiptText size={16} /> <span className="order-modal-btn-label">Bill & Receipt</span>
             </button>
+
+            {onOpenTags && (
+              <button
+                type="button"
+                className="button button-quiet order-modal-icon-btn"
+                onClick={onOpenTags}
+                title="Print Garment Tags for Label Printer / WhatsApp"
+                aria-label="Print Garment Tags"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: '#0f172a',
+                }}
+              >
+                <Tag size={16} /> <span className="order-modal-btn-label">Tags</span>
+              </button>
+            )}
 
             {canEditOrCancel && (
               <button

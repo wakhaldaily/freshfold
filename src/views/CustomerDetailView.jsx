@@ -290,20 +290,21 @@ export default function CustomerDetailView({
           ) : (
             customerPackages.map((cp) => {
               const todayStr = new Date().toISOString().slice(0, 10);
-              const isExpired = Boolean(cp.expiresAt && String(cp.expiresAt).slice(0, 10) < todayStr);
+              const effectiveExpiry = cp.expiresAt || (cp.durationDays && cp.startsAt ? new Date(new Date(cp.startsAt).getTime() + Number(cp.durationDays) * 86400000).toISOString().slice(0, 10) : null);
+              const isExpired = Boolean(effectiveExpiry && String(effectiveExpiry).slice(0, 10) < todayStr);
               const remaining = cp.remainingCredit !== undefined && cp.remainingCredit !== null
                 ? Number(cp.remainingCredit)
                 : Number(cp.walletCredit || 0);
               const isCreditFinished = cp.kind === 'wallet' && (remaining <= 0 || (currentDetailCustomer && Number(currentDetailCustomer.walletBalance || 0) <= 0));
               const isDisabled = cp.status === 'disabled' || isExpired || isCreditFinished;
 
-              let badgeText = 'Active · Lifetime (No Expiry)';
+              let badgeText = 'Active';
               let badgeBg = '#eff6ff';
               let badgeColor = '#1d4ed8';
 
               if (isDisabled) {
                 if (isExpired) {
-                  badgeText = `Disabled · Expired on ${formatDate(cp.expiresAt)}`;
+                  badgeText = `Disabled · Expired on ${formatDate(effectiveExpiry)}`;
                   badgeBg = '#fee2e2';
                   badgeColor = '#b91c1c';
                 } else if (isCreditFinished) {
@@ -315,8 +316,8 @@ export default function CustomerDetailView({
                   badgeBg = '#f3f4f6';
                   badgeColor = '#6b7280';
                 }
-              } else if (cp.expiresAt) {
-                badgeText = `Active · Valid till ${formatDate(cp.expiresAt)}`;
+              } else if (effectiveExpiry) {
+                badgeText = `Active · Valid till ${formatDate(effectiveExpiry)}`;
                 badgeBg = '#ecfdf5';
                 badgeColor = '#047857';
               }
@@ -340,12 +341,20 @@ export default function CustomerDetailView({
                       {badgeText}
                     </span>
                   </div>
-                  <div style={{ marginTop: '12px', fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
+                  <div style={{ marginTop: '12px', fontSize: '13px', color: '#0f172a' }}>
                     {cp.kind === 'wallet' ? (
-                      <div>
-                        <span>Prepaid Credit: {formatMoney(cp.walletCredit)}</span>
-                        <div style={{ marginTop: '4px', fontSize: '12px', fontWeight: 600, color: isCreditFinished ? '#b45309' : '#047857' }}>
-                          Remaining: {formatMoney(Math.max(0, remaining))}
+                      <div style={{ display: 'grid', gap: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px' }}>
+                          <span style={{ color: '#64748b', fontWeight: 600 }}>Prepaid Credit:</span>
+                          <span style={{ fontWeight: 700 }}>{formatMoney(cp.walletCredit)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', color: '#475569' }}>
+                          <span style={{ fontWeight: 600 }}>Consumed:</span>
+                          <span style={{ fontWeight: 700 }}>{formatMoney(Math.max(0, Number(cp.walletCredit || 0) - Math.max(0, remaining)))}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: isCreditFinished ? '#b45309' : '#047857' }}>
+                          <span style={{ fontWeight: 600 }}>Remaining Balance:</span>
+                          <span style={{ fontWeight: 800 }}>{formatMoney(Math.max(0, remaining))}</span>
                         </div>
                       </div>
                     ) : (cp.kind === 'buy_x_get_y'

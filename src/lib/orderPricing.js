@@ -15,7 +15,7 @@ import {
   weightServices,
 } from '../data.js';
 import { findBestPackageDiscount } from './packageDiscountEngine.js';
-import { formatDate } from './dateFormat.js';
+import { formatDate, parseDateInput } from './dateFormat.js';
 
 export const MAX_ITEM_QUANTITY = 500;
 export const MAX_WEIGHT_KG = 1000;
@@ -284,17 +284,42 @@ export function priceOrder(input = {}, context = {}) {
     const expressPercent = clamp(input.expressPercent || 0, 0, 100);
     items = input.items.map((raw) => {
       const garment = garmentById.get(raw?.id);
-      if (!garment) throw new PricingError(`Unknown garment "${cleanText(raw?.name || raw?.id, 60)}".`);
-      const lineService = cleanText(raw.service || service, 60);
-      let unitPrice = garment.prices?.[lineService];
-      if (unitPrice === null || unitPrice === undefined) {
-        const altKey = Object.keys(garment.prices || {}).find((k) => k.toLowerCase() === lineService.toLowerCase());
-        if (altKey) unitPrice = garment.prices[altKey];
+      let lineName = '';
+      let lineCategory = 'Other';
+      const lineService = cleanText(raw?.service || service, 60);
+      let unitPrice = null;
+      let isDimensionBased = false;
+
+      if (garment) {
+        lineName = garment.name;
+        lineCategory = garment.category;
+        unitPrice = garment.prices?.[lineService];
+        if (unitPrice === null || unitPrice === undefined) {
+          const altKey = Object.keys(garment.prices || {}).find((k) => k.toLowerCase() === lineService.toLowerCase());
+          if (altKey) unitPrice = garment.prices[altKey];
+        }
+        if (unitPrice === null || unitPrice === undefined) {
+          const rawCustom = raw?.customUnitPrice ?? raw?.unitPriceOverride;
+          if (rawCustom !== undefined && rawCustom !== null && rawCustom !== '' && Number(rawCustom) >= 0) {
+            unitPrice = Number(rawCustom);
+          } else {
+            throw new PricingError(`"${garment.name}" isn't offered for ${lineService}.`);
+          }
+        }
+        isDimensionBased = isCarpetItem(garment);
+      } else if (raw?.isCustom || raw?.custom || (raw?.name && (raw?.unitPrice !== undefined || raw?.customUnitPrice !== undefined || raw?.unitPriceOverride !== undefined))) {
+        lineName = cleanText(raw?.name, 80) || 'Custom Item';
+        lineCategory = cleanText(raw?.category || 'Other', 60);
+        const rawCustom = raw?.unitPrice ?? raw?.customUnitPrice ?? raw?.unitPriceOverride ?? 0;
+        unitPrice = Number(rawCustom);
+        if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+          throw new PricingError(`Enter a valid price for "${lineName}".`);
+        }
+        isDimensionBased = Boolean(raw?.isDimensionBased || isCarpetItem({ id: raw?.id, name: lineName, category: lineCategory }));
+      } else {
+        throw new PricingError(`Unknown garment "${cleanText(raw?.name || raw?.id, 60)}".`);
       }
-      if (unitPrice === null || unitPrice === undefined) {
-        throw new PricingError(`"${garment.name}" isn't offered for ${lineService}.`);
-      }
-      const isDimensionBased = isCarpetItem(garment);
+
       const rawLength = Number(raw.length);
       const rawWidth = Number(raw.width ?? raw.breadth);
       const length = isDimensionBased && Number.isFinite(rawLength) && rawLength > 0 ? Math.round(rawLength * 100) / 100 : null;
@@ -318,15 +343,15 @@ export function priceOrder(input = {}, context = {}) {
       }
       const quantity = Math.floor(Number(raw.quantity));
       if (!(quantity >= 1) || quantity > MAX_ITEM_QUANTITY) {
-        throw new PricingError(`Enter a quantity between 1 and ${MAX_ITEM_QUANTITY} for ${garment.name}.`);
+        throw new PricingError(`Enter a quantity between 1 and ${MAX_ITEM_QUANTITY} for ${lineName}.`);
       }
       const addons = priceAddons(raw.addons, addonCatalog);
       const addonPaise = addons.reduce((sum, a) => sum + toPaise(a.price), 0);
       grossPaise += (toPaise(effectiveUnitPrice) + addonPaise) * quantity;
       return {
-        id: garment.id,
-        name: garment.name,
-        category: garment.category,
+        id: garment ? garment.id : (raw?.id || `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
+        name: lineName,
+        category: lineCategory,
         service: lineService,
         baseUnitPrice: roundMoney(baseUnitPrice),
         unitPrice: roundMoney(effectiveUnitPrice),
@@ -345,6 +370,8 @@ export function priceOrder(input = {}, context = {}) {
         color: cleanText(raw.color, 80),
         defects: cleanTextList(raw.defects),
         note: cleanText(raw.note, 300),
+        panels: raw.panels ? Math.max(0, Math.floor(Number(raw.panels))) : undefined,
+        isCustom: !garment,
       };
     });
   }
@@ -426,32 +453,68 @@ export function calculateLineDiscounts(items = [], totalDiscount = 0) {
  * Returns { name, consumed, balance, validTill } or null if no package exists.
  */
 export function resolveOrderPackageInfo(order, customer, customerPackages = []) {
-  if (order?.packageInfo && order.packageInfo.name) {
-    const p = order.packageInfo;
-    return {
-      name: String(p.name || ''),
-      consumed: String(p.consumed ?? '0.00'),
-      balance: String(p.balance ?? '0'),
-      validTill: String(p.validTill || (p.expiresAt ? formatDate(p.expiresAt) : 'Lifetime')),
-    };
-  }
-
   // Look for matching customer packages
   const activePkgs = (Array.isArray(customerPackages) ? customerPackages : []).filter(
     (cp) => cp && cp.customerId === (order?.customerId || customer?.id) && cp.status !== 'disabled'
   );
 
   let matchedPkg = null;
-  if (order?.discountName) {
+  if (order?.packageInfo?.name) {
+    matchedPkg = activePkgs.find((cp) => cp.name === order.packageInfo.name || cp.id === order.packageInfo.id);
+  }
+  if (!matchedPkg && order?.discountName) {
     matchedPkg = activePkgs.find(
       (cp) => cp.name === order.discountName || String(order.discountName).includes(cp.name)
     );
   }
-  if (!matchedPkg && Number(order?.paidAmount || 0) > 0) {
+  if (!matchedPkg && (Number(order?.paidAmount || 0) > 0 || (order?.packageInfo && order.packageInfo.kind === 'wallet'))) {
     matchedPkg = activePkgs.find((cp) => cp.kind === 'wallet');
   }
   if (!matchedPkg && activePkgs.length > 0) {
     matchedPkg = activePkgs[0];
+  }
+
+  // If order already has a saved packageInfo snapshot
+  if (order?.packageInfo && order.packageInfo.name) {
+    const p = order.packageInfo;
+    let consumedVal = p.consumed;
+    let balanceVal = p.balance;
+    let validTillVal = p.validTill;
+    if (validTillVal === 'Lifetime') {
+      validTillVal = null;
+    }
+
+    // Check if matched package has an expiry date that should override a generic/missing validTill
+    if (!validTillVal && (p.expiresAt || matchedPkg?.expiresAt)) {
+      validTillVal = formatDate(p.expiresAt || matchedPkg.expiresAt);
+    } else if (matchedPkg?.expiresAt && !validTillVal) {
+      validTillVal = formatDate(matchedPkg.expiresAt);
+    } else if (matchedPkg?.durationDays && (matchedPkg?.startsAt || matchedPkg?.createdAt) && !validTillVal) {
+      const start = parseDateInput(matchedPkg.startsAt || matchedPkg.createdAt) || new Date();
+      const exp = new Date(start.getTime() + Number(matchedPkg.durationDays) * 86400000);
+      validTillVal = formatDate(exp.toISOString().slice(0, 10));
+    }
+
+    const isWallet = matchedPkg?.kind === 'wallet' || String(p.name).toLowerCase().includes('wallet');
+    if (isWallet) {
+      if (Number(order?.paidAmount || 0) > 0) {
+        consumedVal = Number(order.paidAmount).toFixed(2);
+      }
+      if (matchedPkg?.remainingCredit != null) {
+        const r = Number(matchedPkg.remainingCredit);
+        balanceVal = Number.isInteger(r) ? r.toString() : r.toFixed(2);
+      } else if (customer?.walletBalance != null) {
+        const r = Number(customer.walletBalance);
+        balanceVal = Number.isInteger(r) ? r.toString() : r.toFixed(2);
+      }
+    }
+
+    return {
+      name: String(p.name || (matchedPkg?.name || '')),
+      consumed: String(consumedVal ?? '0.00'),
+      balance: String(balanceVal ?? (matchedPkg?.remainingCredit != null ? matchedPkg.remainingCredit : (customer?.walletBalance ?? '0'))),
+      validTill: validTillVal ? String(validTillVal) : null,
+    };
   }
 
   if (!matchedPkg) {
@@ -461,7 +524,7 @@ export function resolveOrderPackageInfo(order, customer, customerPackages = []) 
         name: order.discountName,
         consumed: '0.00',
         balance: '0',
-        validTill: 'Lifetime',
+        validTill: null,
       };
     }
     return null;
@@ -471,15 +534,22 @@ export function resolveOrderPackageInfo(order, customer, customerPackages = []) 
   // For wallet package, it consumes credit from the wallet package
   const isWallet = matchedPkg.kind === 'wallet';
   let consumedStr = '0.00';
-  if (isWallet) {
-    const consumedVal = Math.min(Number(order?.paidAmount || 0), Number(matchedPkg.walletCredit || 0));
-    consumedStr = consumedVal > 0 ? consumedVal.toFixed(2) : '0.00';
-  }
-
-  // Remaining balance
   let balanceStr = '0';
+
   if (isWallet) {
-    const rem = matchedPkg.remainingCredit != null ? Number(matchedPkg.remainingCredit) : Number(customer?.walletBalance || 0);
+    const custBal = Number(customer?.walletBalance || 0);
+    const ordTotal = Number(order?.totalAmount || 0);
+    const effectivePaid = (order?.paidAmount !== undefined && order?.paidAmount !== null)
+      ? Number(order.paidAmount)
+      : Math.min(custBal, ordTotal);
+
+    const consumedVal = Math.min(effectivePaid, Number(matchedPkg.walletCredit || 0));
+    consumedStr = consumedVal > 0 ? consumedVal.toFixed(2) : '0.00';
+
+    let rem = matchedPkg.remainingCredit != null ? Number(matchedPkg.remainingCredit) : custBal;
+    if (order?.isNew || (order?.paidAmount === undefined && effectivePaid > 0)) {
+      rem = Math.max(0, rem - consumedVal);
+    }
     balanceStr = Number.isInteger(rem) ? rem.toString() : rem.toFixed(2);
   } else if (Number(customer?.walletBalance || 0) > 0) {
     const rem = Number(customer.walletBalance);
@@ -487,9 +557,13 @@ export function resolveOrderPackageInfo(order, customer, customerPackages = []) 
   }
 
   // Expiration date
-  let validTillStr = 'Lifetime';
+  let validTillStr = null;
   if (matchedPkg.expiresAt) {
     validTillStr = formatDate(matchedPkg.expiresAt);
+  } else if (matchedPkg.durationDays && (matchedPkg.startsAt || matchedPkg.createdAt)) {
+    const start = parseDateInput(matchedPkg.startsAt || matchedPkg.createdAt) || new Date();
+    const exp = new Date(start.getTime() + Number(matchedPkg.durationDays) * 86400000);
+    validTillStr = formatDate(exp.toISOString().slice(0, 10));
   }
 
   return {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarDays, FileSpreadsheet, Files, ReceiptText, Search, Trash2, X } from 'lucide-react';
+import { CalendarDays, FileSpreadsheet, Files, ReceiptText, Search, Tag, Trash2, X } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { OrderAccordionList } from '../components/MobileLists.jsx';
 import { formatDate } from '../lib/dateFormat.js';
@@ -387,6 +387,15 @@ export default function OrdersView({
                           title="Thermal Receipt PDF"
                         >
                           <ReceiptText size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          style={{ width: '32px', height: '32px' }}
+                          onClick={() => setModal({ type: 'order-tag', orderId: o.id })}
+                          title="Print Garment Tags"
+                        >
+                          <Tag size={15} />
                         </button>
                         {onDeleteOrder && (
                           <button

@@ -23,12 +23,14 @@ import {
   getReceiptShareText,
   shareReceiptViaWebShare,
   shareReceiptWhatsApp,
+  splitTax,
 } from '../lib/pdfGenerator.js';
 import { formatMoney, getShareableBillUrl } from '../lib/persistence.js';
 import CrystalClearBill from './CrystalClearBill.jsx';
 import ScaledToFit from './ScaledToFit.jsx';
+import OrderTagModal from './OrderTagModal.jsx';
 import { useEscapeKey } from '../lib/a11y.js';
-import { calculateLineDiscounts, getOrderTotalDiscount } from '../lib/orderPricing.js';
+import { calculateLineDiscounts, getOrderTotalDiscount, resolveOrderPackageInfo } from '../lib/orderPricing.js';
 
 export default function ThermalReceiptModal({
   isOpen,
@@ -47,6 +49,7 @@ export default function ThermalReceiptModal({
   const [capturing, setCapturing] = useState(false);
   const [billUrl, setBillUrl] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isTagModalOpen, setIsTagModalOpen] = useState(false);
 
   // Pre-generate the public digital bill URL when modal opens
   useEffect(() => {
@@ -84,6 +87,7 @@ export default function ThermalReceiptModal({
   const cashierName = currentStaff?.name || 'Counter Cashier';
   const isWeight = order.type === 'weight';
   const lineDiscounts = calculateLineDiscounts(items, totalDiscount);
+  const activePackageInfo = resolveOrderPackageInfo(order, customer, customerPackages);
 
   const captureReceiptBlob = async () => {
     const el = document.getElementById('print-invoice');
@@ -159,6 +163,7 @@ export default function ThermalReceiptModal({
       customer,
       settings,
       payments,
+      customerPackages,
       billUrl,
       mode,
       useApp: mode === 'app',
@@ -198,7 +203,7 @@ export default function ThermalReceiptModal({
   };
 
   const handleCopy = async () => {
-    const text = getReceiptShareText({ order, customer, settings, payments, billUrl });
+    const text = getReceiptShareText({ order, customer, settings, payments, customerPackages, billUrl });
     await navigator.clipboard.writeText(text);
     setCopied(true);
     onToast?.('Receipt text copied to clipboard.');
@@ -324,6 +329,23 @@ export default function ThermalReceiptModal({
               }}
             >
               🧾 80mm Slip
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsTagModalOpen(true)}
+              style={{
+                padding: '5px 12px',
+                fontSize: '11px',
+                fontWeight: 600,
+                borderRadius: '6px',
+                border: 'none',
+                background: '#f8fafc',
+                color: '#2563eb',
+                cursor: 'pointer',
+              }}
+              title="Print garment tags for tag printer or WhatsApp"
+            >
+              🏷️ Garment Tags
             </button>
           </div>
           {/* Download PDF button */}
@@ -793,12 +815,15 @@ export default function ThermalReceiptModal({
                   <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{customer?.gstin || order?.customerGstin}</span>
                 </div>
               )}
-              {(customer?.preference || order?.customerPreference) && (customer?.preference !== 'NA' || order?.customerPreference !== 'NA') && (
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: '#64748b' }}>WASH PREF:</span>
-                  <strong style={{ color: '#0f172a' }}>{customer?.preference || order?.customerPreference}</strong>
-                </div>
-              )}
+              {(() => {
+                const pref = customer?.preference || order?.customerPreference;
+                return pref && pref !== 'NA' ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>WASH PREF:</span>
+                    <strong style={{ color: '#0f172a' }}>{pref}</strong>
+                  </div>
+                ) : null;
+              })()}
               {((customer?.rateList && customer.rateList !== 'Default') || (order?.customerRateList && order.customerRateList !== 'Default')) && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748b' }}>TIER:</span>
@@ -806,6 +831,30 @@ export default function ThermalReceiptModal({
                 </div>
               )}
             </div>
+
+            {/* Active Package Strip */}
+            {activePackageInfo && (
+              <div
+                style={{
+                  padding: '8px 0',
+                  borderBottom: '1px dashed #94a3b8',
+                  fontSize: '9.5px',
+                  display: 'grid',
+                  gap: '2px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                  <span>PACKAGE: {activePackageInfo.name}</span>
+                  {activePackageInfo.validTill && activePackageInfo.validTill !== 'Lifetime' && (
+                    <span>{activePackageInfo.validTill}</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
+                  <span>Consumed (this order): ₹{activePackageInfo.consumed}</span>
+                  <span>Balance: ₹{activePackageInfo.balance}</span>
+                </div>
+              </div>
+            )}
 
             {/* Items Table */}
             <div style={{ padding: '10px 0', borderBottom: '1px dashed #94a3b8' }}>
@@ -953,16 +1002,21 @@ export default function ThermalReceiptModal({
 
               {settings?.taxEnabled && tax > 0 && (
                 settings?.splitGst ? (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>CGST ({(settings.taxPercent / 2).toFixed(1)}%):</span>
-                      <strong>{formatMoney(tax / 2)}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>SGST ({(settings.taxPercent / 2).toFixed(1)}%):</span>
-                      <strong>{formatMoney(tax / 2)}</strong>
-                    </div>
-                  </>
+                  (() => {
+                    const [cgst, sgst] = splitTax(tax);
+                    return (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#64748b' }}>CGST ({(settings.taxPercent / 2).toFixed(1)}%):</span>
+                          <strong>{formatMoney(cgst)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#64748b' }}>SGST ({(settings.taxPercent / 2).toFixed(1)}%):</span>
+                          <strong>{formatMoney(sgst)}</strong>
+                        </div>
+                      </>
+                    );
+                  })()
                 ) : (
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#64748b' }}>{settings?.taxLabel || 'Tax'} ({settings?.taxPercent}%):</span>
@@ -1059,6 +1113,17 @@ export default function ThermalReceiptModal({
           )}
         </div>
       </div>
+
+      {isTagModalOpen && (
+        <OrderTagModal
+          isOpen={isTagModalOpen}
+          onClose={() => setIsTagModalOpen(false)}
+          order={order}
+          customer={customer}
+          settings={settings}
+          onToast={onToast}
+        />
+      )}
     </div>
   );
 }

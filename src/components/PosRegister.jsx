@@ -10,6 +10,7 @@ import { findBestPackageDiscount, isGarmentEligible } from '../lib/packageDiscou
 import { computeTotals, formatIndianCurrencyString, mergePackageTemplates, pickOrderDiscount, resolveOrderPackageInfo, roundMoney, toPaise } from '../lib/orderPricing.js';
 import ItemTagModal from './ItemTagModal.jsx';
 import CustomSelect from './CustomSelect.jsx';
+import AddNewItemModal from './AddNewItemModal.jsx';
 
 export default function PosRegister({
   customers = [],
@@ -124,6 +125,11 @@ export default function PosRegister({
 
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [garmentSearch, setGarmentSearch] = useState('');
+  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+
+  const handleAddNewCustomItem = (newItem) => {
+    setCartItems((prev) => [...prev, newItem]);
+  };
 
   // Cart for Piece mode
   const [cartItems, setCartItems] = useState(() => {
@@ -884,6 +890,9 @@ export default function PosRegister({
         manualCheckoutDiscountPercent: checkoutDiscountPct,
         manualCheckoutDiscountAmount: checkoutDiscountAmount,
         totalAmount: grandTotal,
+        paidAmount: editingOrder ? (editingOrder.paidAmount ?? Math.min(Number(currentCustomer?.walletBalance || 0), grandTotal)) : Math.min(Number(currentCustomer?.walletBalance || 0), grandTotal),
+        balanceAmount: Math.max(0, grandTotal - (editingOrder ? (editingOrder.paidAmount ?? Math.min(Number(currentCustomer?.walletBalance || 0), grandTotal)) : Math.min(Number(currentCustomer?.walletBalance || 0), grandTotal))),
+        isNew: !editingOrder,
         dueDate,
       };
       const resolvedPkgInfo = resolveOrderPackageInfo(payload, currentCustomer, customerPackages);
@@ -1271,6 +1280,32 @@ export default function PosRegister({
                     </button>
                   ))}
                 </div>
+
+                {/* Add Custom / New Item Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsAddItemModalOpen(true)}
+                  className="button button-primary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    minHeight: '38px',
+                    padding: '0 14px',
+                    borderRadius: '8px',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                  title="Add custom item not in standard catalog"
+                >
+                  <Plus size={16} /> Add New Item
+                </button>
               </div>
             )}
           </div>
@@ -1289,9 +1324,27 @@ export default function PosRegister({
                     <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#475569' }}>
                       No garments found matching "{garmentSearch}"
                     </p>
-                    <small style={{ color: '#94a3b8', fontSize: '11px' }}>
-                      Try checking another category tab or clearing the search query.
+                    <small style={{ color: '#94a3b8', fontSize: '11px', display: 'block', marginBottom: '12px' }}>
+                      Try checking another category tab, clearing the search query, or add this item as a custom order item.
                     </small>
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      onClick={() => setIsAddItemModalOpen(true)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        padding: '0 14px',
+                        minHeight: '34px',
+                        background: '#2563eb',
+                        color: '#ffffff',
+                      }}
+                    >
+                      <Plus size={15} /> Add "{garmentSearch || 'New Item'}" as New Item
+                    </button>
                   </div>
                 )}
                 {filteredPieceGarments.map((g) => {
@@ -1969,22 +2022,54 @@ export default function PosRegister({
               <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {orderType === 'pieces' ? `Order Garments (${cartItems.length})` : 'Weight Laundry Bundle'}
               </span>
-              {orderType === 'pieces' && cartItems.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setCartItems([])}
-                  style={{ border: 'none', background: 'none', color: '#ef4444', fontSize: '11px', cursor: 'pointer', padding: 0, flexShrink: 0 }}
-                >
-                  Clear Cart
-                </button>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {orderType === 'pieces' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddItemModalOpen(true)}
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      color: '#2563eb',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      padding: 0,
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                    }}
+                    title="Add new item not in catalog"
+                  >
+                    <Plus size={13} /> + Custom Item
+                  </button>
+                )}
+                {orderType === 'pieces' && cartItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCartItems([])}
+                    style={{ border: 'none', background: 'none', color: '#ef4444', fontSize: '11px', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                  >
+                    Clear Cart
+                  </button>
+                )}
+              </div>
             </div>
 
             {orderType === 'pieces' ? (
               <div style={{ maxHeight: '260px', overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', display: 'grid', gap: '8px', minWidth: 0 }}>
                 {cartItems.length === 0 ? (
                   <div style={{ padding: '24px 10px', textAlign: 'center', color: '#94a3b8', fontSize: '12px', border: '1px dashed #e2e8f0', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }}>
-                    Select garments from the catalog on the left
+                    <p style={{ margin: '0 0 8px 0' }}>Select garments from the catalog on the left</p>
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      onClick={() => setIsAddItemModalOpen(true)}
+                      style={{ fontSize: '11px', minHeight: '30px', padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Plus size={13} /> + Add Custom Item
+                    </button>
                   </div>
                 ) : (
                   cartItems.map((item, idx) => {
@@ -2672,6 +2757,20 @@ export default function PosRegister({
           initialLength={carpetModalState.length}
           initialWidth={carpetModalState.width}
           onConfirm={handleConfirmCarpetDimensions}
+        />
+      )}
+
+      {/* Add New Custom Item Modal */}
+      {isAddItemModalOpen && (
+        <AddNewItemModal
+          isOpen={isAddItemModalOpen}
+          onClose={() => setIsAddItemModalOpen(false)}
+          services={services}
+          activeService={selectedPieceService}
+          categories={categories}
+          initialSearch={garmentSearch}
+          onAddItem={handleAddNewCustomItem}
+          onToast={onToast}
         />
       )}
     </div>

@@ -12,7 +12,7 @@
  */
 import { defaultSettings, garmentCatalog, initialAddons, initialBrands, initialColors, initialDefects, services, weightServices } from '../data.js';
 import { getNextOrderNo } from '../lib/orderNumbers.js';
-import { mergePackageTemplates, PricingError, priceOrder, roundMoney } from '../lib/orderPricing.js';
+import { mergePackageTemplates, PricingError, priceOrder, resolveOrderPackageInfo, roundMoney } from '../lib/orderPricing.js';
 import {
   DEMO_ADMIN_EMAIL, DEMO_STAFF_PINS, RATE_LIMITS, assertNotRateLimited, createSession, deleteSessionsFor,
   getSessionUser, isDemoAllowed, publicUser, recordFailedAttempt, sessionToUser, verifyAdminPassword, verifyStaffPin,
@@ -676,7 +676,7 @@ async function createOrderRoute({ sql, request, user }) {
   if (!customerId) throw new HttpError(400, 'Choose a customer for this order.');
 
   const [customerRows, customerPackages, packageTemplates, settings, catalog, latest] = await Promise.all([
-    sql`SELECT id, name, mobile, profile FROM customers WHERE id = ${customerId}`,
+    sql`SELECT id, name, mobile, profile, wallet_balance AS "walletBalance" FROM customers WHERE id = ${customerId}`,
     sql`SELECT id, customer_id AS "customerId", template_id AS "templateId", name, kind,
       wallet_credit AS "walletCredit",
       COALESCE(remaining_credit, wallet_credit) AS "remainingCredit",
@@ -712,6 +712,21 @@ async function createOrderRoute({ sql, request, user }) {
   const auto = !requested || body.autoOrderNo === true;
   let orderNo = requested || settings.nextOrderNo || getNextOrderNo(latest[0]?.orderNo);
   const extra = orderExtra(body, priced);
+  const serverPkgInfo = resolveOrderPackageInfo(
+    {
+      ...priced,
+      customerId,
+      totalAmount: priced.totalAmount,
+      paidAmount: Math.min(Number(customer.walletBalance || 0), priced.totalAmount),
+      isNew: true,
+      packageInfo: body.packageInfo,
+    },
+    customer,
+    customerPackages.map((r) => numbers(r, ['walletCredit', 'remainingCredit', 'discountPercent']))
+  );
+  if (serverPkgInfo) {
+    extra.packageInfo = serverPkgInfo;
+  }
   const orderId = newId('ord');
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -791,7 +806,7 @@ async function updateOrderRoute({ sql, request, params }) {
 
   const customerId = currentOrder.customer_id;
   const [customerRows, customerPackages, packageTemplates, settings, catalog] = await Promise.all([
-    sql`SELECT id, name, mobile, profile, wallet_balance FROM customers WHERE id = ${customerId}`,
+    sql`SELECT id, name, mobile, profile, wallet_balance AS "walletBalance" FROM customers WHERE id = ${customerId}`,
     sql`SELECT id, customer_id AS "customerId", template_id AS "templateId", name, kind,
       wallet_credit AS "walletCredit",
       COALESCE(remaining_credit, wallet_credit) AS "remainingCredit",
@@ -878,6 +893,22 @@ async function updateOrderRoute({ sql, request, params }) {
       finalPaidAmount = roundMoney(totalPaidSoFar + additionalDeduct);
       finalBalanceAmount = Math.max(0, priced.totalAmount - finalPaidAmount);
     }
+  }
+
+  const remainingCustBal = Math.max(0, Number(customer.walletBalance || 0) + walletPaid - finalPaidAmount);
+  const updatedPkgInfo = resolveOrderPackageInfo(
+    {
+      ...priced,
+      customerId,
+      totalAmount: priced.totalAmount,
+      paidAmount: finalPaidAmount,
+      packageInfo: body.packageInfo,
+    },
+    { ...customer, walletBalance: remainingCustBal },
+    customerPackages.map((r) => numbers(r, ['walletCredit', 'remainingCredit', 'discountPercent']))
+  );
+  if (updatedPkgInfo) {
+    extra.packageInfo = updatedPkgInfo;
   }
 
   await sql`UPDATE orders SET

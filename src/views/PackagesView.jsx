@@ -229,7 +229,7 @@ export default function PackagesView({
                             {formatDate(cp.startsAt)}
                           </td>
                           <td data-label="Validity">
-                            {cp.expiresAt ? formatDate(cp.expiresAt) : 'Lifetime (No Expiry)'}
+                            {cp.expiresAt ? formatDate(cp.expiresAt) : '—'}
                           </td>
                           <td data-label="Status">
                             <span
@@ -357,12 +357,14 @@ export default function PackagesView({
                             )}
                           </span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                          <span style={{ color: '#64748b', flexShrink: 0 }}>Validity:</span>
-                          <span style={{ color: '#475569', textAlign: 'right' }}>
-                            {cp.expiresAt ? formatDate(cp.expiresAt) : 'Lifetime'}
-                          </span>
-                        </div>
+                        {cp.expiresAt && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                            <span style={{ color: '#64748b', flexShrink: 0 }}>Validity:</span>
+                            <span style={{ color: '#475569', textAlign: 'right' }}>
+                              {formatDate(cp.expiresAt)}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>

@@ -583,20 +583,34 @@ export function generateStandardInvoicePdf({
 
   const activePackageInfo = resolveOrderPackageInfo(order, customer, customerPackages);
   if (activePackageInfo) {
+    const hasExpiry = Boolean(activePackageInfo.validTill && activePackageInfo.validTill !== 'Lifetime');
     y += 3.5;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text(String(activePackageInfo.name), 12, y, { align: 'left' });
-    doc.text(String(activePackageInfo.consumed), 85, y, { align: 'center' });
-    doc.text(String(activePackageInfo.balance), 135, y, { align: 'center' });
-    doc.text(String(activePackageInfo.validTill), 198, y, { align: 'right' });
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.text('Package Name', 12, y + 3.8, { align: 'left' });
-    doc.text('Consumed (this order)', 85, y + 3.8, { align: 'center' });
-    doc.text('Balance', 135, y + 3.8, { align: 'center' });
-    doc.text('Valid till', 198, y + 3.8, { align: 'right' });
+    if (hasExpiry) {
+      doc.text(String(activePackageInfo.name), 12, y, { align: 'left' });
+      doc.text(String(activePackageInfo.consumed), 85, y, { align: 'center' });
+      doc.text(String(activePackageInfo.balance), 135, y, { align: 'center' });
+      doc.text(String(activePackageInfo.validTill), 198, y, { align: 'right' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.text('Package Name', 12, y + 3.8, { align: 'left' });
+      doc.text('Consumed (this order)', 85, y + 3.8, { align: 'center' });
+      doc.text('Balance', 135, y + 3.8, { align: 'center' });
+      doc.text('Valid till', 198, y + 3.8, { align: 'right' });
+    } else {
+      doc.text(String(activePackageInfo.name), 12, y, { align: 'left' });
+      doc.text(String(activePackageInfo.consumed), 105, y, { align: 'center' });
+      doc.text(String(activePackageInfo.balance), 198, y, { align: 'right' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.text('Package Name', 12, y + 3.8, { align: 'left' });
+      doc.text('Consumed (this order)', 105, y + 3.8, { align: 'center' });
+      doc.text('Balance', 198, y + 3.8, { align: 'right' });
+    }
 
     y += 6;
     doc.line(10, y, 200, y);
@@ -928,7 +942,7 @@ export function getThermalReceiptBlob(options) {
 /**
  * Builds clean plain-text invoice summary suitable for WhatsApp or clipboard.
  */
-export function getReceiptShareText({ order, customer, settings, payments = [], billUrl }) {
+export function getReceiptShareText({ order, customer, settings, payments = [], customerPackages = [], billUrl }) {
   const storeName = settings?.storeName || 'Clean Clear Dry Cleaning';
   const phone = settings?.phone || '';
   const total = num(order.totalAmount);
@@ -941,6 +955,16 @@ export function getReceiptShareText({ order, customer, settings, payments = [], 
   text += `👤 *Customer:* ${customer?.name || 'Valued Customer'}\n`;
   text += `📅 *Date:* ${formatDateTime(order.createdAt)}\n`;
   text += `🚚 *Promised Date:* ${formatDate(order.dueDate)}\n`;
+
+  const activePackageInfo = resolveOrderPackageInfo(order, customer, customerPackages);
+  if (activePackageInfo) {
+    const hasExpiry = Boolean(activePackageInfo.validTill && activePackageInfo.validTill !== 'Lifetime');
+    const validPart = hasExpiry ? ` (${activePackageInfo.validTill})` : '';
+    text += `🎁 *Package:* ${activePackageInfo.name}${validPart}\n`;
+    text += `• Consumed (this order): ₹${activePackageInfo.consumed}\n`;
+    text += `• Balance: ₹${activePackageInfo.balance}\n`;
+  }
+
   text += `--------------------------------\n`;
 
   if (order.type === 'weight') {

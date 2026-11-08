@@ -48,6 +48,7 @@ import PackagesView from './views/PackagesView.jsx';
 // jsPDF, html2canvas and qrcode are only needed for receipts, pamphlets and PDFs,
 // so those screens load on demand instead of in the initial bundle.
 const ThermalReceiptModal = lazy(() => import('./components/ThermalReceiptModal.jsx'));
+const OrderTagModal = lazy(() => import('./components/OrderTagModal.jsx'));
 const PamphletModal = lazy(() => import('./components/PamphletModal.jsx'));
 const SharePriceListModal = lazy(() => import('./components/SharePriceListModal.jsx'));
 const SettingsModal = lazy(() => import('./components/SettingsModal.jsx'));
@@ -902,6 +903,7 @@ export default function App() {
         }}
         onOpenPayment={() => setModal({ type: 'payment', orderId: activeOrder.id })}
         onOpenReceipt={() => setModal({ type: 'thermal-receipt', orderId: activeOrder.id })}
+        onOpenTags={() => setModal({ type: 'order-tag', orderId: activeOrder.id })}
         onEditOrder={(orderToEdit) => {
           setModal(null);
           setEditingOrder(orderToEdit);
@@ -938,6 +940,20 @@ export default function App() {
             payments={activeOrderPayments}
             customerPackages={data.customerPackages}
             currentStaff={adminUser || authSession || { name: 'Counter Cashier' }}
+            onToast={showToast}
+          />
+        </Suspense>
+      )}
+
+      {/* 7b. GARMENT TAG PRINT MODAL (TAG PRINTER & WHATSAPP) */}
+      {modal?.type === 'order-tag' && (
+        <Suspense fallback={null}>
+          <OrderTagModal
+            isOpen
+            onClose={() => setModal(null)}
+            order={activeOrder}
+            customer={activeOrderCustomer}
+            settings={data.settings}
             onToast={showToast}
           />
         </Suspense>

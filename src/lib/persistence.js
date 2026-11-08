@@ -3,7 +3,7 @@ import {
   initialPackageCatalog, initialAddons, initialBrands, initialColors, initialDefects,
 } from '../data.js';
 import { getNextOrderNo, formatOrderNo } from './orderNumbers.js';
-import { computeTotals, roundMoney } from './orderPricing.js';
+import { computeTotals, resolveOrderPackageInfo, roundMoney } from './orderPricing.js';
 import { buildPublicBillUrl } from './billSecurity.js';
 import { clearActiveSession, isDemoAllowed, verifyAdminCredentials, verifyStaffPin } from './authConfig.js';
 
@@ -898,9 +898,9 @@ export async function assignPackage(customerId, templateId, paymentMethod, curre
   return saveLocal({
     ...current,
     customers,
-    customerPackages: [assigned, ...current.customerPackages],
-    packageSales: [sale, ...current.packageSales],
-    walletTransactions: transaction ? [transaction, ...current.walletTransactions] : current.walletTransactions,
+    customerPackages: [assigned, ...(current.customerPackages || [])],
+    packageSales: [sale, ...(current.packageSales || [])],
+    walletTransactions: transaction ? [transaction, ...(current.walletTransactions || [])] : (current.walletTransactions || []),
   });
 }
 
@@ -1092,6 +1092,12 @@ export async function createOrder(order, current) {
       }
       return cp;
     });
+  }
+
+  const updatedCust = customers.find((c) => c.id === order.customerId);
+  const localPkgInfo = resolveOrderPackageInfo(newOrder, updatedCust || customer, customerPackages);
+  if (localPkgInfo) {
+    newOrder.packageInfo = localPkgInfo;
   }
 
   return saveLocal({
@@ -1392,6 +1398,12 @@ export async function updateOrder(orderId, orderPayload, current) {
     balanceAmount: finalBalanceAmount,
     dueDate: orderPayload.dueDate || existingOrder.dueDate,
   };
+
+  const updatedCust = customers.find((c) => c.id === existingOrder.customerId);
+  const pkgInfo = resolveOrderPackageInfo(updatedOrder, updatedCust, customerPackages);
+  if (pkgInfo) {
+    updatedOrder.packageInfo = pkgInfo;
+  }
 
   const orders = (current.orders || []).map((o) => (o.id === orderId ? updatedOrder : o));
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, Phone, ReceiptText, Share2, UserRound } from 'lucide-react';
+import { ChevronDown, Phone, ReceiptText, Share2, Tag, UserRound } from 'lucide-react';
 import { formatMoney } from '../lib/persistence.js';
 import { formatDate } from '../lib/dateFormat.js';
 
@@ -55,6 +55,9 @@ export function OrderAccordionList({ orders, customers, setModal, onDeleteOrder,
                   </button>
                   <button type="button" className="button button-quiet" onClick={() => setModal({ type: 'thermal-receipt', orderId: o.id })}>
                     <ReceiptText size={14} /> Receipt
+                  </button>
+                  <button type="button" className="button button-quiet" onClick={() => setModal({ type: 'order-tag', orderId: o.id })}>
+                    <Tag size={14} /> Tags
                   </button>
                   {onDeleteOrder && (
                     <button

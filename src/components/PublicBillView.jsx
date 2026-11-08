@@ -323,10 +323,12 @@ export default function PublicBillView({ billParam, tokenParam }) {
                     <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.balance}</div>
                     <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Balance</div>
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.validTill}</div>
-                    <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Valid till</div>
-                  </div>
+                  {activePackageInfo.validTill && activePackageInfo.validTill !== 'Lifetime' && (
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#0f172a' }}>{activePackageInfo.validTill}</div>
+                      <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>Valid till</div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

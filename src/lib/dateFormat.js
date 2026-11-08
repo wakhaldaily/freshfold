@@ -63,5 +63,21 @@ export function formatDate(isoString) {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-  });
+  }).replace(/\bSept\b/g, 'Sep');
+}
+
+const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Formats a garment tag date matching physical tag printers (e.g. "31 Oct 26 Sat").
+ */
+export function formatTagDate(isoString) {
+  const d = parseDateInput(isoString);
+  if (!d) return '—';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = MONTHS_SHORT[d.getMonth()];
+  const yy = String(d.getFullYear()).slice(-2);
+  const weekday = WEEKDAYS_SHORT[d.getDay()];
+  return `${day} ${month} ${yy} ${weekday}`;
 }

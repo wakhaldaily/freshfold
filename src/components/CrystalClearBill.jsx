@@ -283,41 +283,73 @@ export default function CrystalClearBill({
 
       {/* 3. FINANCIAL BALANCE STRIP OR PACKAGE STRIP */}
       {activePackageInfo ? (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '2fr 1.3fr 0.8fr 1.1fr',
-            alignItems: 'flex-start',
-            padding: '4px 0 8px 0',
-            fontSize: '12px',
-            color: '#000000',
-          }}
-        >
-          <div style={{ textAlign: 'left' }}>
-            <div style={{ fontWeight: 700 }}>{activePackageInfo.name}</div>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
-              Package Name
+        activePackageInfo.validTill && activePackageInfo.validTill !== 'Lifetime' ? (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '2fr 1.3fr 0.8fr 1.1fr',
+              alignItems: 'flex-start',
+              padding: '4px 0 8px 0',
+              fontSize: '12px',
+              color: '#000000',
+            }}
+          >
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontWeight: 700 }}>{activePackageInfo.name}</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+                Package Name
+              </div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 700 }}>{activePackageInfo.consumed}</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+                Consumed (this order)
+              </div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 700 }}>{activePackageInfo.balance}</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+                Balance
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontWeight: 700 }}>{activePackageInfo.validTill}</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+                Valid till
+              </div>
             </div>
           </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontWeight: 700 }}>{activePackageInfo.consumed}</div>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
-              Consumed (this order)
+        ) : (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '2fr 1.3fr 1.1fr',
+              alignItems: 'flex-start',
+              padding: '4px 0 8px 0',
+              fontSize: '12px',
+              color: '#000000',
+            }}
+          >
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontWeight: 700 }}>{activePackageInfo.name}</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+                Package Name
+              </div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 700 }}>{activePackageInfo.consumed}</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+                Consumed (this order)
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontWeight: 700 }}>{activePackageInfo.balance}</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
+                Balance
+              </div>
             </div>
           </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontWeight: 700 }}>{activePackageInfo.balance}</div>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
-              Balance
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 700 }}>{activePackageInfo.validTill}</div>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000', marginTop: '2px' }}>
-              Valid till
-            </div>
-          </div>
-        </div>
+        )
       ) : (
         <div
           style={{

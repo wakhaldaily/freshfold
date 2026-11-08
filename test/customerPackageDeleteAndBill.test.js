@@ -72,7 +72,7 @@ test('resolveOrderPackageInfo handles wallet package credit consumption & balanc
   assert.equal(info.name, 'Gold Wallet 2000');
   assert.equal(info.consumed, '450.00');
   assert.equal(info.balance, '1550');
-  assert.equal(info.validTill, 'Lifetime');
+  assert.equal(info.validTill, null);
 });
 
 test('resolveOrderPackageInfo returns null when customer has no package', () => {
