@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { formatDate, formatTagDate } from '../src/lib/dateFormat.js';
 import { priceOrder, resolveOrderPackageInfo } from '../src/lib/orderPricing.js';
 import { getCustomerTagId, getServiceCode } from '../src/lib/orderNumbers.js';
-import { createOrder, updateOrder, assignPackage } from '../src/lib/persistence.js';
+import { createOrder, updateOrder, assignPackage, updatePackage } from '../src/lib/persistence.js';
 
 test('1. Package Expiry Date Formatting (DD MMM YYYY)', () => {
   // Test exact date formatting: Day, Month (3 letters), Year (4 digits)
@@ -234,4 +234,36 @@ test('4. Credit Balance Deduction, Consumed & Remaining in Bills and Profile', a
   const billInfoEdited = resolveOrderPackageInfo(updatedOrder1, custAfterEdit, afterEdit.customerPackages);
   assert.equal(billInfoEdited.consumed, '1200.00');
   assert.equal(billInfoEdited.balance, '800');
+});
+
+test('5. Option A: Updating package template validity automatically recalculates existing customerPackages from startsAt', async () => {
+  const initialState = {
+    packages: [
+      { id: 'tpl-100', name: 'VIP Pass', kind: 'discount', discountPercent: 15, durationDays: 30 },
+    ],
+    customerPackages: [
+      {
+        id: 'cp-vip-1',
+        templateId: 'tpl-100',
+        customerId: 'c-1',
+        name: 'VIP Pass',
+        kind: 'discount',
+        startsAt: '2026-01-01',
+        expiresAt: '2026-01-31',
+        status: 'active',
+      },
+    ],
+  };
+
+  // 1. Extend validity from 30 days to 90 days
+  const updated90 = await updatePackage('tpl-100', { durationDays: 90 }, initialState);
+  const cp90 = updated90.customerPackages.find((cp) => cp.id === 'cp-vip-1');
+  assert.equal(cp90.expiresAt, '2026-04-01'); // 2026-01-01 + 90 days = 2026-04-01
+  assert.equal(cp90.durationDays, 90);
+
+  // 2. Change package to Lifetime (durationDays: null)
+  const updatedLifetime = await updatePackage('tpl-100', { durationDays: null }, updated90);
+  const cpLifetime = updatedLifetime.customerPackages.find((cp) => cp.id === 'cp-vip-1');
+  assert.equal(cpLifetime.expiresAt, null);
+  assert.equal(cpLifetime.status, 'active');
 });

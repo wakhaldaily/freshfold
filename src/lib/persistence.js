@@ -6,6 +6,7 @@ import { getNextOrderNo, formatOrderNo } from './orderNumbers.js';
 import { computeTotals, resolveOrderPackageInfo, roundMoney } from './orderPricing.js';
 import { buildPublicBillUrl } from './billSecurity.js';
 import { clearActiveSession, isDemoAllowed, verifyAdminCredentials, verifyStaffPin } from './authConfig.js';
+import { parseDateInput } from './dateFormat.js';
 
 export { getNextOrderNo, formatOrderNo };
 
@@ -818,9 +819,43 @@ export async function updatePackage(id, pkgData, current) {
   if (remoteMode) {
     return finishRemoteMutation(`/api/package-templates/${encodeURIComponent(id)}`, 'PATCH', cleanData);
   }
+
+  const updatedPackages = (current.packages || []).map((pkg) => (pkg.id === id ? { ...pkg, ...cleanData } : pkg));
+
+  // Option A: Automatically recalculate expiry for all enrolled customer packages from their startsAt date
+  let updatedCustomerPackages = current.customerPackages || [];
+  if (cleanData.durationDays !== undefined) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    updatedCustomerPackages = updatedCustomerPackages.map((cp) => {
+      if (cp.templateId === id || cp.packageId === id) {
+        let newExpiresAt = null;
+        if (cleanData.durationDays && cleanData.durationDays > 0) {
+          const start = parseDateInput(cp.startsAt || cp.createdAt) || new Date();
+          const exp = new Date(start.getFullYear(), start.getMonth(), start.getDate() + Number(cleanData.durationDays));
+          const y = exp.getFullYear();
+          const mo = String(exp.getMonth() + 1).padStart(2, '0');
+          const d = String(exp.getDate()).padStart(2, '0');
+          newExpiresAt = `${y}-${mo}-${d}`;
+        }
+        const isPast = Boolean(newExpiresAt && newExpiresAt < todayStr);
+        const isCreditFinished = cp.kind === 'wallet' && cp.remainingCredit !== undefined && cp.remainingCredit !== null && Number(cp.remainingCredit) <= 0;
+        const newStatus = isCreditFinished || isPast ? 'disabled' : 'active';
+
+        return {
+          ...cp,
+          durationDays: cleanData.durationDays,
+          expiresAt: newExpiresAt,
+          status: newStatus,
+        };
+      }
+      return cp;
+    });
+  }
+
   return saveLocal({
     ...current,
-    packages: (current.packages || []).map((pkg) => (pkg.id === id ? { ...pkg, ...cleanData } : pkg)),
+    packages: updatedPackages,
+    customerPackages: updatedCustomerPackages,
   });
 }
 

@@ -277,4 +277,27 @@ test('5. Server API: duration_days, expiry disabling, and wallet credit depletio
   boot = await api.get('/api/bootstrap', { token });
   assignedPkg = boot.data.customerPackages.find((p) => p.id === pkgId);
   assert.equal(assignedPkg.status, 'disabled', 'Expired package in DB must report status disabled');
+
+  // 8. Option A: Updating package template validity automatically recalculates existing customer_packages from starts_at
+  const updateRes = await api.patch(`/api/package-templates/${templateId}`, {
+    durationDays: 60,
+  }, { token });
+  assert.equal(updateRes.status, 200);
+
+  boot = await api.get('/api/bootstrap', { token });
+  assignedPkg = boot.data.customerPackages.find((p) => p.id === pkgId);
+  assert.ok(assignedPkg.expiresAt);
+  assert.ok(assignedPkg.expiresAt > todayStr);
+  assert.equal(assignedPkg.status, 'active', 'Package extended to 60 days from starts_at becomes active again');
+
+  // Updating to Lifetime (durationDays: null) removes expiresAt
+  const updateLifetimeRes = await api.patch(`/api/package-templates/${templateId}`, {
+    durationDays: null,
+  }, { token });
+  assert.equal(updateLifetimeRes.status, 200);
+
+  boot = await api.get('/api/bootstrap', { token });
+  assignedPkg = boot.data.customerPackages.find((p) => p.id === pkgId);
+  assert.equal(assignedPkg.expiresAt, null, 'Updating template to lifetime removes expiresAt from existing customer package');
+  assert.equal(assignedPkg.status, 'active');
 });

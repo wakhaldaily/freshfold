@@ -1137,6 +1137,35 @@ async function updateTemplate({ sql, request, params }) {
     rules = rules || ${JSON.stringify(t.rules)}::jsonb
     WHERE id = ${params.id} RETURNING id`;
   if (!rows.length) throw new HttpError(404, 'Package not found.');
+
+  // Option A: Automatically recalculate expiry for all enrolled customer packages from their starts_at date
+  if (t.durationDays !== undefined) {
+    if (t.durationDays && Number(t.durationDays) > 0) {
+      const days = Math.floor(Number(t.durationDays));
+      await sql`
+        UPDATE customer_packages
+        SET expires_at = starts_at + ${days}::int,
+            status = CASE
+              WHEN kind = 'wallet' AND remaining_credit IS NOT NULL AND remaining_credit <= 0 THEN 'disabled'
+              WHEN (starts_at + ${days}::int) < CURRENT_DATE THEN 'disabled'
+              ELSE 'active'
+            END
+        WHERE template_id = ${params.id}
+      `;
+    } else {
+      // Switched to Lifetime (no expiry)
+      await sql`
+        UPDATE customer_packages
+        SET expires_at = NULL,
+            status = CASE
+              WHEN kind = 'wallet' AND remaining_credit IS NOT NULL AND remaining_credit <= 0 THEN 'disabled'
+              ELSE 'active'
+            END
+        WHERE template_id = ${params.id}
+      `;
+    }
+  }
+
   return json({ id: params.id });
 }
 
