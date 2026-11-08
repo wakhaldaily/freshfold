@@ -491,8 +491,11 @@ export function resolveOrderPackageInfo(order, customer, customerPackages = []) 
       validTillVal = formatDate(matchedPkg.expiresAt);
     } else if (matchedPkg?.durationDays && (matchedPkg?.startsAt || matchedPkg?.createdAt) && !validTillVal) {
       const start = parseDateInput(matchedPkg.startsAt || matchedPkg.createdAt) || new Date();
-      const exp = new Date(start.getTime() + Number(matchedPkg.durationDays) * 86400000);
-      validTillVal = formatDate(exp.toISOString().slice(0, 10));
+      const exp = new Date(start.getFullYear(), start.getMonth(), start.getDate() + Number(matchedPkg.durationDays));
+      const y = exp.getFullYear();
+      const mo = String(exp.getMonth() + 1).padStart(2, '0');
+      const d = String(exp.getDate()).padStart(2, '0');
+      validTillVal = formatDate(`${y}-${mo}-${d}`);
     }
 
     const isWallet = matchedPkg?.kind === 'wallet' || String(p.name).toLowerCase().includes('wallet');
@@ -562,8 +565,11 @@ export function resolveOrderPackageInfo(order, customer, customerPackages = []) 
     validTillStr = formatDate(matchedPkg.expiresAt);
   } else if (matchedPkg.durationDays && (matchedPkg.startsAt || matchedPkg.createdAt)) {
     const start = parseDateInput(matchedPkg.startsAt || matchedPkg.createdAt) || new Date();
-    const exp = new Date(start.getTime() + Number(matchedPkg.durationDays) * 86400000);
-    validTillStr = formatDate(exp.toISOString().slice(0, 10));
+    const exp = new Date(start.getFullYear(), start.getMonth(), start.getDate() + Number(matchedPkg.durationDays));
+    const y = exp.getFullYear();
+    const mo = String(exp.getMonth() + 1).padStart(2, '0');
+    const d = String(exp.getDate()).padStart(2, '0');
+    validTillStr = formatDate(`${y}-${mo}-${d}`);
   }
 
   return {

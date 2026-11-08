@@ -194,7 +194,7 @@ test('4. Credit Balance Deduction, Consumed & Remaining in Bills and Profile', a
   };
   const infoDuration = resolveOrderPackageInfo({ customerId: 'cust-1' }, { id: 'cust-1' }, [pkgWithDuration]);
   assert.equal(infoDuration.name, 'Quarterly Package');
-  assert.equal(infoDuration.validTill, '31 Mar 2026');
+  assert.equal(infoDuration.validTill, '01 Apr 2026');
 
   // Verify bill packageInfo: Consumed (this order) = 600.00, Balance = 1400
   const billInfo1 = resolveOrderPackageInfo(placedOrder1, custAfterOrder1, afterOrder1.customerPackages);
